@@ -5,10 +5,13 @@
 --   Optional template attribute "SpawnWeight" (default 1) makes a tree more or less common.
 -- Trees go into the plot's "TreeSpawns" folder, at random spots on Floor.Ground.
 -- When a tree's HP reaches 0 (TreeService.Damage, or any script setting the "HP" attribute)
---   it is removed and a new one grows back after CONFIG.RespawnDelay seconds.
+--   it gets the "Dead" attribute, is removed TreeConfig.FellTime later (clients play the fall
+--   animation meanwhile), and a new one grows back after CONFIG.RespawnDelay seconds.
 -- When the plot's "Zone" attribute changes, all trees are replaced with the new zone's trees.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 
 local CONFIG = {
 	TemplateFolder = "Tress",
@@ -182,9 +185,15 @@ local function spawnTree(state: PlotState): boolean
 
 	tree:GetAttributeChangedSignal("HP"):Connect(function()
 		updateInfo(tree)
-		if (tree:GetAttribute("HP") or 0) <= 0 and state.alive[tree] then
+		if (tree:GetAttribute("HP") or 0) <= 0 and state.alive[tree] and not tree:GetAttribute("Dead") then
+			-- Keep the tree around for a moment so clients can play the fall animation.
+			tree:SetAttribute("Dead", true)
 			felledEvent:Fire(tree, state.plot)
-			tree:Destroy()
+			task.delay(TreeConfig.FellTime, function()
+				if tree.Parent then
+					tree:Destroy()
+				end
+			end)
 		end
 	end)
 	tree.Destroying:Connect(function()
@@ -267,7 +276,7 @@ end
 -- Deals damage to a tree. Returns true if this hit felled it.
 function TreeService.Damage(tree: Model, amount: number): boolean
 	local hp = tree:GetAttribute("HP")
-	if not hp or hp <= 0 then
+	if not hp or hp <= 0 or tree:GetAttribute("Dead") then
 		return false
 	end
 	local newHp = math.max(hp - amount, 0)

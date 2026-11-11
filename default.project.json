@@ -2,11 +2,51 @@
   "name": "MyAnimeChopSquad",
   "tree": {
     "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "Shared": {
+        "$path": "src/shared"
+      },
+      "Remotes": {
+        "$className": "Folder",
+        "HitTree": {
+          "$className": "RemoteEvent"
+        },
+        "TreeHit": {
+          "$className": "RemoteEvent"
+        },
+        "TreeDrops": {
+          "$className": "RemoteEvent"
+        },
+        "ChestAction": {
+          "$className": "RemoteEvent"
+        }
+      }
+    },
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "$ignoreUnknownInstances": true,
       "Server": {
         "$path": "src/server"
+      }
+    },
+    "StarterGui": {
+      "$className": "StarterGui",
+      "$ignoreUnknownInstances": true,
+      "ChestGui": {
+        "$path": "src/gui/ChestGui.model.json"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$ignoreUnknownInstances": true,
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$ignoreUnknownInstances": true,
+        "Client": {
+          "$path": "src/client"
+        }
       }
     }
   }
