@@ -109,9 +109,11 @@ local function getFolder(player: Player, name: string): Folder
 	return folder :: Folder
 end
 
-function ChestService.AddItem(player: Player, folderName: string, itemName: string, amount: number)
+-- Returns true when the player did not own any of this item before ("New!" popup).
+function ChestService.AddItem(player: Player, folderName: string, itemName: string, amount: number): boolean
 	local folder = getFolder(player, folderName)
 	local value = folder:FindFirstChild(itemName) :: IntValue?
+	local isNew = value == nil or value.Value <= 0
 	if not value then
 		local newValue = Instance.new("IntValue")
 		newValue.Name = itemName
@@ -119,6 +121,7 @@ function ChestService.AddItem(player: Player, folderName: string, itemName: stri
 		value = newValue
 	end
 	(value :: IntValue).Value += amount
+	return isNew
 end
 
 local function money(player: Player): NumberValue
@@ -182,17 +185,28 @@ local function canUse(player: Player, chest: any): boolean
 	return root ~= nil and (root.Position - chest:GetPivot().Position).Magnitude <= TreeConfig.ChestCloseDistance + 10
 end
 
+-- Sent to the client after Take All; it pops up the "Added!" / "New!" frames above the hotbar.
+export type Received = { Stack: string, Amount: number, New: boolean }
+
+local itemsAdded: RemoteEvent? = nil
+
 function ChestService.TakeAll(player: Player, chest: Model)
+	local received: { Received } = {}
 	for _, v in contents(chest):GetChildren() do
 		if v:IsA("IntValue") and v.Value > 0 then
+			local isNew
 			if v.Name:sub(1, #HERO_PREFIX) == HERO_PREFIX then
-				ChestService.AddItem(player, "Heroes", v.Name:sub(#HERO_PREFIX + 1), v.Value)
+				isNew = ChestService.AddItem(player, "Heroes", v.Name:sub(#HERO_PREFIX + 1), v.Value)
 			else
-				ChestService.AddItem(player, "Inventory", v.Name, v.Value)
+				isNew = ChestService.AddItem(player, "Inventory", v.Name, v.Value)
 			end
+			table.insert(received, { Stack = v.Name, Amount = v.Value, New = isNew })
 		end
 	end
 	ChestService.Reset(chest)
+	if #received > 0 and itemsAdded then
+		itemsAdded:FireClient(player, received)
+	end
 end
 
 -- Turning auto sell on also sells the materials already sitting in the chest.
@@ -252,6 +266,7 @@ function ChestService.Start()
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local chestAction = remotes:WaitForChild("ChestAction") :: RemoteEvent
 	chestAction.OnServerEvent:Connect(onAction)
+	itemsAdded = remotes:WaitForChild("ItemsAdded") :: RemoteEvent
 
 	for _, d in workspace:GetDescendants() do
 		if isChest(d) then

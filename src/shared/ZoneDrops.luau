@@ -5,7 +5,7 @@
 -- ReplicatedStorage.Tress.Map<Zone>).
 --
 -- Each drop entry:
---   Item   = a key in TreeConfig.Materials (e.g. "Honey") or a hero Name in TreeConfig.Heroes (e.g. "Naruto")
+--   Item   = a key in TreeConfig.Materials (e.g. "Honey") or a hero Name from HeroConfig.luau (e.g. "Naruto")
 --   Chance = 0..1, rolled on its own every time a tree is felled (0.25 = 25%)
 --   Min/Max = how many drop when it hits (default 1)
 --
@@ -14,7 +14,7 @@
 --              INSTEAD of Drops for that tree.
 -- Zones without an entry fall back to zone 1.
 --
--- New item? Add it to TreeConfig.Materials (or TreeConfig.Heroes) first, then list it here.
+-- New item? Add it to TreeConfig.Materials (or HeroConfig.Heroes) first, then list it here.
 
 local TreeConfig = require(script.Parent:WaitForChild("TreeConfig"))
 
@@ -78,7 +78,7 @@ function ZoneDrops.Validate()
 	local function check(where: string, list: { DropEntry })
 		for _, entry in list do
 			if not TreeConfig.Materials[entry.Item] and not TreeConfig.GetHero(entry.Item) then
-				warn(("[ZoneDrops] %s: unknown item %q (add it to TreeConfig.Materials or Heroes)"):format(where, entry.Item))
+				warn(("[ZoneDrops] %s: unknown item %q (add it to TreeConfig.Materials or HeroConfig)"):format(where, entry.Item))
 			end
 		end
 	end

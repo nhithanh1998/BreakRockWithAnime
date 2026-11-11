@@ -15,6 +15,7 @@ local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 local TreeService = require(script.Parent:WaitForChild("TreeService"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local ZoneDrops = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneDrops"))
+local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 
 type Drop = TreeConfig.Drop
 
@@ -184,6 +185,7 @@ end
 
 function TreeHitService.Start()
 	ZoneDrops.Validate()
+	HeroConfig.Validate()
 	HitTree.OnServerEvent:Connect(onHit)
 	Players.PlayerRemoving:Connect(function(player)
 		lastHit[player] = nil

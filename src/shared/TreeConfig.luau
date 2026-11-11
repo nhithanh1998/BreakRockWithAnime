@@ -1,7 +1,9 @@
 --!strict
 -- TreeConfig: everything about chopping trees and what they drop, shared by server and client.
 --
--- Item definitions live here (Materials, Heroes). WHAT drops WHERE is in ZoneDrops.luau.
+-- Material definitions live here; heroes are in HeroConfig.luau. WHAT drops WHERE is in ZoneDrops.luau.
+
+local HeroConfig = require(script.Parent:WaitForChild("HeroConfig"))
 
 export type Rarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic"
 
@@ -27,11 +29,7 @@ export type DropEntry = {
 	Max: number?,
 }
 
-export type HeroDef = {
-	Name: string,
-	Rarity: Rarity,
-	Power: number, -- shown on the hero's slot in the chest UI
-}
+export type HeroDef = HeroConfig.HeroDef
 
 -- What the server sends to the client for each dropped stack.
 export type Drop = {
@@ -87,14 +85,9 @@ TreeConfig.RaritySlotColors = {
 
 TreeConfig.RarityOrder = { Mythic = 1, Legendary = 2, Epic = 3, Rare = 4, Uncommon = 5, Common = 6 } :: { [string]: number }
 
-function TreeConfig.GetHero(name: string): HeroDef?
-	for _, hero in TreeConfig.Heroes do
-		if hero.Name == name then
-			return hero
-		end
-	end
-	return nil
-end
+-- Heroes are configured in HeroConfig.luau; these are kept so existing callers keep working.
+TreeConfig.Heroes = HeroConfig.Heroes
+TreeConfig.GetHero = HeroConfig.Get
 
 TreeConfig.RarityColors = {
 	Common = Color3.fromRGB(230, 230, 230),
@@ -154,15 +147,5 @@ TreeConfig.Materials = {
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(90, 220, 255), Material = Enum.Material.Plastic },
 	},
 } :: { [string]: MaterialDef }
-
--- Heroes that can drop from trees. Which zone drops which hero is set in ZoneDrops.luau.
-TreeConfig.Heroes = {
-	{ Name = "Naruto", Rarity = "Rare", Power = 1200 },
-	{ Name = "Leaf Ninja", Rarity = "Rare", Power = 1500 },
-	{ Name = "Flame Pillar", Rarity = "Epic", Power = 4900 },
-	{ Name = "Thunder Slayer", Rarity = "Epic", Power = 3125 },
-	{ Name = "Demon King", Rarity = "Legendary", Power = 38100 },
-	{ Name = "Sun God", Rarity = "Mythic", Power = 150000 },
-} :: { HeroDef }
 
 return TreeConfig

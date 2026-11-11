@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
+local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
 local ChestAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ChestAction") :: RemoteEvent
 
 local player = Players.LocalPlayer
@@ -29,9 +30,8 @@ local openScale = panel:WaitForChild("OpenScale") :: UIScale
 local slotTemplate = gui:WaitForChild("Templates"):WaitForChild("Slot") :: TextButton
 local tooltip = gui:WaitForChild("Tooltip") :: Frame
 
-local HERO_PREFIX = "Anime:"
-local HERO_VALUE_COLOR = Color3.fromRGB(255, 40, 40)
-local MATERIAL_VALUE_COLOR = Color3.fromRGB(80, 255, 60)
+local HERO_VALUE_COLOR = ItemDisplay.HERO_VALUE_COLOR
+local MATERIAL_VALUE_COLOR = ItemDisplay.MATERIAL_VALUE_COLOR
 local AUTO_SELL_OFF = Color3.fromRGB(150, 112, 26)
 local AUTO_SELL_ON = Color3.fromRGB(205, 160, 30)
 
@@ -41,25 +41,10 @@ local slots: { [string]: TextButton } = {}
 local renderQueued = false
 local hiddenPrompt: ProximityPrompt? = nil
 
--- Formatting -------------------------------------------------------------------------------------
-
-local function commas(n: number): string
-	local s = tostring(math.floor(n))
-	local formatted = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
-	return (formatted:gsub("^,", ""))
-end
-
-local function abbreviate(n: number): string
-	local units = { { 1e15, "Qd" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "K" } }
-	for _, u in units do
-		if n >= u[1] then
-			local v = n / u[1]
-			local text = if v >= 100 or v == math.floor(v) then ("%d"):format(math.floor(v)) else ("%.1f"):format(v)
-			return text .. u[2]
-		end
-	end
-	return tostring(math.floor(n))
-end
+-- Formatting / item info live in ItemDisplay (shared with the hotbar and popups).
+local commas = ItemDisplay.Commas
+local abbreviate = ItemDisplay.Abbreviate
+local itemInfo = ItemDisplay.Info
 
 -- Grid sizing: 5 square cells per row, sized from the grid's width (scale cell sizes don't work
 -- well inside an auto-sized ScrollingFrame).
@@ -74,57 +59,6 @@ local function sizeCells()
 end
 grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeCells)
 sizeCells()
-
--- Item info --------------------------------------------------------------------------------------
-
-type ItemInfo = {
-	name: string,
-	rarity: string,
-	isHero: boolean,
-	value: number, -- sell value (material) or power (hero)
-	visual: TreeConfig.Visual?,
-}
-
-local function itemInfo(stack: string): ItemInfo
-	if stack:sub(1, #HERO_PREFIX) == HERO_PREFIX then
-		local name = stack:sub(#HERO_PREFIX + 1)
-		local hero = TreeConfig.GetHero(name)
-		return {
-			name = name,
-			rarity = if hero then hero.Rarity else "Rare",
-			isHero = true,
-			value = if hero then hero.Power else 0,
-		}
-	end
-	local def = TreeConfig.Materials[stack]
-	return {
-		name = if def then def.Name else stack,
-		rarity = if def then def.Rarity else "Common",
-		isHero = false,
-		value = if def then def.Value else 0,
-		visual = def and def.Visual,
-	}
-end
-
--- Material picture: the same studded block that drops from trees.
-local function fillViewport(view: ViewportFrame, visual: TreeConfig.Visual)
-	view:ClearAllChildren()
-	local part = Instance.new("Part")
-	part.Anchored = true
-	part.Size = Vector3.one * 2
-	part.Color = visual.Color
-	part.Material = visual.Material
-	for _, face in { "Top", "Bottom", "Front", "Back", "Left", "Right" } do
-		(part :: any)[face .. "Surface"] = Enum.SurfaceType.Studs
-	end
-	part.CFrame = CFrame.Angles(0, math.rad(35), 0) * CFrame.Angles(math.rad(-20), 0, 0)
-	part.Parent = view
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 40
-	camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.6, 5.2), Vector3.zero)
-	camera.Parent = view
-	view.CurrentCamera = camera
-end
 
 -- Tooltip ----------------------------------------------------------------------------------------
 
@@ -143,7 +77,7 @@ local function showTip(stack: string)
 	tipRarity.Text = info.rarity
 	tipRarity.TextColor3 = TreeConfig.RarityColors[info.rarity] or Color3.new(1, 1, 1)
 	if info.isHero then
-		tipWorth.Text = ("Power: %s"):format(abbreviate(info.value))
+		tipWorth.Text = ("Mine Power: %s"):format(abbreviate(info.value))
 		tipWorth.TextColor3 = HERO_VALUE_COLOR
 	else
 		tipWorth.Text = ("Worth: $%s"):format(abbreviate(info.value * amount))
@@ -184,15 +118,11 @@ local function makeSlot(stack: string): TextButton
 	if info.isHero then
 		valueLabel.Text = abbreviate(info.value)
 		valueLabel.TextColor3 = HERO_VALUE_COLOR
-		local heroIcon = slot:FindFirstChild("Icon") :: TextLabel
-		heroIcon.Visible = true
 	else
 		valueLabel.Text = "$" .. abbreviate(info.value)
 		valueLabel.TextColor3 = MATERIAL_VALUE_COLOR
-		if info.visual then
-			fillViewport(slot:FindFirstChild("View") :: ViewportFrame, info.visual)
-		end
 	end
+	ItemDisplay.SetPicture(slot, info)
 	slot.MouseEnter:Connect(function()
 		showTip(stack)
 	end)

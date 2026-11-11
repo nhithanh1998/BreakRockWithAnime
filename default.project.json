@@ -21,6 +21,9 @@
         },
         "ChestAction": {
           "$className": "RemoteEvent"
+        },
+        "ItemsAdded": {
+          "$className": "RemoteEvent"
         }
       }
     },
@@ -36,6 +39,9 @@
       "$ignoreUnknownInstances": true,
       "ChestGui": {
         "$path": "src/gui/ChestGui.model.json"
+      },
+      "HotbarGui": {
+        "$path": "src/gui/HotbarGui.model.json"
       }
     },
     "StarterPlayer": {
