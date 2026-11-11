@@ -1,0 +1,13 @@
+{
+  "name": "MyAnimeChopSquad",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$ignoreUnknownInstances": true,
+      "Server": {
+        "$path": "src/server"
+      }
+    }
+  }
+}
