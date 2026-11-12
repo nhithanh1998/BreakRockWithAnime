@@ -54,6 +54,9 @@
       },
       "HotbarGui": {
         "$path": "src/gui/HotbarGui.model.json"
+      },
+      "MoneyGui": {
+        "$path": "src/gui/MoneyGui.model.json"
       }
     },
     "StarterPlayer": {

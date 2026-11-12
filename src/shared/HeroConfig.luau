@@ -5,8 +5,9 @@
 --   Name      = shown in the UI, and the name used in ZoneDrops (e.g. { Item = "Uzumaki Kid", Chance = 0.03 })
 --   Rarity    = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" (slot colour, sorting)
 --   Template  = name of the hero's model inside ReplicatedStorage.HeroTemplates
---   MinePower = how strong the hero mines (shown in red on the hotbar / chest / popups;
---               the hotbar puts the highest MinePower first)
+--   (Power is NOT set here: it lives in HeroConfig.Power, by position in the list. It is how strong
+--    the hero mines, shown in red on the hotbar / chest / popups, and the hotbar puts the
+--    highest Power first. Code reads it as hero.MinePower.)
 --   Image     = optional "rbxassetid://..." picture for the UI (a ★ is shown when missing)
 --   ChopDamage = optional damage per axe swing when the hero works a HeroSlot (default MinePower / 100)
 --   ChopSpeed  = optional swing speed multiplier (default by rarity, see Worker.RaritySpeed)
@@ -22,6 +23,16 @@ export type HeroDef = {
 	Rarity: Rarity,
 	Template: string,
 	MinePower: number,
+	Image: string?,
+	ChopDamage: number?,
+	ChopSpeed: number?,
+}
+
+-- One row of the hero list below (MinePower comes from HeroConfig.Power).
+type HeroEntry = {
+	Name: string,
+	Rarity: Rarity,
+	Template: string,
 	Image: string?,
 	ChopDamage: number?,
 	ChopSpeed: number?,
@@ -84,22 +95,42 @@ function HeroConfig.Abbreviate(n: number): string
 	return tostring(math.floor(n))
 end
 
-HeroConfig.Heroes = {
-	-- Zone 1 (Green Wood)
-	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate", MinePower = 250 },
-	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja", MinePower = 350 },
-	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid", MinePower = 700 },
-	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja", MinePower = 1500 },
-	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform", MinePower = 3500 },
-	-- Later zones
-	{ Name = "Thunder Slayer", Rarity = "Epic", Template = "ThunderSlayer", MinePower = 3125 },
-	{ Name = "Flame Pillar", Rarity = "Epic", Template = "FlamePillar", MinePower = 4900 },
-	{ Name = "Demon King", Rarity = "Legendary", Template = "DemonKing", MinePower = 38100 },
-	{ Name = "Sun God", Rarity = "Mythic", Template = "SunGod", MinePower = 150000 },
-} :: { HeroDef }
+-- ===================== POWER =====================
+-- Mine Power by POSITION in the hero list below: the 1st hero gets Power[1], the 2nd Power[2], ...
+-- To re-order heroes, just move their lines in HERO_LIST; these numbers stay where they are.
+-- The hotbar sorts by Power (highest first), ChopDamage defaults to Power / 100, and sell value
+-- is Power * ShopConfig.HeroSellMultiplier.
+HeroConfig.Power = {
+	250, -- position 1
+	350, -- position 2
+	700, -- position 3
+	1500, -- position 4
+	3500, -- position 5
+} :: { number }
 
+-- Hero list. Order matters: a hero's Power is HeroConfig.Power[its position].
+local HERO_LIST: { HeroEntry } = {
+	-- Zone 1 (Green Wood)
+	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate" },
+	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja" },
+	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid" },
+	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja" },
+	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform" },
+}
+
+HeroConfig.Heroes = {} :: { HeroDef }
 local byName: { [string]: HeroDef } = {}
-for _, hero in HeroConfig.Heroes do
+for index, entry in HERO_LIST do
+	local hero: HeroDef = {
+		Name = entry.Name,
+		Rarity = entry.Rarity,
+		Template = entry.Template,
+		MinePower = HeroConfig.Power[index] or 0,
+		Image = entry.Image,
+		ChopDamage = entry.ChopDamage,
+		ChopSpeed = entry.ChopSpeed,
+	}
+	table.insert(HeroConfig.Heroes, hero)
 	byName[hero.Name] = hero
 end
 
@@ -141,6 +172,11 @@ function HeroConfig.Validate()
 			warn(("[HeroConfig] hero %q is listed twice"):format(hero.Name))
 		end
 		seen[hero.Name] = true
+	end
+	if #HeroConfig.Power < #HeroConfig.Heroes then
+		warn(("[HeroConfig] %d heroes but only %d Power values; heroes after position %d get Power 0"):format(#HeroConfig.Heroes, #HeroConfig.Power, #HeroConfig.Power))
+	elseif #HeroConfig.Power > #HeroConfig.Heroes then
+		warn(("[HeroConfig] %d Power values but only %d heroes; the extra values are unused"):format(#HeroConfig.Power, #HeroConfig.Heroes))
 	end
 	local folder = ReplicatedStorage:FindFirstChild(HeroConfig.TemplateFolder)
 	if not folder then
