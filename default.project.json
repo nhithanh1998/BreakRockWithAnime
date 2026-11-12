@@ -30,7 +30,19 @@
         },
         "ShopAction": {
           "$className": "RemoteFunction"
+        },
+        "SkillAction": {
+          "$className": "RemoteFunction"
         }
+      },
+      "SkillTreeTemplates": {
+        "$path": "src/gui/SkillTreeTemplates.model.json"
+      },
+      "HotbarTemplates": {
+        "$path": "src/gui/HotbarTemplates.model.json"
+      },
+      "ChestTemplates": {
+        "$path": "src/gui/ChestTemplates.model.json"
       }
     },
     "ServerScriptService": {
@@ -57,6 +69,12 @@
       },
       "MoneyGui": {
         "$path": "src/gui/MoneyGui.model.json"
+      },
+      "SkillTreeGui": {
+        "$path": "src/gui/SkillTreeGui.model.json"
+      },
+      "LeftSidebar": {
+        "$path": "src/gui/LeftSidebar.model.json"
       }
     },
     "StarterPlayer": {

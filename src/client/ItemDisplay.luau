@@ -3,9 +3,15 @@
 --   ItemDisplay.Abbreviate(n)        -> "38.1M"
 --   ItemDisplay.Commas(n)            -> "1,234"
 --   ItemDisplay.FillViewport(view, visual) -> draws the material's studded block
---   ItemDisplay.SetPicture(slot, info)     -> shows hero image / ★ / material block on a slot that
---                                             has "View" (ViewportFrame), "Icon" (TextLabel) and
---                                             optionally "Image" (ImageLabel) children
+--   ItemDisplay.FillHeroViewport(view, heroName) -> head-and-shoulders render of the hero's model
+--                                             (ReplicatedStorage.Heros); false if it has no model
+--   ItemDisplay.SetPicture(slot, info)     -> shows the hero model / hero image / ★ / material block on
+--                                             a slot. Children it uses: "View" (ViewportFrame, material
+--                                             block), "Icon" (TextLabel), and optionally "HeroView"
+--                                             (ViewportFrame for the hero model; "View" is used when
+--                                             missing) and "Image" (ImageLabel, HeroConfig Image)
+--
+-- Hero picture order: model -> HeroConfig Image -> ★.
 --
 -- A "stack" is "<Material key>" or "Anime:<Hero name>", the same names ChestService uses.
 
@@ -89,11 +95,91 @@ function ItemDisplay.FillViewport(view: ViewportFrame, visual: TreeConfig.Visual
 	view.CurrentCamera = camera
 end
 
+-- Hero portrait ---------------------------------------------------------------------------------------
+
+local PORTRAIT_FOV = 30
+local PORTRAIT_YAW = math.rad(18) -- turn the camera a little to the side so the face isn't flat
+
+local function prepareModel(model: Model)
+	for _, d in model:GetDescendants() do
+		if d:IsA("BaseScript") or d:IsA("Sound") or d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") then
+			d:Destroy()
+		elseif d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		end
+	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	end
+end
+
+-- Draws the hero's model in `view`, framed on the head and shoulders. Skips the work when `view`
+-- already shows this hero. Returns false when the hero has no model in ReplicatedStorage.Heros.
+function ItemDisplay.FillHeroViewport(view: ViewportFrame, heroName: string): boolean
+	if view:GetAttribute("Hero") == heroName and view:FindFirstChildOfClass("WorldModel") then
+		return true
+	end
+	view:ClearAllChildren()
+	view:SetAttribute("Hero", nil)
+	local template = HeroConfig.GetTemplate(heroName)
+	if not template then
+		return false
+	end
+
+	local model = template:Clone()
+	prepareModel(model)
+	local world = Instance.new("WorldModel")
+	model.Parent = world
+	world.Parent = view
+
+	local head = model:FindFirstChild("Head") :: BasePart?
+	local root = (model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or head) :: BasePart?
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = PORTRAIT_FOV
+	if head and root then
+		local facing = root.CFrame
+		local up = facing.UpVector
+		local headHeight = head.Size.Y
+		-- Head (with hair / hats) + shoulders: center just below the head, frame about 3 heads tall.
+		local focus = head.Position - up * headHeight * 0.3
+		local frameHeight = headHeight * 3
+		local distance = (frameHeight / 2) / math.tan(math.rad(PORTRAIT_FOV / 2))
+		local dir = (CFrame.fromAxisAngle(up, PORTRAIT_YAW) * facing.LookVector).Unit
+		camera.CFrame = CFrame.lookAt(focus + dir * distance + up * headHeight * 0.2, focus, up)
+	else
+		local cf, size = model:GetBoundingBox()
+		local distance = (size.Magnitude / 2) / math.tan(math.rad(PORTRAIT_FOV / 2))
+		camera.CFrame = CFrame.lookAt(cf.Position + cf.LookVector * distance, cf.Position)
+	end
+	camera.Parent = view
+	view.CurrentCamera = camera
+	view:SetAttribute("Hero", heroName)
+	return true
+end
+
+-- Slot picture ----------------------------------------------------------------------------------------
+
 function ItemDisplay.SetPicture(slot: Instance, info: ItemInfo)
 	local view = slot:FindFirstChild("View") :: ViewportFrame?
+	local heroView = (slot:FindFirstChild("HeroView") or view) :: ViewportFrame?
 	local icon = slot:FindFirstChild("Icon") :: TextLabel?
 	local image = slot:FindFirstChild("Image") :: ImageLabel?
-	if view then
+	local heroName = if info.isHero then info.name else nil
+
+	-- Clear what this item doesn't use (a hero view showing the same hero is kept as is).
+	if heroView and (heroView:GetAttribute("Hero") ~= heroName or heroName == nil) then
+		heroView:ClearAllChildren()
+		heroView:SetAttribute("Hero", nil)
+	end
+	if heroView then
+		heroView.Visible = false
+	end
+	if view and view ~= heroView then
 		view:ClearAllChildren()
 		view.Visible = false
 	end
@@ -104,7 +190,9 @@ function ItemDisplay.SetPicture(slot: Instance, info: ItemInfo)
 		image.Visible = false
 	end
 	if info.isHero then
-		if info.image and image then
+		if heroView and ItemDisplay.FillHeroViewport(heroView, info.name) then
+			heroView.Visible = true
+		elseif info.image and image then
 			image.Image = info.image
 			image.Visible = true
 		elseif icon then

@@ -1,0 +1,1156 @@
+{
+  "ClassName": "ScreenGui",
+  "Properties": {
+    "DisplayOrder": {
+      "Int32": 20
+    },
+    "IgnoreGuiInset": true,
+    "ResetOnSpawn": false,
+    "ZIndexBehavior": {
+      "Enum": 1
+    }
+  },
+  "Children": [
+    {
+      "Name": "Window",
+      "ClassName": "Frame",
+      "Properties": {
+        "BackgroundColor3": {
+          "Color3": [
+            0.04,
+            0.05,
+            0.1
+          ]
+        },
+        "BackgroundTransparency": 0.3,
+        "BorderSizePixel": {
+          "Int32": 0
+        },
+        "Size": {
+          "UDim2": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        },
+        "Visible": false
+      },
+      "Children": [
+        {
+          "Name": "ZoneList",
+          "ClassName": "ScrollingFrame",
+          "Properties": {
+            "AutomaticCanvasSize": {
+              "Enum": 2
+            },
+            "BackgroundTransparency": 1,
+            "BorderSizePixel": {
+              "Int32": 0
+            },
+            "CanvasSize": {
+              "UDim2": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0
+                ]
+              ]
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  0.02,
+                  0
+                ],
+                [
+                  0.09,
+                  0
+                ]
+              ]
+            },
+            "ScrollBarImageColor3": {
+              "Color3": [
+                0.55,
+                0.6,
+                0.75
+              ]
+            },
+            "ScrollBarThickness": {
+              "Int32": 6
+            },
+            "ScrollingDirection": {
+              "Enum": 2
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.19,
+                  0
+                ],
+                [
+                  0.89,
+                  0
+                ]
+              ]
+            }
+          },
+          "Children": [
+            {
+              "Name": "UIListLayout",
+              "ClassName": "UIListLayout",
+              "Properties": {
+                "HorizontalAlignment": {
+                  "Enum": 0
+                },
+                "Padding": {
+                  "UDim": [
+                    0,
+                    12
+                  ]
+                },
+                "SortOrder": {
+                  "Enum": 2
+                }
+              }
+            },
+            {
+              "Name": "UIPadding",
+              "ClassName": "UIPadding",
+              "Properties": {
+                "PaddingTop": {
+                  "UDim": [
+                    0,
+                    4
+                  ]
+                },
+                "PaddingBottom": {
+                  "UDim": [
+                    0,
+                    4
+                  ]
+                },
+                "PaddingRight": {
+                  "UDim": [
+                    0,
+                    8
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "Name": "TreeTitle",
+          "ClassName": "TextLabel",
+          "Properties": {
+            "AnchorPoint": {
+              "Vector2": [
+                0.5,
+                0
+              ]
+            },
+            "BackgroundTransparency": 1,
+            "Font": {
+              "Enum": 26
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  0.47,
+                  0
+                ],
+                [
+                  0.025,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.4,
+                  0
+                ],
+                [
+                  0.06,
+                  0
+                ]
+              ]
+            },
+            "Text": "Core",
+            "TextColor3": {
+              "Color3": [
+                1,
+                1,
+                1
+              ]
+            },
+            "TextScaled": true
+          },
+          "Children": [
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "Color": {
+                  "Color3": [
+                    0.05,
+                    0.05,
+                    0.1
+                  ]
+                },
+                "Thickness": 3
+              }
+            }
+          ]
+        },
+        {
+          "Name": "TreeArea",
+          "ClassName": "Frame",
+          "Properties": {
+            "BackgroundTransparency": 1,
+            "Position": {
+              "UDim2": [
+                [
+                  0.24,
+                  0
+                ],
+                [
+                  0.11,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.46,
+                  0
+                ],
+                [
+                  0.74,
+                  0
+                ]
+              ]
+            }
+          },
+          "Children": [
+            {
+              "Name": "Lines",
+              "ClassName": "Frame",
+              "Properties": {
+                "BackgroundTransparency": 1,
+                "Size": {
+                  "UDim2": [
+                    [
+                      1,
+                      0
+                    ],
+                    [
+                      1,
+                      0
+                    ]
+                  ]
+                },
+                "ZIndex": {
+                  "Int32": 1
+                }
+              }
+            },
+            {
+              "Name": "Nodes",
+              "ClassName": "Frame",
+              "Properties": {
+                "BackgroundTransparency": 1,
+                "Size": {
+                  "UDim2": [
+                    [
+                      1,
+                      0
+                    ],
+                    [
+                      1,
+                      0
+                    ]
+                  ]
+                },
+                "ZIndex": {
+                  "Int32": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "Name": "Preview",
+          "ClassName": "Frame",
+          "Properties": {
+            "AnchorPoint": {
+              "Vector2": [
+                1,
+                0.5
+              ]
+            },
+            "BackgroundColor3": {
+              "Color3": [
+                0.12,
+                0.13,
+                0.18
+              ]
+            },
+            "BackgroundTransparency": 0.05,
+            "BorderSizePixel": {
+              "Int32": 0
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  0.98,
+                  0
+                ],
+                [
+                  0.47,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.23,
+                  0
+                ],
+                [
+                  0.6,
+                  0
+                ]
+              ]
+            }
+          },
+          "Children": [
+            {
+              "Name": "UICorner",
+              "ClassName": "UICorner",
+              "Properties": {
+                "CornerRadius": {
+                  "UDim": [
+                    0,
+                    18
+                  ]
+                }
+              }
+            },
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                },
+                "Color": {
+                  "Color3": [
+                    0.25,
+                    0.27,
+                    0.35
+                  ]
+                },
+                "Thickness": 2
+              }
+            },
+            {
+              "Name": "Icon",
+              "ClassName": "ImageLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.05,
+                      0
+                    ]
+                  ]
+                },
+                "ScaleType": {
+                  "Enum": 3
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      0.28,
+                      0
+                    ]
+                  ]
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UIAspectRatioConstraint",
+                  "ClassName": "UIAspectRatioConstraint",
+                  "Properties": {
+                    "AspectRatio": 1,
+                    "AspectType": {
+                      "Enum": 1
+                    },
+                    "DominantAxis": {
+                      "Enum": 1
+                    }
+                  }
+                },
+                {
+                  "Name": "IconText",
+                  "ClassName": "TextLabel",
+                  "Properties": {
+                    "BackgroundTransparency": 1,
+                    "Font": {
+                      "Enum": 26
+                    },
+                    "Size": {
+                      "UDim2": [
+                        [
+                          1,
+                          0
+                        ],
+                        [
+                          1,
+                          0
+                        ]
+                      ]
+                    },
+                    "Text": "",
+                    "TextColor3": {
+                      "Color3": [
+                        1,
+                        1,
+                        1
+                      ]
+                    },
+                    "TextScaled": true
+                  }
+                }
+              ]
+            },
+            {
+              "Name": "Title",
+              "ClassName": "TextLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Font": {
+                  "Enum": 26
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.36,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.9,
+                      0
+                    ],
+                    [
+                      0.1,
+                      0
+                    ]
+                  ]
+                },
+                "Text": "Select a skill",
+                "TextColor3": {
+                  "Color3": [
+                    1,
+                    1,
+                    1
+                  ]
+                },
+                "TextScaled": true
+              }
+            },
+            {
+              "Name": "LevelBar",
+              "ClassName": "Frame",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0
+                  ]
+                },
+                "BackgroundColor3": {
+                  "Color3": [
+                    0.16,
+                    0.3,
+                    0.38
+                  ]
+                },
+                "BorderSizePixel": {
+                  "Int32": 0
+                },
+                "ClipsDescendants": true,
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.5,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.86,
+                      0
+                    ],
+                    [
+                      0.075,
+                      0
+                    ]
+                  ]
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UICorner",
+                  "ClassName": "UICorner",
+                  "Properties": {
+                    "CornerRadius": {
+                      "UDim": [
+                        0,
+                        4
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Name": "UIStroke",
+                  "ClassName": "UIStroke",
+                  "Properties": {
+                    "ApplyStrokeMode": {
+                      "Enum": 1
+                    },
+                    "Color": {
+                      "Color3": [
+                        0.6,
+                        0.85,
+                        0.95
+                      ]
+                    },
+                    "Thickness": 2
+                  }
+                },
+                {
+                  "Name": "Fill",
+                  "ClassName": "Frame",
+                  "Properties": {
+                    "BackgroundColor3": {
+                      "Color3": [
+                        0.38,
+                        0.8,
+                        0.9
+                      ]
+                    },
+                    "BorderSizePixel": {
+                      "Int32": 0
+                    },
+                    "Size": {
+                      "UDim2": [
+                        [
+                          0,
+                          0
+                        ],
+                        [
+                          1,
+                          0
+                        ]
+                      ]
+                    }
+                  },
+                  "Children": [
+                    {
+                      "Name": "UICorner",
+                      "ClassName": "UICorner",
+                      "Properties": {
+                        "CornerRadius": {
+                          "UDim": [
+                            0,
+                            4
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "Name": "Text",
+                  "ClassName": "TextLabel",
+                  "Properties": {
+                    "AnchorPoint": {
+                      "Vector2": [
+                        0.5,
+                        0.5
+                      ]
+                    },
+                    "BackgroundTransparency": 1,
+                    "Font": {
+                      "Enum": 26
+                    },
+                    "Position": {
+                      "UDim2": [
+                        [
+                          0.5,
+                          0
+                        ],
+                        [
+                          0.5,
+                          0
+                        ]
+                      ]
+                    },
+                    "Size": {
+                      "UDim2": [
+                        [
+                          0.9,
+                          0
+                        ],
+                        [
+                          0.8,
+                          0
+                        ]
+                      ]
+                    },
+                    "Text": "0/0",
+                    "TextColor3": {
+                      "Color3": [
+                        1,
+                        1,
+                        1
+                      ]
+                    },
+                    "TextScaled": true,
+                    "ZIndex": {
+                      "Int32": 2
+                    }
+                  },
+                  "Children": [
+                    {
+                      "Name": "UIStroke",
+                      "ClassName": "UIStroke",
+                      "Properties": {
+                        "Color": {
+                          "Color3": [
+                            0.05,
+                            0.1,
+                            0.15
+                          ]
+                        },
+                        "Thickness": 2
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Name": "Effect",
+              "ClassName": "TextLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Font": {
+                  "Enum": 26
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.6,
+                      0
+                    ]
+                  ]
+                },
+                "RichText": true,
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.9,
+                      0
+                    ],
+                    [
+                      0.065,
+                      0
+                    ]
+                  ]
+                },
+                "Text": "",
+                "TextColor3": {
+                  "Color3": [
+                    1,
+                    1,
+                    1
+                  ]
+                },
+                "TextScaled": true
+              }
+            },
+            {
+              "Name": "Requirements",
+              "ClassName": "TextLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Font": {
+                  "Enum": 26
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.68,
+                      0
+                    ]
+                  ]
+                },
+                "RichText": true,
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.9,
+                      0
+                    ],
+                    [
+                      0.11,
+                      0
+                    ]
+                  ]
+                },
+                "Text": "",
+                "TextColor3": {
+                  "Color3": [
+                    0.8,
+                    0.82,
+                    0.88
+                  ]
+                },
+                "TextScaled": true,
+                "TextWrapped": true,
+                "TextYAlignment": {
+                  "Enum": 0
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UITextSizeConstraint",
+                  "ClassName": "UITextSizeConstraint",
+                  "Properties": {
+                    "MaxTextSize": {
+                      "Int32": 20
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "Name": "Message",
+              "ClassName": "TextLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    1
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Font": {
+                  "Enum": 26
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.82,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.9,
+                      0
+                    ],
+                    [
+                      0.04,
+                      0
+                    ]
+                  ]
+                },
+                "Text": "",
+                "TextColor3": {
+                  "Color3": [
+                    1,
+                    0.45,
+                    0.45
+                  ]
+                },
+                "TextScaled": true
+              }
+            },
+            {
+              "Name": "UpgradeButton",
+              "ClassName": "TextButton",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    1
+                  ]
+                },
+                "AutoButtonColor": true,
+                "BackgroundColor3": {
+                  "Color3": [
+                    0.2,
+                    0.21,
+                    0.26
+                  ]
+                },
+                "BorderSizePixel": {
+                  "Int32": 0
+                },
+                "Font": {
+                  "Enum": 26
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.95,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.86,
+                      0
+                    ],
+                    [
+                      0.11,
+                      0
+                    ]
+                  ]
+                },
+                "Text": "Max",
+                "TextColor3": {
+                  "Color3": [
+                    1,
+                    1,
+                    1
+                  ]
+                },
+                "TextScaled": true,
+                "Attributes": {
+                  "Attributes": {
+                    "BuyColor": {
+                      "Color3": [
+                        0.18,
+                        0.6,
+                        0.3
+                      ]
+                    },
+                    "PoorColor": {
+                      "Color3": [
+                        0.55,
+                        0.18,
+                        0.2
+                      ]
+                    },
+                    "DisabledColor": {
+                      "Color3": [
+                        0.2,
+                        0.21,
+                        0.26
+                      ]
+                    }
+                  }
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UICorner",
+                  "ClassName": "UICorner",
+                  "Properties": {
+                    "CornerRadius": {
+                      "UDim": [
+                        0,
+                        4
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Name": "UIStroke",
+                  "ClassName": "UIStroke",
+                  "Properties": {
+                    "ApplyStrokeMode": {
+                      "Enum": 1
+                    },
+                    "Color": {
+                      "Color3": [
+                        0.35,
+                        0.37,
+                        0.45
+                      ]
+                    },
+                    "Thickness": 2
+                  }
+                },
+                {
+                  "Name": "UIPadding",
+                  "ClassName": "UIPadding",
+                  "Properties": {
+                    "PaddingTop": {
+                      "UDim": [
+                        0.15,
+                        0
+                      ]
+                    },
+                    "PaddingBottom": {
+                      "UDim": [
+                        0.15,
+                        0
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Name": "ExitButton",
+          "ClassName": "TextButton",
+          "Properties": {
+            "AnchorPoint": {
+              "Vector2": [
+                1,
+                1
+              ]
+            },
+            "BackgroundColor3": {
+              "Color3": [
+                0.84,
+                0.36,
+                0.11
+              ]
+            },
+            "BorderSizePixel": {
+              "Int32": 0
+            },
+            "Font": {
+              "Enum": 26
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  0.46,
+                  0
+                ],
+                [
+                  0.97,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.075,
+                  0
+                ],
+                [
+                  0.07,
+                  0
+                ]
+              ]
+            },
+            "Text": "Exit",
+            "TextColor3": {
+              "Color3": [
+                1,
+                1,
+                1
+              ]
+            },
+            "TextScaled": true
+          },
+          "Children": [
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                },
+                "Color": {
+                  "Color3": [
+                    0.5,
+                    0.18,
+                    0.04
+                  ]
+                },
+                "Thickness": 2
+              }
+            },
+            {
+              "Name": "UIPadding",
+              "ClassName": "UIPadding",
+              "Properties": {
+                "PaddingTop": {
+                  "UDim": [
+                    0.18,
+                    0
+                  ]
+                },
+                "PaddingBottom": {
+                  "UDim": [
+                    0.18,
+                    0
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "Name": "Money",
+          "ClassName": "TextLabel",
+          "Properties": {
+            "AnchorPoint": {
+              "Vector2": [
+                0,
+                1
+              ]
+            },
+            "BackgroundTransparency": 1,
+            "Font": {
+              "Enum": 26
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  0.475,
+                  0
+                ],
+                [
+                  0.965,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.18,
+                  0
+                ],
+                [
+                  0.06,
+                  0
+                ]
+              ]
+            },
+            "Text": "$0",
+            "TextColor3": {
+              "Color3": [
+                0.65,
+                1,
+                0.2
+              ]
+            },
+            "TextScaled": true,
+            "TextXAlignment": {
+              "Enum": 0
+            }
+          },
+          "Children": [
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "Color": {
+                  "Color3": [
+                    0.06,
+                    0.16,
+                    0.03
+                  ]
+                },
+                "Thickness": 2.5
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

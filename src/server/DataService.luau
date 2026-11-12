@@ -2,7 +2,8 @@
 -- key "u_<UserId>").
 --
 -- Saved:  Money (leaderstats.Money), Inventory + Heroes (IntValues), Axes owned + EquippedAxe,
---         UnlockedSlots (bought hero pads), AutoSell, and which heroes stand on which pad.
+--         UnlockedSlots (bought hero pads), AutoSell, which heroes stand on which pad, and skill
+--         tree levels (player.Skills, SkillTreeService).
 -- Not saved: the shared TreasureChest's contents (it isn't anyone's) and trees.
 --
 -- Load: when the player joins (3 tries). Saved amounts are ADDED to whatever the player already
@@ -17,6 +18,7 @@ local Players = game:GetService("Players")
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local ShopService = require(script.Parent:WaitForChild("ShopService"))
 local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
+local SkillTreeService = require(script.Parent:WaitForChild("SkillTreeService"))
 
 local STORE_NAME = "PlayerData"
 local DATA_VERSION = 1
@@ -34,6 +36,7 @@ export type SaveData = {
 	UnlockedSlots: number?,
 	AutoSell: boolean?,
 	Placed: { [string]: string }?, -- slot index (as text) -> hero name
+	Skills: { [string]: number }?, -- "Tree/Node" -> level
 }
 
 local DataService = {}
@@ -115,6 +118,7 @@ local function collect(player: Player): SaveData
 		UnlockedSlots = if typeof(unlocked) == "number" then unlocked else nil,
 		AutoSell = player:GetAttribute("AutoSell") == true,
 		Placed = placedNow(player) or placedCache[player],
+		Skills = counts(player:FindFirstChild("Skills")),
 	}
 end
 
@@ -142,6 +146,7 @@ local function apply(player: Player, data: SaveData)
 	if typeof(data.AutoSell) == "boolean" then
 		player:SetAttribute("AutoSell", data.AutoSell)
 	end
+	SkillTreeService.ApplySaved(player, data.Skills)
 	if data.Placed then
 		local placed: { [number]: string } = {}
 		for index, hero in data.Placed do

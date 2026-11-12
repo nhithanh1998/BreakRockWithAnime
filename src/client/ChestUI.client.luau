@@ -27,7 +27,7 @@ local progress = panel:WaitForChild("Progress") :: Frame
 local progressFill = progress:WaitForChild("Fill") :: Frame
 local progressText = progress:WaitForChild("Amount") :: TextLabel
 local openScale = panel:WaitForChild("OpenScale") :: UIScale
-local slotTemplate = gui:WaitForChild("Templates"):WaitForChild("Slot") :: TextButton
+local slotTemplate = ReplicatedStorage:WaitForChild("ChestTemplates"):WaitForChild("Slot") :: TextButton
 local tooltip = gui:WaitForChild("Tooltip") :: Frame
 
 local HERO_VALUE_COLOR = ItemDisplay.HERO_VALUE_COLOR
