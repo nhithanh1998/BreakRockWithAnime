@@ -41,9 +41,52 @@ end
 
 -- Drops ----------------------------------------------------------------------------------------
 
+-- One roll for the zone's hero drop (ZoneDrops HeroChance / Heroes), boosted by the player's
+-- "HeroLuck" attribute (multiplier, default 1).
+local function rollHero(zone: number?, player: Player?): Drop?
+	local def = ZoneDrops.GetZone(zone)
+	local heroes = def.Heroes
+	if not def.HeroChance or not heroes or #heroes == 0 then
+		return nil
+	end
+	local luck = player and player:GetAttribute("HeroLuck")
+	local chance = math.clamp(def.HeroChance * (if typeof(luck) == "number" then luck else 1), 0, 1)
+	if rng:NextNumber() >= chance then
+		return nil
+	end
+	local total = 0
+	for _, entry in heroes do
+		total += entry.Weight
+	end
+	local roll = rng:NextNumber(0, total)
+	local picked = heroes[#heroes]
+	for _, entry in heroes do
+		roll -= entry.Weight
+		if roll <= 0 then
+			picked = entry
+			break
+		end
+	end
+	local hero = TreeConfig.GetHero(picked.Item)
+	if not hero then
+		return nil
+	end
+	return {
+		Kind = "Anime",
+		Name = hero.Name,
+		Amount = 1,
+		Rarity = hero.Rarity,
+		Chance = chance * picked.Weight / total, -- this hero's real chance per tree
+	}
+end
+
 -- Rolls the zone's drop list (ZoneDrops) for a felled tree.
-local function rollDrops(zone: number?, treeType: string?): { Drop }
+local function rollDrops(zone: number?, treeType: string?, player: Player?): { Drop }
 	local drops: { Drop } = {}
+	local hero = rollHero(zone, player)
+	if hero then
+		table.insert(drops, hero)
+	end
 	for _, entry in ZoneDrops.GetDrops(zone, treeType) do
 		if rng:NextNumber() < entry.Chance then
 			local min = entry.Min or 1
@@ -135,7 +178,7 @@ local function applyHit(player: Player, model: Model, damage: number, hitPos: an
 
 	if felled then
 		local plot = plotOf(model)
-		local drops = rollDrops(plot and plot:GetAttribute("Zone"), model:GetAttribute("TreeType"))
+		local drops = rollDrops(plot and plot:GetAttribute("Zone"), model:GetAttribute("TreeType"), player)
 		local chest = ChestService.GetChest(plot)
 		local groundY = cf.Position.Y - size.Y / 2
 		if not chest then

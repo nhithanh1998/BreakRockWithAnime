@@ -61,8 +61,10 @@ local function treeAlive(tree: Model): boolean
 	return tree.Parent ~= nil and not tree:GetAttribute("Dead") and (tree:GetAttribute("HP") or 0) > 0
 end
 
+-- "HeroTargets" on the tree = how many heroes are after it; clients draw the red target ring from it.
 local function claim(tree: Model)
 	claims[tree] = (claims[tree] or 0) + 1
+	tree:SetAttribute("HeroTargets", claims[tree])
 end
 
 local function release(tree: Model?)
@@ -72,6 +74,9 @@ local function release(tree: Model?)
 	claims[tree] -= 1
 	if claims[tree] <= 0 then
 		claims[tree] = nil
+	end
+	if tree.Parent then
+		tree:SetAttribute("HeroTargets", claims[tree])
 	end
 end
 

@@ -6,11 +6,14 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
+local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local TreeFX = require(script.Parent:WaitForChild("TreeFX"))
 local DropFX = require(script.Parent:WaitForChild("DropFX"))
 local ChestFX = require(script.Parent:WaitForChild("ChestFX"))
+local TargetRing = require(script.Parent:WaitForChild("TargetRing"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local HitTree = Remotes:WaitForChild("HitTree") :: RemoteEvent
@@ -89,6 +92,7 @@ local function tryChop(screenPos: Vector2)
 	end
 	lastClick = now
 	TreeFX.Hit(tree, hitPos, myPosition())
+	TargetRing.MarkHit(tree)
 	HitTree:FireServer(tree, hitPos)
 end
 
@@ -164,6 +168,72 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
+-- HP bars --------------------------------------------------------------------------------------
+-- Tree templates carry InfoAttachment.TreeBar.Container.HPFill: the green bar, with a dark "Empty"
+-- frame inside it that covers the lost HP from the right, and "HPDisplay" ("1.2K/2K"). Drawn here on
+-- the client (from the tree's HP / MaxHP attributes) so the bar can slide smoothly.
+
+local BAR_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function drawBar(tree: Model, animate: boolean)
+	local fill = tree:FindFirstChild("HPFill", true)
+	local empty = fill and fill:FindFirstChild("Empty")
+	if not fill or not empty or not empty:IsA("GuiObject") then
+		return
+	end
+	local hp = math.max(tree:GetAttribute("HP") or 0, 0)
+	local maxHp = math.max(tree:GetAttribute("MaxHP") or 1, 1)
+	local ratio = math.clamp(hp / maxHp, 0, 1)
+	empty.AnchorPoint = Vector2.new(1, 0)
+	empty.Position = UDim2.fromScale(1, 0)
+	empty.ZIndex = 2
+	empty.Visible = ratio < 1
+	local goal = UDim2.fromScale(1 - ratio, 1)
+	if animate then
+		TweenService:Create(empty, BAR_TWEEN, { Size = goal }):Play()
+	else
+		empty.Size = goal
+	end
+	local text = fill:FindFirstChild("HPDisplay")
+	if text and text:IsA("TextLabel") then
+		text.Text = ("%s/%s"):format(HeroConfig.Abbreviate(hp), HeroConfig.Abbreviate(maxHp))
+		text.ZIndex = 3
+	end
+end
+
+local barBound: { [Model]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
+local function bindBar(tree: Instance)
+	if not tree:IsA("Model") or barBound[tree] then
+		return
+	end
+	barBound[tree] = true
+	drawBar(tree, false)
+	task.delay(0.5, drawBar, tree, false) -- in case the bar arrived after the model
+	tree:GetAttributeChangedSignal("HP"):Connect(function()
+		drawBar(tree, true)
+	end)
+	tree:GetAttributeChangedSignal("MaxHP"):Connect(function()
+		drawBar(tree, false)
+	end)
+end
+
+local function isTree(inst: Instance): boolean
+	return inst:IsA("Model") and inst.Parent ~= nil and inst.Parent.Name == "TreeSpawns"
+end
+
+for _, d in workspace:GetDescendants() do
+	if isTree(d) then
+		bindBar(d)
+	end
+end
+workspace.DescendantAdded:Connect(function(d)
+	if isTree(d) then
+		-- The bar's GUI streams in with the tree; give it a moment.
+		task.defer(bindBar, d)
+	end
+end)
+
 -- Server results -------------------------------------------------------------------------------
 
 TreeHit.OnClientEvent:Connect(function(tree: Model?, attacker: Player?, damage: number, hitPos: Vector3, felled: boolean, heroPos: Vector3?)
@@ -180,6 +250,9 @@ TreeHit.OnClientEvent:Connect(function(tree: Model?, attacker: Player?, damage: 
 		TreeFX.Hit(tree, hitPos, fromPos)
 	end
 	TreeFX.DamageNumber(hitPos, damage)
+	if not felled then
+		TargetRing.MarkHit(tree)
+	end
 	if felled then
 		TreeFX.Fell(tree, fromPos)
 	end
@@ -190,3 +263,4 @@ TreeDrops.OnClientEvent:Connect(function(origin: Vector3, groundY: number, drops
 end)
 
 ChestFX.Start()
+TargetRing.Start()

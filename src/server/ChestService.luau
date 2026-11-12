@@ -140,6 +140,20 @@ function ChestService.AddMoney(player: Player, amount: number)
 	money(player).Value += amount
 end
 
+function ChestService.GetMoney(player: Player): number
+	return money(player).Value
+end
+
+-- Takes `amount` if the player has it. Returns false (and takes nothing) otherwise.
+function ChestService.SpendMoney(player: Player, amount: number): boolean
+	local value = money(player)
+	if amount < 0 or value.Value < amount then
+		return false
+	end
+	value.Value -= amount
+	return true
+end
+
 function ChestService.IsAutoSell(player: Player): boolean
 	return player:GetAttribute("AutoSell") == true
 end

@@ -2,7 +2,7 @@
 -- HeroConfig: every anime hero in the game. Edit this list to add / tune heroes.
 --
 -- Each hero:
---   Name      = shown in the UI, and the name used in ZoneDrops (e.g. { Item = "Naruto", Chance = 0.03 })
+--   Name      = shown in the UI, and the name used in ZoneDrops (e.g. { Item = "Uzumaki Kid", Chance = 0.03 })
 --   Rarity    = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" (slot colour, sorting)
 --   Template  = name of the hero's model inside ReplicatedStorage.HeroTemplates
 --   MinePower = how strong the hero mines (shown in red on the hotbar / chest / popups;
@@ -47,9 +47,51 @@ HeroConfig.Worker = {
 	RaritySpeed = { Common = 1, Uncommon = 1.05, Rare = 1.1, Epic = 1.2, Legendary = 1.35, Mythic = 1.5 } :: { [string]: number },
 }
 
+-- Hero pads (plot.HeroSlots.Slot1..Slot9). Without upgrades only the first StartUnlocked pads work.
+-- The rest are bought in order (hold E at the next locked pad) for UnlockPrices[slot] Money; the
+-- player's "UnlockedSlots" attribute holds how many are open (an upgrade can also just set it).
+HeroConfig.Slots = {
+	StartUnlocked = 4,
+	UnlockPrices = { [5] = 5000, [6] = 25000, [7] = 100000, [8] = 500000, [9] = 2500000 } :: { [number]: number },
+	HoldDuration = 1, -- seconds E must be held on a pad (place / take back / unlock)
+	LockedText = "Locked",
+	LockedPadColor = Color3.fromRGB(105, 105, 110),
+	PriceColor = Color3.fromRGB(90, 255, 60), -- the price shown above a locked pad
+}
+
+-- 1234 -> "1.2K", 47700000000 -> "47.7B", 1.57e22 -> "15.7Sx".
+local UNITS = {
+	{ 1e33, "Dc" },
+	{ 1e30, "No" },
+	{ 1e27, "Oc" },
+	{ 1e24, "Sp" },
+	{ 1e21, "Sx" },
+	{ 1e18, "Qi" },
+	{ 1e15, "Qd" },
+	{ 1e12, "T" },
+	{ 1e9, "B" },
+	{ 1e6, "M" },
+	{ 1e3, "K" },
+}
+function HeroConfig.Abbreviate(n: number): string
+	for _, unit in UNITS do
+		if n >= unit[1] then
+			local v = math.floor(n / unit[1] * 10) / 10
+			local text = if v >= 100 or v == math.floor(v) then ("%d"):format(math.floor(v)) else ("%.1f"):format(v)
+			return text .. unit[2]
+		end
+	end
+	return tostring(math.floor(n))
+end
+
 HeroConfig.Heroes = {
-	{ Name = "Naruto", Rarity = "Rare", Template = "UzumakiKid", MinePower = 1200 },
-	{ Name = "Leaf Ninja", Rarity = "Rare", Template = "CopyNinja", MinePower = 1500 },
+	-- Zone 1 (Green Wood)
+	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate", MinePower = 250 },
+	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja", MinePower = 350 },
+	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid", MinePower = 700 },
+	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja", MinePower = 1500 },
+	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform", MinePower = 3500 },
+	-- Later zones
 	{ Name = "Thunder Slayer", Rarity = "Epic", Template = "ThunderSlayer", MinePower = 3125 },
 	{ Name = "Flame Pillar", Rarity = "Epic", Template = "FlamePillar", MinePower = 4900 },
 	{ Name = "Demon King", Rarity = "Legendary", Template = "DemonKing", MinePower = 38100 },

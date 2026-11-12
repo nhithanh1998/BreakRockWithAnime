@@ -1,7 +1,8 @@
 -- TreeService: keeps an owned plot's floor stocked with choppable trees.
 --
--- Templates: ReplicatedStorage.Tress.Map<Zone> (falls back to Map1). Each template is a Model with
---   "HP"/"MaxHP" attributes and an optional "Info" BillboardGui (TextLabel + HPBar.Fill/TextLabel).
+-- Templates: ReplicatedStorage.Trees.Map<Zone> (falls back to Map1). Each template is a Model with
+--   "HP"/"MaxHP" attributes and an HP bar (InfoAttachment.TreeBar ... HPFill); the bar is drawn by
+--   the client (TreeClient). An old-style "Info" BillboardGui (HPBar.Fill/TextLabel) still works.
 --   Optional template attribute "SpawnWeight" (default 1) makes a tree more or less common.
 -- Trees go into the plot's "TreeSpawns" folder, at random spots on Floor.Ground.
 -- When a tree's HP reaches 0 (TreeService.Damage, or any script setting the "HP" attribute)
@@ -14,7 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 
 local CONFIG = {
-	TemplateFolder = "Tress",
+	TemplateFolder = "Trees",
 	MaxTrees = 12,
 	RespawnDelay = 4, -- seconds
 	EdgeMargin = 6, -- studs kept clear from the floor's edges (walls)
@@ -179,6 +180,13 @@ local function spawnTree(state: PlotState): boolean
 	end
 
 	local tree = template:Clone()
+	-- Trees never use physics (clients animate shakes / falls locally). Anchor everything so loose
+	-- pieces like the Ground mound can't fall apart, even if a template forgot to anchor them.
+	for _, d in tree:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+		end
+	end
 	tree:SetAttribute("HP", tree:GetAttribute("MaxHP") or tree:GetAttribute("HP") or 1)
 	tree:SetAttribute("TreeType", template.Name)
 	tree:PivotTo(CFrame.new(pos + Vector3.new(0, bottomOffset(template), 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))

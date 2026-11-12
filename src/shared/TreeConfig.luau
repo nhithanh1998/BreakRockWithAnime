@@ -48,7 +48,8 @@ TreeConfig.ClickCooldown = 0.12 -- seconds between hits (server allows a little 
 TreeConfig.HoldToChop = true -- holding the mouse / finger keeps chopping
 TreeConfig.MaxHitDistance = 120 -- studs from the character to the tree
 TreeConfig.OnlyOwnPlot = true -- players can only chop trees on their own plot
-TreeConfig.FellTime = 0.9 -- seconds the felled tree stays (for the fall animation) before removal
+TreeConfig.FellTime = 2.2 -- seconds the felled tree stays (fall + rest + fade) before removal
+TreeConfig.FallDuration = 0.7 -- seconds from upright to hitting the floor
 TreeConfig.LeafPartNames = { Leaf = true, Leaves = true }
 
 -- Effects -------------------------------------------------------------------------------------
@@ -58,6 +59,22 @@ TreeConfig.LeavesPerHit = 6
 TreeConfig.LeavesOnFell = 40
 TreeConfig.HitFlashColor = Color3.fromRGB(255, 255, 255)
 TreeConfig.HoverOutlineColor = Color3.fromRGB(255, 255, 255)
+
+-- Target ring: spinning red dashed circle on the ground around a tree that is being chopped
+-- (a hero is after it, or someone hit it in the last PlayerTargetTime seconds).
+TreeConfig.TargetRing = {
+	Color = Color3.fromRGB(255, 45, 45),
+	Transparency = 0.05,
+	SpinSpeed = 0.9, -- radians per second
+	DashLength = 2.4, -- studs
+	GapLength = 1.5, -- studs between dashes
+	DashWidth = 0.85, -- studs (radial thickness)
+	RadiusScale = 1, -- ring radius = half the dirt mound's widest side * this + Padding
+	Padding = 1.2,
+	MinRadius = 4,
+	PlayerTargetTime = 1.2, -- seconds a hit keeps the ring on
+	PopTime = 0.18, -- seconds for the ring to grow in / shrink out
+}
 
 -- Drops on the ground -------------------------------------------------------------------------
 TreeConfig.DropHoldTime = 1.6 -- seconds drops sit on the ground before flying to the player
@@ -102,24 +119,43 @@ TreeConfig.RarityColors = {
 TreeConfig.FancyRarities = { Rare = true, Epic = true, Legendary = true, Mythic = true } :: { [string]: boolean }
 
 TreeConfig.Materials = {
-	-- Zone 1
-	OakWood = {
-		Name = "Oak Wood",
+	-- Zone 1 (Green Wood) - Oak Tree
+	OakBark = {
+		Name = "Oak Bark",
 		Value = 5,
 		Rarity = "Common",
-		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(124, 92, 70), Material = Enum.Material.Plastic },
+		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(96, 66, 44), Material = Enum.Material.Plastic },
 	},
-	OakSapling = {
-		Name = "Oak Sapling",
-		Value = 8,
-		Rarity = "Common",
-		Visual = { Shape = "Block", Size = Vector3.new(0.8, 0.8, 0.8), Color = Color3.fromRGB(110, 190, 80), Material = Enum.Material.Plastic },
-	},
-	Honey = {
-		Name = "Honey",
+	Acorn = {
+		Name = "Acorn",
 		Value = 20,
 		Rarity = "Uncommon",
-		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 185, 30), Material = Enum.Material.Plastic },
+		Visual = { Shape = "Block", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(165, 112, 52), Material = Enum.Material.Plastic },
+	},
+	OakResin = {
+		Name = "Oak Resin",
+		Value = 120,
+		Rarity = "Rare",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(235, 145, 35), Material = Enum.Material.Plastic },
+	},
+	-- Zone 1 (Green Wood) - Birch Tree
+	BirchTwig = {
+		Name = "Birch Twig",
+		Value = 6,
+		Rarity = "Common",
+		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(150, 118, 88), Material = Enum.Material.Plastic },
+	},
+	BirchLog = {
+		Name = "Birch Log",
+		Value = 25,
+		Rarity = "Uncommon",
+		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(232, 226, 212), Material = Enum.Material.Plastic },
+	},
+	BirchSyrup = {
+		Name = "Birch Syrup",
+		Value = 150,
+		Rarity = "Rare",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(200, 105, 40), Material = Enum.Material.Plastic },
 	},
 	-- Zone 2
 	Leaf = {

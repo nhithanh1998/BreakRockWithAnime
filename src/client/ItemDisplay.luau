@@ -12,6 +12,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
+local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 
 local ItemDisplay = {}
 
@@ -34,18 +35,8 @@ function ItemDisplay.Commas(n: number): string
 	return (formatted:gsub("^,", ""))
 end
 
-local UNITS = { { 1e15, "Qd" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "K" } }
-
-function ItemDisplay.Abbreviate(n: number): string
-	for _, u in UNITS do
-		if n >= u[1] then
-			local v = n / u[1]
-			local text = if v >= 100 or v == math.floor(v) then ("%d"):format(math.floor(v)) else ("%.1f"):format(v)
-			return text .. u[2]
-		end
-	end
-	return tostring(math.floor(n))
-end
+-- Same as HeroConfig.Abbreviate (one place for the K / M / B / ... / Sx units).
+ItemDisplay.Abbreviate = HeroConfig.Abbreviate
 
 function ItemDisplay.HeroStack(name: string): string
 	return ItemDisplay.HERO_PREFIX .. name

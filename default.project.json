@@ -27,6 +27,9 @@
         },
         "HeroSlot": {
           "$className": "RemoteEvent"
+        },
+        "ShopAction": {
+          "$className": "RemoteFunction"
         }
       }
     },
@@ -35,6 +38,12 @@
       "$ignoreUnknownInstances": true,
       "Server": {
         "$path": "src/server"
+      },
+      "ZoneService": {
+        "$path": "src/zone/ZoneService.luau"
+      },
+      "ZoneLoader": {
+        "$path": "src/zone/ZoneLoader.server.luau"
       }
     },
     "StarterGui": {
