@@ -10,6 +10,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -299,11 +300,30 @@ local function buildBlock(drop: Drop): (Part, number)
 end
 
 -- Name (white) with the chance under it in the rarity colour.
+-- The billboard is sized in studs, so it shrinks with distance. Inside, the text is laid out in
+-- pixels at a fixed design size (name LABEL_NAME_SIZE, chance LABEL_CHANCE_SIZE: always the same
+-- ratio, whatever the text length) and a UIScale fits that layout to the billboard's size on screen.
+local LABEL_NAME_SIZE = 26
+local LABEL_CHANCE_SIZE = 20
+local LABEL_PAD = 12
+local LABEL_HEIGHT = LABEL_NAME_SIZE + LABEL_CHANCE_SIZE + 8 -- design height in pixels
+local LABEL_STUDS = 2 -- real height in the world (heroes: LABEL_STUDS_HERO)
+local LABEL_STUDS_HERO = 2.3
+local LABEL_FONT = Enum.Font.FredokaOne
+
 local function buildLabel(drop: Drop, adornee: BasePart, yOffset: number): BillboardGui
 	local isHero = drop.Kind == "Anime"
+	local titleText = if isHero and drop.Amount <= 1 then drop.Name else ("%s (x%d)"):format(drop.Name, drop.Amount)
+	local chanceText = formatChance(drop.Chance)
+	local function width(text: string, size: number): number
+		return TextService:GetTextSize(text, size, LABEL_FONT, Vector2.new(4000, 200)).X
+	end
+	local designWidth = math.max(width(titleText, LABEL_NAME_SIZE), width(chanceText, LABEL_CHANCE_SIZE), 80) + LABEL_PAD * 2
+	local studs = if isHero then LABEL_STUDS_HERO else LABEL_STUDS
+
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Label"
-	gui.Size = if isHero then UDim2.fromOffset(230, 58) else UDim2.fromOffset(200, 50)
+	gui.Size = UDim2.fromScale(designWidth / LABEL_HEIGHT * studs, studs)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, yOffset, 0)
 	gui.AlwaysOnTop = true
 	gui.LightInfluence = 0
@@ -313,16 +333,18 @@ local function buildLabel(drop: Drop, adornee: BasePart, yOffset: number): Billb
 	-- UIScale has to sit on a GuiObject, not on the BillboardGui itself.
 	local root = Instance.new("Frame")
 	root.BackgroundTransparency = 1
-	root.Size = UDim2.fromScale(1, 1)
+	root.AnchorPoint = Vector2.new(0.5, 0.5)
+	root.Position = UDim2.fromScale(0.5, 0.5)
+	root.Size = UDim2.fromOffset(designWidth, LABEL_HEIGHT)
 	root.Parent = gui
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Size = UDim2.fromScale(1, 0.58)
-	title.Font = Enum.Font.FredokaOne
-	title.TextScaled = true
+	title.Size = UDim2.new(1, 0, 0, LABEL_NAME_SIZE + 4)
+	title.Font = LABEL_FONT
+	title.TextSize = LABEL_NAME_SIZE
 	title.TextColor3 = Color3.new(1, 1, 1)
-	title.Text = if isHero and drop.Amount <= 1 then drop.Name else ("%s (x%d)"):format(drop.Name, drop.Amount)
+	title.Text = titleText
 	title.Parent = root
 	local s1 = Instance.new("UIStroke")
 	s1.Thickness = 2
@@ -330,23 +352,36 @@ local function buildLabel(drop: Drop, adornee: BasePart, yOffset: number): Billb
 
 	local chance = Instance.new("TextLabel")
 	chance.BackgroundTransparency = 1
-	chance.Position = UDim2.fromScale(0, 0.58)
-	chance.Size = UDim2.fromScale(1, 0.42)
-	chance.Font = Enum.Font.FredokaOne
-	chance.TextScaled = true
+	chance.Position = UDim2.fromOffset(0, LABEL_NAME_SIZE + 4)
+	chance.Size = UDim2.new(1, 0, 0, LABEL_CHANCE_SIZE + 4)
+	chance.Font = LABEL_FONT
+	chance.TextSize = LABEL_CHANCE_SIZE
 	chance.TextColor3 = rarityColor(drop.Rarity)
-	chance.Text = formatChance(drop.Chance)
+	chance.Text = chanceText
 	chance.Parent = root
 	local s2 = Instance.new("UIStroke")
 	s2.Thickness = 1.5
 	s2.Parent = chance
 
+	-- Scale = (fit to the billboard's on-screen size) x (pop-in tween).
 	local scale = Instance.new("UIScale")
 	scale.Scale = 0
 	scale.Parent = root
-	TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	local pop = Instance.new("NumberValue")
+	pop.Value = 0
+	local function update()
+		scale.Scale = gui.AbsoluteSize.Y / LABEL_HEIGHT * pop.Value
+	end
+	-- Every frame: the billboard's on-screen size changes as the camera moves.
+	local stepped = RunService.RenderStepped:Connect(update)
+	TweenService:Create(pop, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Value = 1 }):Play()
+	gui.Destroying:Connect(function()
+		stepped:Disconnect()
+		pop:Destroy()
+	end)
 
 	gui.Parent = adornee
+	update()
 	return gui
 end
 

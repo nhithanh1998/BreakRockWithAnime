@@ -109,7 +109,24 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 		Instance.new("Animator").Parent = humanoid
 	end
 
+	-- A stray "HeadWeld" (left in some templates, e.g. SlingPirate, or added later) pins the head out
+	-- of place and fights the Neck: remove it now and whenever one shows up again.
+	local function stripHeadWeld(d: Instance)
+		if d.Name == "HeadWeld" and d:IsA("JointInstance") then
+			task.defer(function()
+				if d.Parent then
+					d:Destroy()
+				end
+			end)
+		end
+	end
+	model.DescendantAdded:Connect(stripHeadWeld)
+
 	for _, d in model:GetDescendants() do
+		if d.Name == "HeadWeld" and d:IsA("JointInstance") then
+			d:Destroy()
+			continue
+		end
 		if d:IsA("BasePart") then
 			d.CanCollide = false
 			d.CanTouch = false
@@ -133,13 +150,46 @@ function HeroModels.HideBar(model: Model)
 	end
 end
 
-function HeroModels.GiveAxe(model: Model, humanoid: Humanoid): Tool?
+-- Resizes every part of a tool around its Handle by `factor` (Tools are not Models, so no ScaleTo).
+local function scaleTool(tool: Tool, factor: number)
+	local handle = tool:FindFirstChild("Handle") :: BasePart?
+	if not handle or factor == 1 then
+		return
+	end
+	local origin = handle.CFrame
+	local parts = {}
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			table.insert(parts, { part = d, rel = origin:ToObjectSpace(d.CFrame) })
+		end
+	end
+	for _, entry in parts do
+		local part, rel = entry.part, entry.rel
+		part.Size *= factor
+		part.CFrame = origin * (rel - rel.Position + rel.Position * factor)
+		for _, c in part:GetChildren() do
+			if c:IsA("SpecialMesh") then
+				c.Scale *= factor
+				c.Offset *= factor
+			elseif c:IsA("Attachment") then
+				c.Position *= factor
+			end
+		end
+	end
+	tool.Grip = tool.Grip - tool.Grip.Position + tool.Grip.Position * factor
+end
+
+-- `scale` resizes the axe to match a hero that was scaled (Model:ScaleTo) away from its template size.
+function HeroModels.GiveAxe(model: Model, humanoid: Humanoid, scale: number?): Tool?
 	local source = ServerStorage:FindFirstChild(AXE_NAME)
 	if not source or not source:IsA("Tool") then
 		warn(("[HeroModels] ServerStorage.%s (Tool) is missing"):format(AXE_NAME))
 		return nil
 	end
 	local axe = source:Clone()
+	if scale and scale > 0 then
+		scaleTool(axe, scale)
+	end
 	for _, d in axe:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Anchored = false

@@ -37,6 +37,7 @@ export type HeroEntry = {
 export type TreeDef = {
 	Name: string,
 	Models: { [string]: number },
+	Levels: { [string]: number }?, -- model name -> level 1..3 (TreeConfig.TreeLevels); default 2
 	Drops: { DropEntry },
 }
 
@@ -58,6 +59,15 @@ local function sizes(family: string): { [string]: number }
 	}
 end
 
+-- Their levels: Sapling 1, Tree 2, Old tree 3 (how often each grows: TreeConfig.TreeLevels).
+local function levels(family: string): { [string]: number }
+	return {
+		[family .. "Sapling"] = 1,
+		[family .. "Tree"] = 2,
+		["Old" .. family .. "Tree"] = 3,
+	}
+end
+
 -- Green Wood heroes, reused by Orchard Valley for now.
 local GREEN_WOOD_HEROES: { HeroEntry } = {
 	{ Item = "Sling Pirate", Weight = 40 }, -- Common
@@ -74,6 +84,7 @@ ZoneDrops.Zones = {
 			Oak = {
 				Name = "Oak Tree",
 				Models = sizes("Oak"),
+				Levels = levels("Oak"),
 				Drops = {
 					{ Item = "OakBark", Chance = 1, Min = 2, Max = 4 }, -- Common
 					{ Item = "Acorn", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
@@ -83,6 +94,7 @@ ZoneDrops.Zones = {
 			Birch = {
 				Name = "Birch Tree",
 				Models = sizes("Birch"),
+				Levels = levels("Birch"),
 				Drops = {
 					{ Item = "BirchTwig", Chance = 1, Min = 2, Max = 4 }, -- Common
 					{ Item = "BirchLog", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
@@ -92,6 +104,7 @@ ZoneDrops.Zones = {
 			Apple = {
 				Name = "Apple Tree",
 				Models = sizes("Apple"),
+				Levels = levels("Apple"),
 				Drops = {
 					{ Item = "AppleBranch", Chance = 1, Min = 2, Max = 4 }, -- Common
 					{ Item = "Apple", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
@@ -101,6 +114,7 @@ ZoneDrops.Zones = {
 			Berry = {
 				Name = "Berry Tree",
 				Models = sizes("Berry"),
+				Levels = levels("Berry"),
 				Drops = {
 					{ Item = "BerryTwig", Chance = 1, Min = 2, Max = 4 }, -- Common
 					{ Item = "Berry", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
@@ -110,6 +124,7 @@ ZoneDrops.Zones = {
 			Orange = {
 				Name = "Orange Tree",
 				Models = sizes("Orange"),
+				Levels = levels("Orange"),
 				Drops = {
 					{ Item = "OrangePeel", Chance = 1, Min = 2, Max = 4 }, -- Common
 					{ Item = "Orange", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
@@ -130,6 +145,7 @@ ZoneDrops.Zones = {
 			Berry = {
 				Name = "Berry Tree",
 				Models = sizes("Berry"),
+				Levels = levels("Berry"),
 				Drops = {
 					{ Item = "BerryLog", Chance = 1, Min = 2, Max = 4 }, -- Common
 					{ Item = "BerryCluster", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
@@ -139,6 +155,7 @@ ZoneDrops.Zones = {
 			Orange = {
 				Name = "Orange Tree",
 				Models = sizes("Orange"),
+				Levels = levels("Orange"),
 				Drops = {
 					{ Item = "OrangeSeed", Chance = 1, Min = 1, Max = 3 }, -- Uncommon
 					{ Item = "OrchardOrange", Chance = 0.25, Min = 1, Max = 2 }, -- Rare
@@ -148,6 +165,7 @@ ZoneDrops.Zones = {
 			Apple = {
 				Name = "Apple Tree",
 				Models = sizes("Apple"),
+				Levels = levels("Apple"),
 				Drops = {
 					{ Item = "OrchardApple", Chance = 1, Min = 1, Max = 2 }, -- Rare
 					{ Item = "AppleJam", Chance = 0.12 }, -- Epic
@@ -176,6 +194,12 @@ function ZoneDrops.GetTree(zone: number?, modelName: string?): (TreeDef?, number
 		end
 	end
 	return nil, 1
+end
+
+-- A tree model's level in `zone` (1 = sapling, 2 = tree, 3 = old tree). 2 when not configured.
+function ZoneDrops.GetLevel(zone: number?, modelName: string?): number
+	local tree = ZoneDrops.GetTree(zone, modelName)
+	return (tree and tree.Levels and modelName and tree.Levels[modelName]) or 2
 end
 
 -- Whether a tree model is allowed to grow in `zone`.

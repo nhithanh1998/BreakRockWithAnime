@@ -6,6 +6,7 @@
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -22,7 +23,8 @@ local OBJECT_COLOR = Color3.fromRGB(190, 192, 200)
 local ACTION_COLOR = Color3.fromRGB(255, 255, 255)
 local PRICE_COLOR = "#5BE36B"
 
-local HEIGHT = 66
+local HEIGHT = 66 -- design height in pixels (layout below is in pixels at this size)
+local HEIGHT_STUDS = 1.98 -- real height in the world: the panel gets smaller the further away it is
 local KEY_SIZE = 46
 local TEXT_LEFT = 12 + KEY_SIZE + 14
 local OBJECT_SIZE = 15
@@ -106,9 +108,24 @@ local function build(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInp
 	gui.AlwaysOnTop = true
 	gui.LightInfluence = 0
 	gui.ResetOnSpawn = false
-	gui.StudsOffset = Vector3.new(0, 2.5, 0)
+	gui.StudsOffset = Vector3.new(0, 1.2, 0)
 	gui.Adornee = prompt.Parent :: Instance
 	gui.Active = inputType == Enum.ProximityPromptInputType.Touch
+
+	-- The billboard is sized in studs (shrinks with distance); the panel is laid out in pixels at a
+	-- HEIGHT-px design size and scaled to whatever the billboard currently covers on screen.
+	local holder = Instance.new("Frame")
+	holder.Name = "Holder"
+	holder.BackgroundTransparency = 1
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Position = UDim2.fromScale(0.5, 0.5)
+	holder.Parent = gui
+	local fit = Instance.new("UIScale")
+	fit.Name = "Fit"
+	fit.Parent = holder
+	table.insert(connections, RunService.RenderStepped:Connect(function()
+		fit.Scale = math.max(gui.AbsoluteSize.Y / HEIGHT, 0.01)
+	end))
 
 	local panel = Instance.new("TextButton")
 	panel.Name = "Panel"
@@ -118,7 +135,7 @@ local function build(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInp
 	panel.BackgroundColor3 = PANEL_COLOR
 	panel.BackgroundTransparency = 0.18
 	panel.Size = UDim2.fromScale(1, 1)
-	panel.Parent = gui
+	panel.Parent = holder
 	corner(panel, 8)
 	stroke(panel, PANEL_STROKE, 1.5, 0.35)
 	local scale = Instance.new("UIScale")
@@ -168,7 +185,10 @@ local function build(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInp
 		objectLabel.Visible = hasObject
 		actionLabel.Position = UDim2.fromOffset(TEXT_LEFT, if hasObject then 30 else (HEIGHT - ACTION_SIZE - 4) / 2)
 		local width = math.max(textWidth(prompt.ObjectText, OBJECT_SIZE, OBJECT_FONT), textWidth(prompt.ActionText, ACTION_SIZE, ACTION_FONT))
-		gui.Size = UDim2.fromOffset(math.max(TEXT_LEFT + width + 18, 200), HEIGHT)
+		local designWidth = math.max(TEXT_LEFT + width + 18, 200)
+		holder.Size = UDim2.fromOffset(designWidth, HEIGHT)
+		gui.Size = UDim2.fromScale(designWidth / HEIGHT * HEIGHT_STUDS, HEIGHT_STUDS)
+		fit.Scale = math.max(gui.AbsoluteSize.Y / HEIGHT, 0.01)
 	end
 	updateText()
 	table.insert(connections, prompt:GetPropertyChangedSignal("ObjectText"):Connect(updateText))

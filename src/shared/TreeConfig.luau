@@ -53,6 +53,19 @@ TreeConfig.FellTime = 2.2 -- seconds the felled tree stays (fall + rest + fade) 
 TreeConfig.FallDuration = 0.7 -- seconds from upright to hitting the floor
 TreeConfig.LeafPartNames = { Leaf = true, Leaves = true }
 
+-- Tree levels -----------------------------------------------------------------------------------
+-- Every tree family grows in three levels: 1 = Sapling, 2 = Tree, 3 = Old tree (see ZoneDrops).
+-- When a tree grows, a family is picked first (all families in the zone equally), then its level
+-- by these weights. The plot owner's "TreeGrowth" attribute (skill tree upgrades) multiplies the
+-- weight of level n by (1 + TreeGrowth * Boost[n]), so upgrades make big trees more common.
+-- A template's "SpawnWeight" attribute (default 1) still multiplies its own weight.
+TreeConfig.TreeLevels = {
+	Weights = { 60, 30, 10 }, -- default: 60% sapling, 30% tree, 10% old tree
+	Boost = { 0, 1, 2 },
+	-- e.g. TreeGrowth 0.6 -> 60 / 48 / 22 = 46% / 37% / 17%
+	--      TreeGrowth 1.6 -> 60 / 78 / 42 = 33% / 43% / 23%
+}
+
 -- Effects -------------------------------------------------------------------------------------
 TreeConfig.ShakeTime = 0.28
 TreeConfig.ShakeAngle = 4 -- degrees

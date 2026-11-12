@@ -48,7 +48,7 @@ HeroConfig.FallbackTemplate = "UzumakiKid"
 -- Heroes placed on a plot's HeroSlots walk out of the HeroGate and chop trees (HeroWorkerService).
 HeroConfig.Worker = {
 	WalkSpeed = 12, -- studs/s
-	ModelScale = 1.2, -- heroes chopping trees are this much bigger than the template (1 = template size)
+	ModelScale = 1.44, -- heroes chopping trees are this much bigger than the template (1 = template size)
 	AttackRange = 2.5, -- studs from the trunk's center at which a hero stops and swings
 	MoundGap = 0.4, -- studs between a tree's dirt mound and a hero chopping it (heroes stand outside it)
 	SwingCooldown = 0.15, -- seconds between swings (on top of the swing animation)
@@ -66,7 +66,7 @@ HeroConfig.Worker = {
 	RaritySpeed = { Common = 1, Uncommon = 1.05, Rare = 1.1, Epic = 1.2, Legendary = 1.35, Mythic = 1.5 } :: { [string]: number },
 }
 
--- Gradient on the rarity text above heroes (HeroBar) and above hero pads (InfoGui.Rarity), left to right.
+-- Gradient on the rarity text above heroes (HeroBar) and above hero pads (HeroInfo.Rarity), left to right.
 local function gradient(a: Color3, b: Color3): ColorSequence
 	return ColorSequence.new(a, b)
 end
@@ -98,8 +98,6 @@ end
 HeroConfig.Slots = {
 	StartUnlocked = 4,
 	UnlockPrices = { [5] = 5000, [6] = 25000, [7] = 100000, [8] = 500000, [9] = 2500000 } :: { [number]: number },
-	PowerIcon = "rbxassetid://4814616883", -- next to the hero's power above a filled pad
-	InfoGap = 0.6, -- studs between the top of the pad hero's head and its info (name / level / rarity / power)
 	PadHeroHeight = 6.4, -- studs, hair included: height of the hero standing on a pad (a player is ~5.6)
 	HoldDuration = 1, -- seconds E must be held on a pad (place / take back / unlock)
 	LockedText = "Locked",
@@ -148,11 +146,11 @@ HeroConfig.Power = {
 -- Hero list. Order matters: a hero's Power is HeroConfig.Power[its position].
 local HERO_LIST: { HeroEntry } = {
 	-- Zone 1 (Green Wood)
-	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate" },
-	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja" },
-	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid" },
-	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja" },
-	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform" },
+	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate", ChopDamage = 5 },
+	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja", ChopDamage = 6 },
+	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid", ChopDamage = 13 },
+	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja", ChopDamage = 31 },
+	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform", ChopDamage = 195 },
 }
 
 HeroConfig.Heroes = {} :: { HeroDef }

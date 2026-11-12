@@ -65,6 +65,7 @@ SkillTreeConfig.Stats = {
 	SellBonus = { Base = 1, Format = "+%d%% sell price" },
 	ChestSize = { Base = 0, Format = "+%d chest slots" },
 	DropBonus = { Base = 1, Format = "+%d%% material drops" },
+	TreeGrowth = { Base = 0, Format = "+%d%% big tree growth" }, -- read by TreeService (TreeConfig.TreeLevels)
 } :: { [string]: StatDef }
 
 -- Percent stats store 0.1 for 10%; the preview multiplies by 100 for these.
@@ -74,6 +75,7 @@ SkillTreeConfig.PercentStats = {
 	HeroLuck = true,
 	SellBonus = true,
 	DropBonus = true,
+	TreeGrowth = true,
 } :: { [string]: boolean }
 
 SkillTreeConfig.Trees = {
@@ -125,6 +127,8 @@ SkillTreeConfig.Trees = {
 				Cost = { Base = 800, Growth = 2.5 }, Requires = { "Sapling" }, Stat = "HeroLuck", PerLevel = 0.05 },
 			{ Id = "Overgrowth", Name = "Overgrowth", Icon = "🌳", Pos = { 2, 3 }, MaxLevel = 2,
 				Cost = { 6000, 30000 }, Requires = { "Barkskin", "Seeker" }, Stat = "DropBonus", PerLevel = 0.15 },
+			{ Id = "FertileSoil", Name = "Fertile Soil", Icon = "🌿", Pos = { 1, 3 }, MaxLevel = 3,
+				Cost = { Base = 1500, Growth = 2.5 }, Requires = { { Node = "Sapling", Level = 1 } }, Stat = "TreeGrowth", PerLevel = 0.2 },
 		},
 	},
 	{
@@ -142,6 +146,8 @@ SkillTreeConfig.Trees = {
 				Cost = { 40000 }, Requires = { { Node = "Harvest", Level = 2 } }, Stat = "ChestSize", PerLevel = 10 },
 			{ Id = "GoldenFruit", Name = "Golden Fruit", Icon = "🍏", Pos = { 2, 3 }, MaxLevel = 1,
 				Cost = { 250000 }, Requires = { "Juicy", "Orchard" }, Stat = "HeroLuck", PerLevel = 0.3 },
+			{ Id = "AncientRoots", Name = "Ancient Roots", Icon = "🌲", Pos = { 3, 3 }, MaxLevel = 2,
+				Cost = { 30000, 120000 }, Requires = { { Node = "Harvest", Level = 1 } }, Stat = "TreeGrowth", PerLevel = 0.5 },
 		},
 	},
 } :: { TreeDef }

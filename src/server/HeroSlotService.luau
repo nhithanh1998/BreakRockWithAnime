@@ -1,5 +1,5 @@
 -- HeroSlotService: the 9 hero pads on each plot (plot.HeroSlots.Slot1..Slot9, each with a "Pad" part
--- and its "InfoGui" billboard).
+-- and its "Empty" / "HeroInfo" billboards).
 --
 -- The plot owner picks a hero on the hotbar (HotbarUI sends Remotes.HeroSlot("Select", heroName | nil)),
 -- then presses E at an empty pad: the hero is placed there and HeroWorkerService spawns it at the
@@ -108,129 +108,71 @@ local function drawPad(slot: Model, locked: boolean)
 	pad.Color = if locked then HeroConfig.Slots.LockedPadColor else pad:GetAttribute("DefaultColor")
 end
 
--- The "Power" row above a filled pad: power icon + the hero's power (red), centered, where the
--- "Income" label sits. Made on first use, styled like the "Income" label.
-local function powerRow(gui: Instance, income: TextLabel): Frame
-	local row = gui:FindFirstChild("Power") :: Frame?
-	if row then
-		return row
-	end
-	local frame = Instance.new("Frame")
-	frame.Name = "Power"
-	frame.BackgroundTransparency = 1
-	frame.AnchorPoint = income.AnchorPoint
-	frame.Position = income.Position
-	frame.Size = income.Size
-	frame.Visible = false
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Horizontal
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
-	layout.Padding = UDim.new(0.02, 0)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = frame
-	local icon = Instance.new("ImageLabel")
-	icon.Name = "Icon"
-	icon.BackgroundTransparency = 1
-	icon.Image = HeroConfig.Slots.PowerIcon
-	icon.SizeConstraint = Enum.SizeConstraint.RelativeYY
-	icon.Size = UDim2.fromScale(0.85, 0.85)
-	icon.LayoutOrder = 1
-	icon.Parent = frame
-	local text = income:Clone()
-	for name in text:GetAttributes() do
-		text:SetAttribute(name, nil)
-	end
-	text.Name = "Value"
-	text.AnchorPoint = Vector2.zero
-	text.Position = UDim2.new()
-	text.Size = UDim2.fromScale(0.55, 1)
-	text.TextScaled = true
-	text.TextXAlignment = Enum.TextXAlignment.Left
-	text.TextColor3 = income:GetAttribute("DefaultColor") or income.TextColor3
-	text.Visible = true
-	text.LayoutOrder = 2
-	text.Parent = frame
-	frame.Parent = gui
-	return frame
+-- Each pad has two billboards: Pad.Empty.BillboardGui ("EmptyText") for an empty or locked pad, and
+-- Pad.HeroInfo.BillboardGui (HeroName / Level / Rarity / Power) for a pad with a hero on it.
+-- Only one of them is shown at a time; their positions are set in Studio.
+local function billboard(pad: Instance, attachment: string): BillboardGui?
+	local a = pad:FindFirstChild(attachment)
+	local gui = a and a:FindFirstChildOfClass("BillboardGui")
+	return gui
 end
 
 local function drawGui(slot: Model, hero: string?, locked: boolean?)
 	-- Clients read this (e.g. the Sell window keeps heroes that stand on a pad).
 	slot:SetAttribute("HeroId", if hero and not locked then hero else "")
 	local pad = slot:FindFirstChild("Pad")
-	local gui = pad and pad:FindFirstChild("InfoGui")
-	if not gui then
+	if not pad then
 		return
 	end
-	local nameLabel = gui:FindFirstChild("HeroName") :: TextLabel?
-	local rarityLabel = gui:FindFirstChild("Rarity") :: TextLabel?
-	local def = hero and HeroConfig.Get(hero)
-	if nameLabel then
-		nameLabel.Text = if locked then HeroConfig.Slots.LockedText elseif def then def.Name else EMPTY_TEXT
-	end
-	if rarityLabel then
-		-- Remember the template's look so an emptied pad goes back to it.
-		if rarityLabel:GetAttribute("DefaultText") == nil then
-			rarityLabel:SetAttribute("DefaultText", rarityLabel.Text)
-			rarityLabel:SetAttribute("DefaultVisible", rarityLabel.Visible)
-		end
-		if def then
-			HeroConfig.PaintRarity(rarityLabel, def.Rarity)
-			rarityLabel.Visible = true
-		else
-			rarityLabel.Text = rarityLabel:GetAttribute("DefaultText")
-			rarityLabel.Visible = false
-		end
-	end
-	-- Locked pads show their unlock price (in the "Income" label, green) under "Locked".
-	local priceLabel = gui:FindFirstChild("Income") :: TextLabel?
-	if priceLabel then
-		if priceLabel:GetAttribute("DefaultText") == nil then
-			priceLabel:SetAttribute("DefaultText", priceLabel.Text)
-			priceLabel:SetAttribute("DefaultColor", priceLabel.TextColor3)
-			priceLabel:SetAttribute("DefaultVisible", priceLabel.Visible)
-		end
-		local index = tonumber(slot.Name:match("%d+"))
-		local price = locked and index and HeroConfig.Slots.UnlockPrices[index]
-		if price then
-			priceLabel.Text = "$" .. HeroConfig.Abbreviate(price)
-			priceLabel.TextColor3 = HeroConfig.Slots.PriceColor
-			priceLabel.Visible = true
-		else
-			priceLabel.Text = priceLabel:GetAttribute("DefaultText")
-			priceLabel.TextColor3 = priceLabel:GetAttribute("DefaultColor")
-			priceLabel.Visible = priceLabel:GetAttribute("DefaultVisible")
+	local def = if hero and not locked then HeroConfig.Get(hero) else nil
+
+	local empty = billboard(pad, "Empty")
+	if empty then
+		empty.Enabled = def == nil
+		local text = empty:FindFirstChild("EmptyText") :: TextLabel?
+		if text then
+			if text:GetAttribute("DefaultText") == nil then
+				text:SetAttribute("DefaultText", text.Text)
+			end
+			if locked then
+				-- Locked pads show their unlock price (green) under "Locked".
+				local index = slotIndex(slot)
+				local price = index and HeroConfig.Slots.UnlockPrices[index]
+				text.RichText = true
+				text.Text = if price
+					then ('%s\n<font color="#%s">$%s</font>'):format(
+						HeroConfig.Slots.LockedText,
+						HeroConfig.Slots.PriceColor:ToHex(),
+						HeroConfig.Abbreviate(price)
+					)
+					else HeroConfig.Slots.LockedText
+			else
+				text.Text = text:GetAttribute("DefaultText")
+			end
 		end
 	end
 
-	local filled = def ~= nil and not locked
-	-- Level (no upgrades yet: the slot's "Level" attribute, default 1).
-	local levelLabel = gui:FindFirstChild("Level") :: TextLabel?
-	if levelLabel then
-		local level = slot:GetAttribute("Level")
-		levelLabel.Text = "Level " .. tostring(if typeof(level) == "number" then level else 1)
-		levelLabel.Visible = filled
-	end
-	-- Power, in place of the (hidden) Income label.
-	if priceLabel then
-		local row = powerRow(gui, priceLabel)
-		row.Visible = filled
-		if filled then
-			priceLabel.Visible = false;
-			(row:FindFirstChild("Value") :: TextLabel).Text = HeroConfig.Abbreviate((def :: any).MinePower)
-		end
-	end
-	-- Above the pad hero's head while one stands there, at the template's height otherwise.
-	if gui:IsA("BillboardGui") and pad:IsA("BasePart") then
-		if gui:GetAttribute("DefaultOffset") == nil then
-			gui:SetAttribute("DefaultOffset", gui.StudsOffset)
-		end
-		if filled then
-			local y = pad.Size.Y / 2 + HeroConfig.Slots.PadHeroHeight + HeroConfig.Slots.InfoGap + gui.Size.Y.Scale / 2
-			gui.StudsOffset = Vector3.new(0, y, 0)
-		else
-			gui.StudsOffset = gui:GetAttribute("DefaultOffset")
+	local info = billboard(pad, "HeroInfo")
+	if info then
+		info.Enabled = def ~= nil
+		if def then
+			local nameLabel = info:FindFirstChild("HeroName") :: TextLabel?
+			if nameLabel then
+				nameLabel.Text = def.Name
+			end
+			local levelLabel = info:FindFirstChild("Level") :: TextLabel?
+			if levelLabel then
+				local level = slot:GetAttribute("Level") -- no upgrades yet: default 1
+				levelLabel.Text = "Level " .. tostring(if typeof(level) == "number" then level else 1)
+			end
+			local rarityLabel = info:FindFirstChild("Rarity") :: TextLabel?
+			if rarityLabel then
+				HeroConfig.PaintRarity(rarityLabel, def.Rarity)
+			end
+			local powerLabel = info:FindFirstChild("Power") :: TextLabel?
+			if powerLabel then
+				powerLabel.Text = HeroConfig.Abbreviate(def.MinePower)
+			end
 		end
 	end
 end
@@ -254,14 +196,18 @@ local function drawPadHero(slot: Model, hero: string?)
 		return
 	end
 	model.Name = PAD_HERO_NAME
-	HeroModels.HideBar(model) -- the pad's InfoGui already names it
+	HeroModels.HideBar(model) -- the pad's HeroInfo billboard already names it
 	humanoid.EvaluateStateMachine = false
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
 
-	-- As tall as a player.
+	-- As tall as a player (the axe gets the same factor so it stays in proportion).
+	local factor = 1
 	local height = model:GetExtentsSize().Y
 	if height > 0 then
-		pcall(model.ScaleTo, model, model:GetScale() * HeroConfig.Slots.PadHeroHeight / height)
+		local before = model:GetScale()
+		if pcall(model.ScaleTo, model, before * HeroConfig.Slots.PadHeroHeight / height) then
+			factor = model:GetScale() / before
+		end
 	end
 
 	-- Feet on the pad's top face, facing the way the pad faces.
@@ -274,7 +220,7 @@ local function drawPadHero(slot: Model, hero: string?)
 	root.Anchored = true
 	model.Parent = slot
 
-	HeroModels.GiveAxe(model, humanoid)
+	HeroModels.GiveAxe(model, humanoid, factor)
 	local anims = HeroModels.Anims(humanoid)
 	local idle = HeroModels.LoadTrack(humanoid, anims.Idle, Enum.AnimationPriority.Core, true)
 	local hold = HeroModels.LoadTrack(humanoid, anims.Hold, Enum.AnimationPriority.Action, true)
@@ -330,8 +276,8 @@ local function refresh(state: PlotState)
 			continue
 		end
 		local hero = state.placed[i]
-		drawGui(slot, hero)
 		drawPadHero(slot, hero)
+		drawGui(slot, hero)
 		if hero then
 			prompt.ActionText = "Take Back " .. hero
 			prompt.ObjectText = hero

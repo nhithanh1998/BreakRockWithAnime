@@ -11,6 +11,7 @@
 --   animation meanwhile), and a new one grows back after CONFIG.RespawnDelay seconds.
 -- When the plot's "Zone" attribute changes, all trees are replaced with the new zone's trees.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
@@ -23,6 +24,7 @@ local CONFIG = {
 	EdgeMargin = 6, -- studs kept clear from the floor's edges (walls)
 	MinSpacing = 9, -- studs between tree centers
 	MaxAttempts = 30, -- random spots tried per tree
+	ModelScale = 1.2, -- spawned trees are this much bigger than their template (1 = template size)
 }
 
 local TreeService = {}
@@ -62,18 +64,52 @@ local function templatesFor(plot: Model): { Model }
 	return list
 end
 
+-- Level weight of a template for this plot (TreeConfig.TreeLevels, boosted by the owner's TreeGrowth).
+local function levelWeight(plot: Model, template: Model, growth: number): number
+	local cfg = TreeConfig.TreeLevels
+	local level = ZoneDrops.GetLevel(plot:GetAttribute("Zone"), template.Name)
+	local base = cfg.Weights[level] or 0
+	local boost = cfg.Boost[level] or 0
+	return base * (1 + growth * boost) * (template:GetAttribute("SpawnWeight") or 1)
+end
+
+local function ownerGrowth(plot: Model): number
+	local userId = plot:GetAttribute("OwnerUserId")
+	local owner = userId and Players:GetPlayerByUserId(userId)
+	return (owner and owner:GetAttribute("TreeGrowth")) or 0
+end
+
+-- Picks a tree family (all equally likely), then one of its levels by weight.
 local function pickTemplate(plot: Model): Model?
-	local list = templatesFor(plot)
+	local zone = plot:GetAttribute("Zone")
+	local families: { [any]: { Model } } = {}
+	local familyList = {}
+	for _, t in templatesFor(plot) do
+		local def = ZoneDrops.GetTree(zone, t.Name)
+		if def then
+			if not families[def] then
+				families[def] = {}
+				table.insert(familyList, def)
+			end
+			table.insert(families[def], t)
+		end
+	end
+	if #familyList == 0 then
+		return nil
+	end
+	local list = families[familyList[rng:NextInteger(1, #familyList)]]
+
+	local growth = ownerGrowth(plot)
 	local total = 0
 	for _, t in list do
-		total += t:GetAttribute("SpawnWeight") or 1
+		total += levelWeight(plot, t, growth)
 	end
 	if total <= 0 then
-		return nil
+		return list[rng:NextInteger(1, #list)]
 	end
 	local roll = rng:NextNumber(0, total)
 	for _, t in list do
-		roll -= t:GetAttribute("SpawnWeight") or 1
+		roll -= levelWeight(plot, t, growth)
 		if roll <= 0 then
 			return t
 		end
@@ -91,7 +127,7 @@ local function bottomOffset(template: Model): number
 	local cf, size = template:GetBoundingBox()
 	local offset = template:GetPivot().Position.Y - (cf.Position.Y - size.Y / 2)
 	bottomOffsetCache[template] = offset
-	return offset
+	return offset * CONFIG.ModelScale
 end
 
 local function findSpot(state: PlotState, template: Model): Vector3?
@@ -101,7 +137,8 @@ local function findSpot(state: PlotState, template: Model): Vector3?
 		return nil
 	end
 
-	local _, size = template:GetBoundingBox()
+	local _, templateSize = template:GetBoundingBox()
+	local size = templateSize * CONFIG.ModelScale
 	local halfX = ground.Size.X / 2 - CONFIG.EdgeMargin
 	local halfZ = ground.Size.Z / 2 - CONFIG.EdgeMargin
 
@@ -116,7 +153,7 @@ local function findSpot(state: PlotState, template: Model): Vector3?
 		local spaced = true
 		for tree in state.alive do
 			local p = tree:GetPivot().Position
-			if Vector2.new(p.X - pos.X, p.Z - pos.Z).Magnitude < CONFIG.MinSpacing then
+			if Vector2.new(p.X - pos.X, p.Z - pos.Z).Magnitude < CONFIG.MinSpacing * CONFIG.ModelScale then
 				spaced = false
 				break
 			end
@@ -183,6 +220,7 @@ local function spawnTree(state: PlotState): boolean
 	end
 
 	local tree = template:Clone()
+	pcall(tree.ScaleTo, tree, tree:GetScale() * CONFIG.ModelScale)
 	-- Trees never use physics (clients animate shakes / falls locally). Anchor everything so loose
 	-- pieces like the Ground mound can't fall apart, even if a template forgot to anchor them.
 	for _, d in tree:GetDescendants() do
