@@ -70,8 +70,8 @@ TreeConfig.TargetRing = {
 	GapLength = 1.5, -- studs between dashes
 	DashWidth = 0.85, -- studs (radial thickness)
 	RadiusScale = 1, -- ring radius = half the dirt mound's widest side * this + Padding
-	Padding = 1.2,
-	MinRadius = 4,
+	Padding = 0.6,
+	MinRadius = 2,
 	PlayerTargetTime = 1.2, -- seconds a hit keeps the ring on
 	PopTime = 0.18, -- seconds for the ring to grow in / shrink out
 }

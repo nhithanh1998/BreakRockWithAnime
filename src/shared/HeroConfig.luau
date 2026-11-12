@@ -48,7 +48,7 @@ HeroConfig.FallbackTemplate = "UzumakiKid"
 -- Heroes placed on a plot's HeroSlots walk out of the HeroGate and chop trees (HeroWorkerService).
 HeroConfig.Worker = {
 	WalkSpeed = 12, -- studs/s
-	AttackRange = 5, -- studs from the trunk's center at which a hero stops and swings
+	AttackRange = 2.5, -- studs from the trunk's center at which a hero stops and swings
 	SwingCooldown = 0.15, -- seconds between swings (on top of the swing animation)
 	-- Swing animation. Upload ServerStorage.RBX_ANIMSAVES.mymodel.ChopHorizontal and put its
 	-- "rbxassetid://..." here. While empty, that KeyframeSequence is played directly (works in

@@ -23,8 +23,8 @@ local TreeHitService = require(script.Parent:WaitForChild("TreeHitService"))
 local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
 local Movement = require(script.Parent:WaitForChild("Movement"))
 
-local ATTACK_RANGE = HeroConfig.Worker.AttackRange or 5 -- studs from the trunk's center at which a hero stops and chops
-local MIN_SURFACE_GAP = 1 -- never stand closer than this to the trunk's surface (thick trunks)
+local ATTACK_RANGE = HeroConfig.Worker.AttackRange or 2.5 -- studs from the trunk's center at which a hero stops and chops
+local MIN_SURFACE_GAP = 0.5 -- never stand closer than this to the trunk's surface (thick trunks)
 local RANGE_SLACK = 1.5 -- extra studs allowed when checking "still in range" before each swing
 local STUCK_TIME = 1.5 -- seconds without progress before giving up on a walk
 local GROUND_RAY_OFFSET = 2 -- raycast from just above the root so the gate's arch never counts as ground
