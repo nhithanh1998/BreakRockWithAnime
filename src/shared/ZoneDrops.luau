@@ -61,6 +61,18 @@ local function birch(amount: number)
 	return greenWoodTree("BirchTwig", "BirchLog", "BirchSyrup", amount)
 end
 
+local function apple(amount: number)
+	return greenWoodTree("AppleBranch", "Apple", "GoldenApple", amount)
+end
+
+local function berry(amount: number)
+	return greenWoodTree("BerryTwig", "Berry", "StarBerry", amount)
+end
+
+local function orange(amount: number)
+	return greenWoodTree("OrangePeel", "Orange", "SunOrange", amount)
+end
+
 ZoneDrops.Zones = {
 	[1] = {
 		Name = "Green Wood",
@@ -74,6 +86,18 @@ ZoneDrops.Zones = {
 			BirchSapling = birch(0.5),
 			BirchTree = birch(1),
 			OldBirchTree = birch(1.5),
+			-- Apple Tree: Apple Branch (Common), Apple (Uncommon), Golden Apple (Rare)
+			AppleSapling = apple(0.5),
+			AppleTree = apple(1),
+			OldAppleTree = apple(1.5),
+			-- Berry Tree: Berry Twig (Common), Berry (Uncommon), Star Berry (Rare)
+			BerrySapling = berry(0.5),
+			BerryTree = berry(1),
+			OldBerryTree = berry(1.5),
+			-- Orange Tree: Orange Peel (Common), Orange (Uncommon), Sun Orange (Rare)
+			OrangeSapling = orange(0.5),
+			OrangeTree = orange(1),
+			OldOrangeTree = orange(1.5),
 		},
 		-- 20% of felled trees drop a hero. Shares: 40% / 40% / 15% / 4% / 1% of those,
 		-- i.e. 8% / 8% / 3% / 0.8% / 0.2% per tree.

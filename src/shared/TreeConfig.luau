@@ -157,6 +157,63 @@ TreeConfig.Materials = {
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(200, 105, 40), Material = Enum.Material.Plastic },
 	},
+	-- Zone 1 (Green Wood) - Apple Tree
+	AppleBranch = {
+		Name = "Apple Branch",
+		Value = 7,
+		Rarity = "Common",
+		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(122, 88, 62), Material = Enum.Material.Plastic },
+	},
+	Apple = {
+		Name = "Apple",
+		Value = 30,
+		Rarity = "Uncommon",
+		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(215, 51, 43), Material = Enum.Material.Plastic },
+	},
+	GoldenApple = {
+		Name = "Golden Apple",
+		Value = 180,
+		Rarity = "Rare",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 200, 45), Material = Enum.Material.Plastic },
+	},
+	-- Zone 1 (Green Wood) - Berry Tree
+	BerryTwig = {
+		Name = "Berry Twig",
+		Value = 8,
+		Rarity = "Common",
+		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(110, 74, 60), Material = Enum.Material.Plastic },
+	},
+	Berry = {
+		Name = "Berry",
+		Value = 35,
+		Rarity = "Uncommon",
+		Visual = { Shape = "Block", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(106, 63, 181), Material = Enum.Material.Plastic },
+	},
+	StarBerry = {
+		Name = "Star Berry",
+		Value = 210,
+		Rarity = "Rare",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(150, 110, 255), Material = Enum.Material.Plastic },
+	},
+	-- Zone 1 (Green Wood) - Orange Tree
+	OrangePeel = {
+		Name = "Orange Peel",
+		Value = 9,
+		Rarity = "Common",
+		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(235, 150, 60), Material = Enum.Material.Plastic },
+	},
+	Orange = {
+		Name = "Orange",
+		Value = 40,
+		Rarity = "Uncommon",
+		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(242, 138, 28), Material = Enum.Material.Plastic },
+	},
+	SunOrange = {
+		Name = "Sun Orange",
+		Value = 250,
+		Rarity = "Rare",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 170, 30), Material = Enum.Material.Plastic },
+	},
 	-- Zone 2
 	Leaf = {
 		Name = "Leaf",
