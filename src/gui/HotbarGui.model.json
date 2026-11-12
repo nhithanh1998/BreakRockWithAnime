@@ -37,7 +37,7 @@
         "Size": {
           "UDim2": [
             [
-              0.62,
+              0.68,
               0
             ],
             [
@@ -52,7 +52,7 @@
           "Name": "UIAspectRatioConstraint",
           "ClassName": "UIAspectRatioConstraint",
           "Properties": {
-            "AspectRatio": 10.6
+            "AspectRatio": 11.95
           }
         },
         {
@@ -61,7 +61,7 @@
           "Properties": {
             "MaxSize": {
               "Vector2": [
-                1180,
+                1330,
                 112
               ]
             },
@@ -138,7 +138,7 @@
                 "Size": {
                   "UDim2": [
                     [
-                      0.093,
+                      0.0838,
                       0
                     ],
                     [

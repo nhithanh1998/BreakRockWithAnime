@@ -6,6 +6,7 @@
 --   HeroModels.LoadTrack(humanoid, id, priority, looped) -> AnimationTrack?
 --   HeroModels.ChopAnimationId()           -> id for the swing (HeroConfig.Worker.ChopAnimation, or the
 --                                             KeyframeSequence registered for Studio playtests)
+--   HeroModels.RunAnimationId()            -> id for the run (HeroConfig.Worker.RunAnimation, same fallback)
 --
 -- The template's "Animate" LocalScript is removed (it never runs on an NPC); its idle / walk / toolnone
 -- ids are kept as attributes on the Humanoid. Every part is made non-collidable and non-queryable so
@@ -76,6 +77,31 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 
 	model.PrimaryPart = root
 	model:SetAttribute("Hero", heroName)
+
+	-- The bar above the hero (HumanoidRootPart.InfoAttachment.HeroBar): name, rarity, power.
+	local def = HeroConfig.Get(heroName)
+	local container = def and root:FindFirstChild("InfoAttachment")
+	container = container and container:FindFirstChild("HeroBar")
+	container = container and container:FindFirstChild("Container")
+	if def and container then
+		local nameLabel = container:FindFirstChild("HeroName")
+		if nameLabel and nameLabel:IsA("TextLabel") then
+			nameLabel.Text = def.Name
+		end
+		local levelLabel = container:FindFirstChild("Level")
+		if levelLabel and levelLabel:IsA("TextLabel") then
+			levelLabel.Text = "Level 1" -- no hero upgrades yet
+		end
+		local rarityLabel = container:FindFirstChild("Rarity")
+		if rarityLabel and rarityLabel:IsA("TextLabel") then
+			HeroConfig.PaintRarity(rarityLabel, def.Rarity)
+		end
+		local power = container:FindFirstChild("Power")
+		local powerLabel = power and power:FindFirstChildOfClass("TextLabel")
+		if powerLabel then
+			powerLabel.Text = HeroConfig.Abbreviate(def.MinePower)
+		end
+	end
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	humanoid.BreakJointsOnDeath = false
 	humanoid.RequiresNeck = false
@@ -95,6 +121,16 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 		end
 	end
 	return model, humanoid, root
+end
+
+-- Hides the bar above the hero (for copies that already have a label nearby, e.g. on a pad).
+function HeroModels.HideBar(model: Model)
+	local root = model.PrimaryPart
+	local attachment = root and root:FindFirstChild("InfoAttachment")
+	local bar = attachment and attachment:FindFirstChild("HeroBar")
+	if bar and bar:IsA("BillboardGui") then
+		bar.Enabled = false
+	end
 end
 
 function HeroModels.GiveAxe(model: Model, humanoid: Humanoid): Tool?
@@ -128,44 +164,55 @@ function HeroModels.Anims(humanoid: Humanoid): { Idle: string, Walk: string, Hol
 	}
 end
 
-local chopId: string? = nil
-local warnedChop = false
+-- An uploaded animation id from HeroConfig.Worker[configKey], or else the KeyframeSequence named
+-- HeroConfig.Worker[keyframesKey] in ServerStorage.RBX_ANIMSAVES registered on the fly (Studio only).
+local resolved: { [string]: string } = {}
+local warned: { [string]: boolean } = {}
 
-function HeroModels.ChopAnimationId(): string?
-	local configured = HeroConfig.Worker.ChopAnimation
+local function animationFromConfig(configKey: string, keyframesKey: string, what: string): string?
+	local worker = HeroConfig.Worker :: any
+	local configured = worker[configKey]
 	if configured and configured ~= "" then
 		return configured
 	end
-	if chopId then
-		return chopId
+	if resolved[configKey] then
+		return resolved[configKey]
 	end
 	local saves = ServerStorage:FindFirstChild("RBX_ANIMSAVES")
 	local sequence: Instance? = nil
 	if saves then
 		for _, d in saves:GetDescendants() do
-			if d:IsA("KeyframeSequence") and d.Name == HeroConfig.Worker.ChopKeyframes then
+			if d:IsA("KeyframeSequence") and d.Name == worker[keyframesKey] then
 				sequence = d
 				break
 			end
 		end
 	end
 	if not sequence then
-		if not warnedChop then
-			warnedChop = true
-			warn("[HeroModels] no swing animation: set HeroConfig.Worker.ChopAnimation")
+		if not warned[configKey] then
+			warned[configKey] = true
+			warn(("[HeroModels] no %s animation: set HeroConfig.Worker.%s"):format(what, configKey))
 		end
 		return nil
 	end
 	local ok, id = pcall(KeyframeSequenceProvider.RegisterKeyframeSequence, KeyframeSequenceProvider, sequence)
 	if ok then
-		chopId = id
-		if not warnedChop then
-			warnedChop = true
-			warn("[HeroModels] playing the swing from RBX_ANIMSAVES (Studio only). Upload it and set HeroConfig.Worker.ChopAnimation before publishing.")
+		resolved[configKey] = id
+		if not warned[configKey] then
+			warned[configKey] = true
+			warn(("[HeroModels] playing the %s from RBX_ANIMSAVES (Studio only). Upload it and set HeroConfig.Worker.%s before publishing."):format(what, configKey))
 		end
 		return id
 	end
 	return nil
+end
+
+function HeroModels.ChopAnimationId(): string?
+	return animationFromConfig("ChopAnimation", "ChopKeyframes", "swing")
+end
+
+function HeroModels.RunAnimationId(): string?
+	return animationFromConfig("RunAnimation", "RunKeyframes", "run")
 end
 
 function HeroModels.LoadTrack(humanoid: Humanoid, id: string?, priority: Enum.AnimationPriority, looped: boolean): AnimationTrack?

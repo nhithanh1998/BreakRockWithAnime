@@ -25,10 +25,12 @@ local Movement = require(script.Parent:WaitForChild("Movement"))
 
 local ATTACK_RANGE = HeroConfig.Worker.AttackRange or 2.5 -- studs from the trunk's center at which a hero stops and chops
 local MIN_SURFACE_GAP = 0.5 -- never stand closer than this to the trunk's surface (thick trunks)
+local MOUND_GAP = HeroConfig.Worker.MoundGap or 0.4 -- studs between the dirt mound's edge and the hero
 local RANGE_SLACK = 1.5 -- extra studs allowed when checking "still in range" before each swing
 local STUCK_TIME = 1.5 -- seconds without progress before giving up on a walk
 local GROUND_RAY_OFFSET = 2 -- raycast from just above the root so the gate's arch never counts as ground
 local WALK_ANIM_SPEED = 14.5 -- walk speed the walk animation was made for
+local RUN_ANIM_SPEED = HeroConfig.Worker.RunAnimSpeed or 16 -- same for the run animation
 local RETARGET_PAUSE = 0.35
 
 type Worker = {
@@ -42,6 +44,7 @@ type Worker = {
 	alive: boolean,
 	target: Model?,
 	tracks: { [string]: AnimationTrack },
+	running: boolean?, -- tracks.Walk is the run animation (HeroModels.RunAnimationId)
 	spawnCFrame: CFrame,
 	exit: Vector3?,
 	movement: any,
@@ -91,7 +94,7 @@ local function setWalking(w: Worker, walking: boolean)
 		if not walk.IsPlaying then
 			walk:Play(0.15)
 		end
-		walk:AdjustSpeed(w.movement:GetSpeed() / WALK_ANIM_SPEED)
+		walk:AdjustSpeed(w.movement:GetSpeed() / (if w.running then RUN_ANIM_SPEED else WALK_ANIM_SPEED))
 	elseif walk.IsPlaying then
 		walk:Stop(0.2)
 	end
@@ -103,7 +106,12 @@ local function setupAnimations(w: Worker)
 		return HeroModels.LoadTrack(w.humanoid, id, priority, looped) :: AnimationTrack
 	end
 	w.tracks.Idle = load(set.Idle, Enum.AnimationPriority.Core, true)
-	w.tracks.Walk = load(set.Walk, Enum.AnimationPriority.Movement, true)
+	-- The hero's own run (HeroConfig.Worker.RunAnimation) replaces the default walk when there is one.
+	-- HeroRun is made for R6 rigs; R15 heroes keep their walk.
+	local run = if w.humanoid.RigType == Enum.HumanoidRigType.R6 then HeroModels.RunAnimationId() else nil
+	local runTrack = run and HeroModels.LoadTrack(w.humanoid, run, Enum.AnimationPriority.Movement, true)
+	w.running = runTrack ~= nil
+	w.tracks.Walk = runTrack or load(set.Walk, Enum.AnimationPriority.Movement, true)
 	w.tracks.Hold = load(set.Hold, Enum.AnimationPriority.Action, true)
 	w.tracks.Chop = load(HeroModels.ChopAnimationId(), Enum.AnimationPriority.Action2, false)
 	if w.tracks.Idle then
@@ -179,9 +187,27 @@ local function trunkOf(w: Worker, tree: Model): (Vector3, number)
 	return Vector3.new(center.X, w.root.Position.Y, center.Z), radius
 end
 
--- How close (from the trunk's center) the hero stands to chop.
-local function attackRange(radius: number): number
-	return math.max(ATTACK_RANGE, radius + MIN_SURFACE_GAP)
+-- How far from the trunk's center the hero stands to chop, coming from `from`: just outside the
+-- tree's dirt mound ("Ground" model) on that side, so it never stands inside the roots; trees without
+-- a mound use the trunk radius.
+local function attackRange(tree: Model, center: Vector3, radius: number, from: Vector3): number
+	local range = math.max(ATTACK_RANGE, radius + MIN_SURFACE_GAP)
+	local ground = tree:FindFirstChild("Ground")
+	if ground and ground:IsA("Model") then
+		local cf, size = ground:GetBoundingBox()
+		local a, b = size.X / 2, size.Z / 2
+		-- Direction to the hero in the mound's own axes, then the edge of the ellipse that way.
+		local d = cf:VectorToObjectSpace(Vector3.new(from.X - center.X, 0, from.Z - center.Z))
+		local flat = Vector2.new(d.X, d.Z)
+		if flat.Magnitude > 0.05 and a > 0 and b > 0 then
+			local u = flat.Unit
+			local edge = 1 / math.sqrt((u.X / a) ^ 2 + (u.Y / b) ^ 2)
+			range = math.max(range, edge + MOUND_GAP)
+		else
+			range = math.max(range, math.max(a, b) + MOUND_GAP)
+		end
+	end
+	return range
 end
 
 local function flatDir(from: Vector3, to: Vector3): Vector3
@@ -258,13 +284,13 @@ local function run(w: Worker)
 		w.target = tree
 
 		local center, radius = trunkOf(w, tree)
-		local range = attackRange(radius)
+		local range = attackRange(tree, center, radius, w.root.Position)
 		walkTo(w, center, range, function()
 			return not treeAlive(tree)
 		end)
 
 		center, radius = trunkOf(w, tree)
-		range = attackRange(radius)
+		range = attackRange(tree, center, radius, w.root.Position)
 		if isAlive(w) and treeAlive(tree) and flatDist(w.root.Position, center) <= range + RANGE_SLACK then
 			while isAlive(w) and treeAlive(tree) do
 				w.movement:FaceTowards(center)
@@ -346,6 +372,7 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 		return nil
 	end
 	model.Name = "Slot" .. slot
+	pcall(model.ScaleTo, model, model:GetScale() * (HeroConfig.Worker.ModelScale or 1))
 	model:SetAttribute("OwnerUserId", owner.UserId)
 	model:SetAttribute("Slot", slot)
 

@@ -437,14 +437,20 @@ end
 -- Anime / comic "bubble" numbers: chunky LuckiestGuy text with a hot gradient fill, a thick dark
 -- outline and a dark copy underneath for depth. Each one punches in oversized at a random tilt,
 -- settles, drifts up and to the side, then shrinks away.
+-- The billboard is sized in studs (scale), so far-away numbers are small like the world around them;
+-- outlines and the shadow offset follow the number's on-screen size.
 
 local DAMAGE_FONT = Enum.Font.LuckiestGuy
-local DAMAGE_TOP = Color3.fromRGB(255, 252, 205)
-local DAMAGE_MID = Color3.fromRGB(255, 205, 60)
-local DAMAGE_BOTTOM = Color3.fromRGB(255, 80, 40)
-local DAMAGE_OUTLINE = Color3.fromRGB(70, 10, 12)
+local DAMAGE_TOP = Color3.fromRGB(255, 190, 70) -- orange
+local DAMAGE_MID = Color3.fromRGB(255, 120, 35)
+local DAMAGE_BOTTOM = Color3.fromRGB(235, 45, 35) -- red
+local DAMAGE_OUTLINE = Color3.fromRGB(60, 8, 10)
+local DAMAGE_STUDS = Vector2.new(4.6, 1.9) -- size of a number in the world
+local DAMAGE_REF_HEIGHT = 78 -- on-screen height (px) the stroke thicknesses below are made for
 
 local function damageLayer(parent: Instance, text: string, offset: UDim2, zIndex: number): (TextLabel, UIStroke)
+	-- offset is in pixels at DAMAGE_REF_HEIGHT; turn it into scale so it shrinks with the number.
+	offset = UDim2.fromScale(offset.X.Offset / (DAMAGE_REF_HEIGHT * DAMAGE_STUDS.X / DAMAGE_STUDS.Y), offset.Y.Offset / DAMAGE_REF_HEIGHT)
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -475,7 +481,7 @@ function TreeFX.DamageNumber(pos: Vector3, amount: number, color: Color3?)
 	anchor.Parent = fxFolder
 
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(190, 78)
+	gui.Size = UDim2.fromScale(DAMAGE_STUDS.X, DAMAGE_STUDS.Y)
 	gui.AlwaysOnTop = true
 	gui.LightInfluence = 0
 	gui.MaxDistance = 220
@@ -509,6 +515,17 @@ function TreeFX.DamageNumber(pos: Vector3, amount: number, color: Color3?)
 			ColorSequenceKeypoint.new(1, DAMAGE_BOTTOM),
 		})
 	gradient.Parent = label
+
+	-- Outlines are in pixels: keep them in proportion to the number's on-screen size.
+	local strokes = { [stroke] = stroke.Thickness, [shadowStroke] = shadowStroke.Thickness }
+	local function fitStrokes()
+		local k = math.clamp(gui.AbsoluteSize.Y / DAMAGE_REF_HEIGHT, 0.05, 3)
+		for s, base in strokes do
+			s.Thickness = base * k
+		end
+	end
+	fitStrokes()
+	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitStrokes)
 
 	-- Punch in oversized, settle with a bounce while straightening a bit.
 	local punch = TweenService:Create(scale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.45 })

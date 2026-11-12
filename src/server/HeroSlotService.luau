@@ -19,10 +19,13 @@ local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local HeroWorkerService = require(script.Parent:WaitForChild("HeroWorkerService"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
+local HeldHeroService = require(script.Parent:WaitForChild("HeldHeroService"))
+local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
 
 local PROMPT_NAME = "HeroSlotPrompt"
 local PROMPT_DISTANCE = 10
 local EMPTY_TEXT = "Empty Slot"
+local PAD_HERO_NAME = "PadHero" -- idle copy of the placed hero standing on the pad, axe in hand
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local HeroSlotRemote = Remotes:FindFirstChild("HeroSlot") :: RemoteEvent?
@@ -105,6 +108,53 @@ local function drawPad(slot: Model, locked: boolean)
 	pad.Color = if locked then HeroConfig.Slots.LockedPadColor else pad:GetAttribute("DefaultColor")
 end
 
+-- The "Power" row above a filled pad: power icon + the hero's power (red), centered, where the
+-- "Income" label sits. Made on first use, styled like the "Income" label.
+local function powerRow(gui: Instance, income: TextLabel): Frame
+	local row = gui:FindFirstChild("Power") :: Frame?
+	if row then
+		return row
+	end
+	local frame = Instance.new("Frame")
+	frame.Name = "Power"
+	frame.BackgroundTransparency = 1
+	frame.AnchorPoint = income.AnchorPoint
+	frame.Position = income.Position
+	frame.Size = income.Size
+	frame.Visible = false
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0.02, 0)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = frame
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "Icon"
+	icon.BackgroundTransparency = 1
+	icon.Image = HeroConfig.Slots.PowerIcon
+	icon.SizeConstraint = Enum.SizeConstraint.RelativeYY
+	icon.Size = UDim2.fromScale(0.85, 0.85)
+	icon.LayoutOrder = 1
+	icon.Parent = frame
+	local text = income:Clone()
+	for name in text:GetAttributes() do
+		text:SetAttribute(name, nil)
+	end
+	text.Name = "Value"
+	text.AnchorPoint = Vector2.zero
+	text.Position = UDim2.new()
+	text.Size = UDim2.fromScale(0.55, 1)
+	text.TextScaled = true
+	text.TextXAlignment = Enum.TextXAlignment.Left
+	text.TextColor3 = income:GetAttribute("DefaultColor") or income.TextColor3
+	text.Visible = true
+	text.LayoutOrder = 2
+	text.Parent = frame
+	frame.Parent = gui
+	return frame
+end
+
 local function drawGui(slot: Model, hero: string?, locked: boolean?)
 	-- Clients read this (e.g. the Sell window keeps heroes that stand on a pad).
 	slot:SetAttribute("HeroId", if hero and not locked then hero else "")
@@ -126,7 +176,7 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 			rarityLabel:SetAttribute("DefaultVisible", rarityLabel.Visible)
 		end
 		if def then
-			rarityLabel.Text = def.Rarity
+			HeroConfig.PaintRarity(rarityLabel, def.Rarity)
 			rarityLabel.Visible = true
 		else
 			rarityLabel.Text = rarityLabel:GetAttribute("DefaultText")
@@ -152,6 +202,87 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 			priceLabel.TextColor3 = priceLabel:GetAttribute("DefaultColor")
 			priceLabel.Visible = priceLabel:GetAttribute("DefaultVisible")
 		end
+	end
+
+	local filled = def ~= nil and not locked
+	-- Level (no upgrades yet: the slot's "Level" attribute, default 1).
+	local levelLabel = gui:FindFirstChild("Level") :: TextLabel?
+	if levelLabel then
+		local level = slot:GetAttribute("Level")
+		levelLabel.Text = "Level " .. tostring(if typeof(level) == "number" then level else 1)
+		levelLabel.Visible = filled
+	end
+	-- Power, in place of the (hidden) Income label.
+	if priceLabel then
+		local row = powerRow(gui, priceLabel)
+		row.Visible = filled
+		if filled then
+			priceLabel.Visible = false;
+			(row:FindFirstChild("Value") :: TextLabel).Text = HeroConfig.Abbreviate((def :: any).MinePower)
+		end
+	end
+	-- Above the pad hero's head while one stands there, at the template's height otherwise.
+	if gui:IsA("BillboardGui") and pad:IsA("BasePart") then
+		if gui:GetAttribute("DefaultOffset") == nil then
+			gui:SetAttribute("DefaultOffset", gui.StudsOffset)
+		end
+		if filled then
+			local y = pad.Size.Y / 2 + HeroConfig.Slots.PadHeroHeight + HeroConfig.Slots.InfoGap + gui.Size.Y.Scale / 2
+			gui.StudsOffset = Vector3.new(0, y, 0)
+		else
+			gui.StudsOffset = gui:GetAttribute("DefaultOffset")
+		end
+	end
+end
+
+-- A copy of the placed hero standing idle on top of the pad with its axe (the working copy is out
+-- chopping trees). Rebuilt only when the pad's hero changes.
+local function drawPadHero(slot: Model, hero: string?)
+	local current = slot:FindFirstChild(PAD_HERO_NAME)
+	if current and hero and current:GetAttribute("Hero") == hero then
+		return
+	end
+	if current then
+		current:Destroy()
+	end
+	local pad = slot:FindFirstChild("Pad")
+	if not hero or not pad or not pad:IsA("BasePart") then
+		return
+	end
+	local model, humanoid, root = HeroModels.Clone(hero)
+	if not model or not humanoid or not root then
+		return
+	end
+	model.Name = PAD_HERO_NAME
+	HeroModels.HideBar(model) -- the pad's InfoGui already names it
+	humanoid.EvaluateStateMachine = false
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+
+	-- As tall as a player.
+	local height = model:GetExtentsSize().Y
+	if height > 0 then
+		pcall(model.ScaleTo, model, model:GetScale() * HeroConfig.Slots.PadHeroHeight / height)
+	end
+
+	-- Feet on the pad's top face, facing the way the pad faces.
+	local look = Vector3.new(pad.CFrame.LookVector.X, 0, pad.CFrame.LookVector.Z)
+	look = if look.Magnitude > 0.01 then look.Unit else Vector3.new(0, 0, -1)
+	local top = pad.Position + Vector3.new(0, pad.Size.Y / 2, 0)
+	model:PivotTo(CFrame.lookAt(top, top + look))
+	local box, size = model:GetBoundingBox()
+	model:PivotTo(model:GetPivot() + Vector3.new(0, top.Y - (box.Position.Y - size.Y / 2), 0))
+	root.Anchored = true
+	model.Parent = slot
+
+	HeroModels.GiveAxe(model, humanoid)
+	local anims = HeroModels.Anims(humanoid)
+	local idle = HeroModels.LoadTrack(humanoid, anims.Idle, Enum.AnimationPriority.Core, true)
+	local hold = HeroModels.LoadTrack(humanoid, anims.Hold, Enum.AnimationPriority.Action, true)
+	if idle then
+		idle:Play()
+	end
+	if hold then
+		hold:Play()
 	end
 end
 
@@ -187,6 +318,7 @@ local function refresh(state: PlotState)
 				HeroWorkerService.Despawn(state.plot, i)
 			end
 			drawGui(slot, nil, true)
+			drawPadHero(slot, nil)
 			local price = HeroConfig.Slots.UnlockPrices[i]
 			if price then
 				prompt.ActionText = ("Unlock Slot For %s Cash!"):format(HeroConfig.Abbreviate(price))
@@ -199,6 +331,7 @@ local function refresh(state: PlotState)
 		end
 		local hero = state.placed[i]
 		drawGui(slot, hero)
+		drawPadHero(slot, hero)
 		if hero then
 			prompt.ActionText = "Take Back " .. hero
 			prompt.ObjectText = hero
@@ -207,8 +340,13 @@ local function refresh(state: PlotState)
 			prompt.ActionText = "Place " .. (choice :: string)
 			prompt.ObjectText = EMPTY_TEXT
 			prompt.Enabled = true
+		elseif choice and HeroConfig.Get(choice) then
+			-- Holding a hero whose copies are all on pads already.
+			prompt.ActionText = "No " .. choice .. " left to place"
+			prompt.ObjectText = EMPTY_TEXT
+			prompt.Enabled = true
 		else
-			prompt.ActionText = "Pick a hero (1-9)"
+			prompt.ActionText = "Pick a hero (1-0)"
 			prompt.ObjectText = EMPTY_TEXT
 			prompt.Enabled = true
 		end
@@ -272,6 +410,12 @@ local function onPrompt(state: PlotState, index: number, player: Player)
 			return
 		end
 		place(state, index, hero :: string)
+		-- The last copy went onto the pad: it leaves the player's hands.
+		if not canPlace(state, hero) then
+			selected[player] = nil
+			HeldHeroService.Set(player, nil)
+			remote:FireClient(player, "Deselect", hero)
+		end
 	end
 	refresh(state)
 end
@@ -354,6 +498,7 @@ function HeroSlotService.ResetPlot(plot: Model)
 		local locked = i > HeroConfig.Slots.StartUnlocked
 		drawPad(slot, locked)
 		drawGui(slot, nil, locked)
+		drawPadHero(slot, nil)
 		local prompt = slot.Pad:FindFirstChild(PROMPT_NAME)
 		if prompt then
 			prompt:Destroy()
@@ -395,6 +540,7 @@ function HeroSlotService.RestorePlaced(player: Player, placed: { [number]: strin
 end
 
 function HeroSlotService.Start()
+	HeldHeroService.Start()
 	-- Free plots show the locked pads too, not only claimed ones.
 	local plots = workspace:FindFirstChild("Plots")
 	if plots then
@@ -408,11 +554,12 @@ function HeroSlotService.Start()
 		if action ~= "Select" then
 			return
 		end
-		if typeof(hero) == "string" and TreeConfig.GetHero(hero) then
+		if typeof(hero) == "string" and TreeConfig.GetHero(hero) and owned(player, hero) > 0 then
 			selected[player] = hero
 		else
 			selected[player] = nil
 		end
+		HeldHeroService.Set(player, selected[player])
 		local state = stateOf(player)
 		if state then
 			refresh(state)

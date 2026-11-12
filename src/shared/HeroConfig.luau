@@ -48,15 +48,49 @@ HeroConfig.FallbackTemplate = "UzumakiKid"
 -- Heroes placed on a plot's HeroSlots walk out of the HeroGate and chop trees (HeroWorkerService).
 HeroConfig.Worker = {
 	WalkSpeed = 12, -- studs/s
+	ModelScale = 1.2, -- heroes chopping trees are this much bigger than the template (1 = template size)
 	AttackRange = 2.5, -- studs from the trunk's center at which a hero stops and swings
+	MoundGap = 0.4, -- studs between a tree's dirt mound and a hero chopping it (heroes stand outside it)
 	SwingCooldown = 0.15, -- seconds between swings (on top of the swing animation)
 	-- Swing animation. Upload ServerStorage.RBX_ANIMSAVES.mymodel.ChopHorizontal and put its
 	-- "rbxassetid://..." here. While empty, that KeyframeSequence is played directly (works in
 	-- Studio playtests only). The swing's damage lands on its "Hit" marker.
 	ChopAnimation = "",
 	ChopKeyframes = "ChopHorizontal",
+	-- Run animation heroes use instead of the default walk. Same as the swing: upload
+	-- ServerStorage.RBX_ANIMSAVES.mymodel.HeroRun and put its "rbxassetid://..." here; while empty
+	-- the KeyframeSequence is played directly (Studio playtests only, the default walk is used live).
+	RunAnimation = "",
+	RunKeyframes = "HeroRun",
+	RunAnimSpeed = 16, -- studs/s the run animation is made for (its playback speed follows WalkSpeed)
 	RaritySpeed = { Common = 1, Uncommon = 1.05, Rare = 1.1, Epic = 1.2, Legendary = 1.35, Mythic = 1.5 } :: { [string]: number },
 }
+
+-- Gradient on the rarity text above heroes (HeroBar) and above hero pads (InfoGui.Rarity), left to right.
+local function gradient(a: Color3, b: Color3): ColorSequence
+	return ColorSequence.new(a, b)
+end
+HeroConfig.RarityGradients = {
+	Common = gradient(Color3.fromRGB(190, 190, 190), Color3.fromRGB(255, 255, 255)),
+	Uncommon = gradient(Color3.fromRGB(70, 220, 90), Color3.fromRGB(190, 255, 140)),
+	Rare = gradient(Color3.fromRGB(50, 130, 255), Color3.fromRGB(120, 225, 255)),
+	Epic = gradient(Color3.fromRGB(160, 70, 255), Color3.fromRGB(255, 120, 230)),
+	Legendary = gradient(Color3.fromRGB(255, 160, 20), Color3.fromRGB(255, 240, 110)),
+	Mythic = gradient(Color3.fromRGB(255, 120, 200), Color3.fromRGB(255, 220, 90)),
+} :: { [string]: ColorSequence }
+
+-- Sets a rarity label's text and gradient (its UIGradient child, made if missing).
+function HeroConfig.PaintRarity(label: TextLabel, rarity: string)
+	label.Text = rarity
+	label.TextColor3 = Color3.new(1, 1, 1) -- the gradient multiplies this
+	local g = label:FindFirstChildOfClass("UIGradient")
+	if not g then
+		g = Instance.new("UIGradient")
+		g.Parent = label
+	end
+	g.Color = HeroConfig.RarityGradients[rarity] or ColorSequence.new(Color3.new(1, 1, 1))
+	g.Rotation = 0
+end
 
 -- Hero pads (plot.HeroSlots.Slot1..Slot9). Without upgrades only the first StartUnlocked pads work.
 -- The rest are bought in order (hold E at the next locked pad) for UnlockPrices[slot] Money; the
@@ -64,6 +98,9 @@ HeroConfig.Worker = {
 HeroConfig.Slots = {
 	StartUnlocked = 4,
 	UnlockPrices = { [5] = 5000, [6] = 25000, [7] = 100000, [8] = 500000, [9] = 2500000 } :: { [number]: number },
+	PowerIcon = "rbxassetid://4814616883", -- next to the hero's power above a filled pad
+	InfoGap = 0.6, -- studs between the top of the pad hero's head and its info (name / level / rarity / power)
+	PadHeroHeight = 6.4, -- studs, hair included: height of the hero standing on a pad (a player is ~5.6)
 	HoldDuration = 1, -- seconds E must be held on a pad (place / take back / unlock)
 	LockedText = "Locked",
 	LockedPadColor = Color3.fromRGB(105, 105, 110),

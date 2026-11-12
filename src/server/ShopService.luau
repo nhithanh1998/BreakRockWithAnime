@@ -8,7 +8,11 @@
 --   ("BuyAxe", model)              buys + equips the axe (near the Lumber Axe shop).
 --   ("EquipAxe", model)            equips an owned axe (near the Lumber Axe shop).
 -- Owned axes: player.Axes.<Model> (BoolValue). Equipped: player "EquippedAxe" attribute; it also sets
--- the "ClickDamage" attribute that TreeHitService uses. Nothing is saved yet.
+-- the "ClickDamage" attribute that TreeHitService uses.
+-- Stock: ReplicatedStorage.AxeStock.<Model> (IntValue, shared by the whole server), refilled every
+-- ShopConfig.RestockInterval seconds; the folder's "NextRestock" attribute is the server time of the
+-- next refill. An axe can only be bought when it is in stock and the player's "UnlockedZones" is at
+-- least its Zone.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,6 +26,7 @@ local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
 local PlotService = require(script.Parent:WaitForChild("PlotService"))
 
 local HERO_PREFIX = "Anime:"
+local STOCK_FOLDER = "AxeStock"
 local PROMPT_NAME = "ShopPrompt"
 
 type Result = { ok: boolean, message: string?, earned: number? }
@@ -120,6 +125,47 @@ local function sell(player: Player, stacks: any): Result
 	return { ok = true, earned = earned }
 end
 
+-- Stock --------------------------------------------------------------------------------------------
+
+local stockFolder: Folder = (function()
+	local f = ReplicatedStorage:FindFirstChild(STOCK_FOLDER)
+	if not f then
+		f = Instance.new("Folder")
+		f.Name = STOCK_FOLDER
+		f.Parent = ReplicatedStorage
+	end
+	return f :: Folder
+end)()
+
+local function stockValue(model: string): IntValue
+	local v = stockFolder:FindFirstChild(model) :: IntValue?
+	if not v then
+		local newValue = Instance.new("IntValue")
+		newValue.Name = model
+		newValue.Parent = stockFolder
+		v = newValue
+	end
+	return v :: IntValue
+end
+
+local function restock()
+	for _, def in ShopConfig.Axes do
+		local range = def.Stock
+		stockValue(def.Model).Value = math.random(range[1], range[2])
+	end
+end
+
+-- Restocks line up with the clock (every RestockInterval seconds since the epoch).
+local function nextRestockTime(now: number): number
+	local interval = ShopConfig.RestockInterval
+	return (math.floor(now / interval) + 1) * interval
+end
+
+local function unlockedZones(player: Player): number
+	local n = player:GetAttribute("UnlockedZones")
+	return if typeof(n) == "number" then n else 1
+end
+
 -- Axes ---------------------------------------------------------------------------------------------
 
 local function owns(player: Player, model: string): boolean
@@ -156,9 +202,17 @@ local function buyAxe(player: Player, model: any): Result
 		equip(player, def.Model)
 		return { ok = true }
 	end
+	if unlockedZones(player) < def.Zone then
+		return { ok = false, message = ("Unlock Zone %d first!"):format(def.Zone) }
+	end
+	local stock = stockValue(def.Model)
+	if stock.Value <= 0 then
+		return { ok = false, message = "Out of stock! Wait for the restock" }
+	end
 	if not ChestService.SpendMoney(player, def.Price) then
 		return { ok = false, message = ("Need %s more Cash!"):format(HeroConfig.Abbreviate(math.ceil(def.Price - ChestService.GetMoney(player)))) }
 	end
+	stock.Value -= 1
 	giveAxe(player, def.Model)
 	equip(player, def.Model)
 	return { ok = true }
@@ -236,6 +290,16 @@ function ShopService.Start()
 		remote = newRemote
 	end
 	(remote :: RemoteFunction).OnServerInvoke = onAction
+
+	restock()
+	task.spawn(function()
+		while true do
+			local at = nextRestockTime(workspace:GetServerTimeNow())
+			stockFolder:SetAttribute("NextRestock", at)
+			task.wait(math.max(0.1, at - workspace:GetServerTimeNow()))
+			restock()
+		end
+	end)
 
 	local folder = shopsFolder()
 	if folder then

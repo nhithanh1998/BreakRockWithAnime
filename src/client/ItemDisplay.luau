@@ -2,7 +2,8 @@
 --   ItemDisplay.Info(stack)          -> name / rarity / hero? / value / visual
 --   ItemDisplay.Abbreviate(n)        -> "38.1M"
 --   ItemDisplay.Commas(n)            -> "1,234"
---   ItemDisplay.FillViewport(view, visual) -> draws the material's studded block
+--   ItemDisplay.FillViewport(view, visual) -> draws the material (block / ball / log / gem by
+--                                             Visual.Shape), framed to fill most of the view
 --   ItemDisplay.FillHeroViewport(view, heroName) -> head-and-shoulders render of the hero's model
 --                                             (ReplicatedStorage.Heros); false if it has no model
 --   ItemDisplay.SetPicture(slot, info)     -> shows the hero model / hero image / ★ / material block on
@@ -12,6 +13,8 @@
 --                                             missing) and "Image" (ImageLabel, HeroConfig Image)
 --
 -- Hero picture order: model -> HeroConfig Image -> ★.
+-- Material picture order: TreeConfig Materials[x].Image (optional rbxassetid) -> 3D render of Visual.
+-- Materials use the full-size "HeroView" when the slot has one, so the icon fills the card.
 --
 -- A "stack" is "<Material key>" or "Anime:<Hero name>", the same names ChestService uses.
 
@@ -68,6 +71,7 @@ function ItemDisplay.Info(stack: string): ItemInfo
 		isHero = false,
 		value = if def then def.Value else 0,
 		visual = def and def.Visual,
+		image = def and (def :: any).Image,
 	}
 end
 
@@ -75,22 +79,62 @@ function ItemDisplay.SlotColor(rarity: string): Color3
 	return TreeConfig.RaritySlotColors[rarity] or Color3.fromRGB(120, 120, 120)
 end
 
--- Material picture: the same studded block that drops from trees.
-function ItemDisplay.FillViewport(view: ViewportFrame, visual: TreeConfig.Visual)
-	view:ClearAllChildren()
-	local part = Instance.new("Part")
-	part.Anchored = true
-	part.Size = Vector3.one * 2
-	part.Color = visual.Color
-	part.Material = visual.Material
+-- Material picture: a 3D icon of the drop, shaped by Visual.Shape, filling ~ICON_FILL of the view.
+local ICON_FOV = 30
+local ICON_FILL = 0.8 -- share of the view's height the bounding sphere takes up (the item itself is a bit smaller)
+
+local function studs(part: BasePart)
 	for _, face in { "Top", "Bottom", "Front", "Back", "Left", "Right" } do
 		(part :: any)[face .. "Surface"] = Enum.SurfaceType.Studs
 	end
-	part.CFrame = CFrame.Angles(0, math.rad(35), 0) * CFrame.Angles(math.rad(-20), 0, 0)
+end
+
+local function iconPart(visual: TreeConfig.Visual): BasePart
+	local part = Instance.new("Part")
+	part.Anchored = true
+	part.Color = visual.Color
+	part.Material = visual.Material
+	local shape = visual.Shape
+	if shape == "Ball" then
+		part.Shape = Enum.PartType.Ball
+		part.Size = Vector3.one * 2
+		part.CFrame = CFrame.Angles(0, math.rad(30), 0)
+	elseif shape == "Cylinder" then
+		-- A short log lying on its side.
+		part.Shape = Enum.PartType.Cylinder
+		part.Size = Vector3.new(2.4, 1.5, 1.5)
+		part.CFrame = CFrame.Angles(0, math.rad(35), 0) * CFrame.Angles(0, 0, math.rad(12))
+	elseif shape == "Gem" then
+		-- A diamond: a cube stood on its corner, shiny.
+		part.Size = Vector3.one * 1.6
+		part.Material = Enum.Material.SmoothPlastic
+		part.Reflectance = 0.25
+		part.CFrame = CFrame.Angles(0, math.rad(45), 0) * CFrame.Angles(math.rad(35), 0, math.rad(45))
+		local light = Instance.new("PointLight")
+		light.Color = visual.Color
+		light.Brightness = 2
+		light.Range = 6
+		light.Parent = part
+	else
+		part.Size = Vector3.one * 2
+		studs(part)
+		part.CFrame = CFrame.Angles(0, math.rad(35), 0) * CFrame.Angles(math.rad(-20), 0, 0)
+	end
+	return part
+end
+
+function ItemDisplay.FillViewport(view: ViewportFrame, visual: TreeConfig.Visual)
+	view:ClearAllChildren()
+	local part = iconPart(visual)
 	part.Parent = view
+	-- Frame the part's bounding sphere so it fills ICON_FILL of the view's height.
+	local radius = part.Size.Magnitude / 2
+	local distance = radius / math.tan(math.rad(ICON_FOV / 2)) / ICON_FILL
 	local camera = Instance.new("Camera")
-	camera.FieldOfView = 40
-	camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.6, 5.2), Vector3.zero)
+	camera.FieldOfView = ICON_FOV
+	local dir = Vector3.new(0, 0.3, 1).Unit
+	-- Aim a little above the part so it sits just below the card's middle, clear of the name.
+	camera.CFrame = CFrame.lookAt(dir * distance + Vector3.new(0, 0.25, 0), Vector3.new(0, 0.25, 0))
 	camera.Parent = view
 	view.CurrentCamera = camera
 end
@@ -198,9 +242,13 @@ function ItemDisplay.SetPicture(slot: Instance, info: ItemInfo)
 		elseif icon then
 			icon.Visible = true
 		end
-	elseif info.visual and view then
-		ItemDisplay.FillViewport(view, info.visual)
-		view.Visible = true
+	elseif info.image and image then
+		image.Image = info.image
+		image.Visible = true
+	elseif info.visual and heroView then
+		-- The full-size view (when the slot has one) so the icon is as big as a hero portrait.
+		ItemDisplay.FillViewport(heroView, info.visual)
+		heroView.Visible = true
 	end
 end
 

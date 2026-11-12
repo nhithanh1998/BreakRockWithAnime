@@ -2,8 +2,9 @@
 -- "Added!" / "New!" frames that pop up above it after taking items out of the chest.
 --
 -- Hotbar: the player's heroes (player.Heroes, one IntValue per hero = how many they own), highest
--- MinePower (HeroConfig) first, in 9 numbered slots. Keys 1-9 or a click select a slot; the selection is
--- sent to the server (Remotes.HeroSlot "Select") so E at an empty hero pad places that hero. Hovering a
+-- MinePower (HeroConfig) first, in 10 numbered slots. Keys 1-9 and 0 or a click select a slot; the selection is
+-- sent to the server (Remotes.HeroSlot "Select") so E at an empty hero pad places that hero, and the
+-- server shows the selected hero held in the player's hands (HeroSlotService). Hovering a
 -- slot shows a tooltip.
 --
 -- Popups: ChestService fires Remotes.ItemsAdded({ {Stack, Amount, New} }) after Take All. Up to
@@ -34,7 +35,7 @@ local slotTemplate = templates:WaitForChild("HeroSlot") :: TextButton
 local popupTemplate = templates:WaitForChild("Popup") :: Frame
 local moreTemplate = templates:WaitForChild("More") :: Frame
 
-local SLOT_COUNT = 9
+local SLOT_COUNT = 10
 local MAX_POPUPS = 7
 local POPUP_TIME = 6 -- seconds the popups stay before hiding
 local POPUP_STAGGER = 0.05
@@ -55,6 +56,17 @@ local KEYS = {
 	[Enum.KeyCode.Seven] = 7,
 	[Enum.KeyCode.Eight] = 8,
 	[Enum.KeyCode.Nine] = 9,
+	[Enum.KeyCode.Zero] = 10,
+	[Enum.KeyCode.KeypadOne] = 1,
+	[Enum.KeyCode.KeypadTwo] = 2,
+	[Enum.KeyCode.KeypadThree] = 3,
+	[Enum.KeyCode.KeypadFour] = 4,
+	[Enum.KeyCode.KeypadFive] = 5,
+	[Enum.KeyCode.KeypadSix] = 6,
+	[Enum.KeyCode.KeypadSeven] = 7,
+	[Enum.KeyCode.KeypadEight] = 8,
+	[Enum.KeyCode.KeypadNine] = 9,
+	[Enum.KeyCode.KeypadZero] = 10,
 }
 
 -- Our bar replaces Roblox's default tool backpack (the game has no tools).
@@ -104,6 +116,31 @@ local function ownedCount(hero: string): number
 	local folder = heroesFolder()
 	local v = folder and folder:FindFirstChild(hero) :: IntValue?
 	return if v then v.Value else 0
+end
+
+-- How many of each hero stand on my plot's pads (HeroSlotService writes each slot's "HeroId").
+local function placedCounts(): { [string]: number }
+	local counts = {}
+	local plots = workspace:FindFirstChild("Plots")
+	for _, plot in if plots then plots:GetChildren() else {} do
+		if plot:GetAttribute("OwnerUserId") == player.UserId then
+			local pads = plot:FindFirstChild("HeroSlots")
+			for _, slot in if pads then pads:GetChildren() else {} do
+				local hero = slot:GetAttribute("HeroId")
+				if typeof(hero) == "string" and hero ~= "" then
+					counts[hero] = (counts[hero] or 0) + 1
+				end
+			end
+		end
+	end
+	return counts
+end
+
+local placed: { [string]: number } = {} -- refreshed on every render
+
+-- Copies still in the inventory (owned minus the ones on pads): what the bar shows.
+local function availableCount(hero: string): number
+	return math.max(0, ownedCount(hero) - (placed[hero] or 0))
 end
 
 -- Tooltip ----------------------------------------------------------------------------------------
@@ -181,7 +218,7 @@ local function drawSlot(slot: Slot)
 	valueLabel.Text = abbreviate(info.value)
 	valueLabel.TextColor3 = ItemDisplay.HERO_VALUE_COLOR
 	countLabel.Visible = true
-	countLabel.Text = "x" .. commas(ownedCount(hero))
+	countLabel.Text = "x" .. commas(availableCount(hero))
 	ItemDisplay.SetPicture(button, info)
 end
 
@@ -190,7 +227,7 @@ local function sortedHeroes(): { string }
 	local folder = heroesFolder()
 	if folder then
 		for _, v in folder:GetChildren() do
-			if v:IsA("IntValue") and v.Value > 0 then
+			if v:IsA("IntValue") and availableCount(v.Name) > 0 then
 				table.insert(list, v.Name)
 			end
 		end
@@ -215,8 +252,9 @@ end
 
 local function render()
 	renderQueued = false
+	placed = placedCounts()
 	local heroes = sortedHeroes()
-	if selectedHero and ownedCount(selectedHero) <= 0 then
+	if selectedHero and availableCount(selectedHero) <= 0 then
 		selectedHero = nil
 	end
 	sendSelection()
@@ -255,7 +293,7 @@ for i = 1, SLOT_COUNT do
 	local button = slotTemplate:Clone()
 	button.Name = "Slot" .. i
 	button.LayoutOrder = i;
-	(button:FindFirstChild("Key") :: TextLabel).Text = tostring(i)
+	(button:FindFirstChild("Key") :: TextLabel).Text = tostring(i % 10) -- slot 10 is key 0
 	local slot: Slot = { button = button, hero = nil }
 	slots[i] = slot
 	button.MouseEnter:Connect(function()
@@ -274,6 +312,15 @@ end
 backpackButton.Activated:Connect(function()
 	bump(backpackButton, 0.88)
 	-- TODO: open the full hero inventory window here.
+end)
+
+-- The server put the last copy of the held hero on a pad: empty the hands.
+HeroSlotRemote.OnClientEvent:Connect(function(action, hero)
+	if action == "Deselect" and selectedHero == hero then
+		selectedHero = nil
+		sentHero = nil -- the server already cleared it
+		render()
+	end
 end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -320,6 +367,23 @@ local existing = heroesFolder()
 if existing then
 	watchHeroes(existing)
 end
+
+-- Heroes put on / taken off my pads change what is left in the bar.
+local function watchPlotPart(d: Instance)
+	if d:IsA("Model") and d.Parent and d.Parent.Name == "HeroSlots" then
+		d:GetAttributeChangedSignal("HeroId"):Connect(queueRender)
+	elseif d:IsA("Model") and d.Parent and d.Parent.Name == "Plots" then
+		d:GetAttributeChangedSignal("OwnerUserId"):Connect(queueRender)
+	end
+end
+task.spawn(function()
+	local plots = workspace:WaitForChild("Plots")
+	for _, d in plots:GetDescendants() do
+		watchPlotPart(d)
+	end
+	plots.DescendantAdded:Connect(watchPlotPart)
+	queueRender()
+end)
 render()
 
 -- "Added!" / "New!" popups ------------------------------------------------------------------------

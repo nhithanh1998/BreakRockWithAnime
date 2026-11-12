@@ -4,7 +4,9 @@
 --   card to tick / untick it. "Select All" only ticks materials; heroes are only sold when you tick
 --   them yourself, and heroes standing on a pad are kept. "Sell for $X" sells every ticked stack.
 -- Lumber Axe ("Lumber Axe!"): a card per axe (ShopConfig.Axes) with its model, damage and price.
---   Click to buy (then it is equipped) or to equip one you own.
+--   Click to buy (then it is equipped) or to equip one you own. Each axe shows its server-wide stock
+--   (ReplicatedStorage.AxeStock, "Sold Out" at 0) and is locked until the player has unlocked its
+--   Zone; the subtitle counts down to the next restock (AxeStock "NextRestock").
 -- The window closes with X or when you walk ShopConfig.CloseDistance away from the shop.
 
 local Players = game:GetService("Players")
@@ -117,6 +119,7 @@ local gui = new("ScreenGui", {
 
 type Window = {
 	root: Frame,
+	subtitle: TextLabel,
 	scale: UIScale,
 	grid: ScrollingFrame,
 	leftButton: TextButton,
@@ -155,7 +158,7 @@ local function makeWindow(name: string, title: string, gradient: ColorSequence, 
 	new("UIGradient", { Color = gradient, Rotation = 90, Parent = titleLabel })
 
 	text({ Name = "Header", Text = header, Position = UDim2.fromScale(0.035, 0.03), Size = UDim2.fromScale(0.2, 0.075), TextXAlignment = Enum.TextXAlignment.Left, Parent = root })
-	text({
+	local subtitleLabel = text({
 		Name = "Subtitle",
 		Text = subtitle,
 		AnchorPoint = Vector2.new(0.5, 0),
@@ -182,12 +185,21 @@ local function makeWindow(name: string, title: string, gradient: ColorSequence, 
 	}, {
 		new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 12), PaddingBottom = UDim.new(0, 4) }),
 	})
-	new("UIGridLayout", {
-		CellSize = UDim2.new(0.185, 0, 0, 10),
-		CellPadding = UDim2.new(0.0175, 0, 0, 8),
+	-- 5 square cards per row, sized in pixels from the grid's width (scale cell sizes collapse inside
+	-- an auto-sized ScrollingFrame).
+	local gridLayout = new("UIGridLayout", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = grid,
-	}, { new("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+	})
+	local function sizeCells()
+		local width = grid.AbsoluteSize.X - 16 - grid.ScrollBarThickness
+		local gap = math.max(4, math.floor(width * 0.02))
+		local cell = math.max(20, math.floor((width - gap * 4) / 5))
+		gridLayout.CellPadding = UDim2.fromOffset(gap, gap)
+		gridLayout.CellSize = UDim2.fromOffset(cell, cell)
+	end
+	grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeCells)
+	sizeCells()
 
 	local leftButton = button({ Text = "", Color = RED_BUTTON, Position = UDim2.fromScale(0.035, 0.85), Size = UDim2.fromScale(0.31, 0.105), Parent = root })
 	local rightButton = button({ Text = "", Color = GREEN_BUTTON, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.965, 0.85), Size = UDim2.fromScale(0.42, 0.105), Parent = root })
@@ -205,7 +217,7 @@ local function makeWindow(name: string, title: string, gradient: ColorSequence, 
 	local toastStroke = toast:FindFirstChildOfClass("UIStroke") :: UIStroke
 	toastStroke.Transparency = 1
 
-	local window: Window = { root = root, scale = scale, grid = grid, leftButton = leftButton, rightButton = rightButton, footerText = footerText, toast = toast }
+	local window: Window = { root = root, subtitle = subtitleLabel, scale = scale, grid = grid, leftButton = leftButton, rightButton = rightButton, footerText = footerText, toast = toast }
 	close.Activated:Connect(function()
 		root.Visible = false
 	end)
@@ -391,7 +403,7 @@ local function renderSell()
 		local sellable = e.amount > 0
 		cardText(card, info.name, if sellable then "$" .. abbreviate(e.total) else "On Pad", if sellable then VALUE_GREEN else Color3.fromRGB(255, 200, 80), "x" .. ItemDisplay.Commas(e.amount))
 		new("Frame", { Name = "Tint", BackgroundColor3 = CHECK_COLOR, BackgroundTransparency = 0.75, Size = UDim2.fromScale(1, 1), ZIndex = 2, Visible = false, Parent = card }, { corner(4) })
-		local check = text({ Name = "Check", Text = "✓", TextColor3 = CHECK_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1.02, -0.04), Size = UDim2.fromScale(0.42, 0.42), ZIndex = 4, Visible = false, StrokeThickness = 2.5, Parent = card })
+		local check = text({ Name = "Check", Text = "✓", TextColor3 = CHECK_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1.04, -0.08), Size = UDim2.fromScale(0.3, 0.3), ZIndex = 4, Visible = false, StrokeThickness = 2.5, Parent = card })
 		check.Font = Enum.Font.GothamBlack
 		if not sellable then
 			selected[e.stack] = nil
@@ -473,7 +485,7 @@ local function axeViewport(view: ViewportFrame, model: string)
 	m:PivotTo(CFrame.Angles(0, 0, math.rad(-28)) * bbox:ToObjectSpace(m:GetPivot()))
 	m.Parent = view
 	local fov = 40
-	local reach = math.max(size.X, size.Y) * 0.62
+	local reach = math.max(size.X, size.Y) * 0.4 -- smaller = bigger axe in the card
 	local camera = new("Camera", { FieldOfView = fov, Parent = view })
 	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0.2, reach / math.tan(math.rad(fov / 2))), Vector3.new(0, 0.2, 0))
 	view.CurrentCamera = camera
@@ -482,6 +494,36 @@ end
 
 local function equipped(): string?
 	return player:GetAttribute("EquippedAxe")
+end
+
+local AXE_SUBTITLE = "~ Better axes chop harder ~"
+local SOLD_OUT_COLOR = Color3.fromRGB(255, 90, 80)
+local LOCKED_COLOR = Color3.fromRGB(190, 190, 200)
+local STOCK_COLOR = Color3.fromRGB(255, 220, 90)
+
+local function stockFolder(): Instance?
+	return ReplicatedStorage:FindFirstChild("AxeStock")
+end
+
+local function stockOf(model: string): number
+	local f = stockFolder()
+	local v = f and f:FindFirstChild(model)
+	return if v and v:IsA("IntValue") then v.Value else 0
+end
+
+local function unlockedZones(): number
+	local n = player:GetAttribute("UnlockedZones")
+	return if typeof(n) == "number" then n else 1
+end
+
+local function restockText(): string
+	local f = stockFolder()
+	local at = f and f:GetAttribute("NextRestock")
+	if typeof(at) ~= "number" then
+		return AXE_SUBTITLE
+	end
+	local left = math.max(0, math.ceil(at - workspace:GetServerTimeNow()))
+	return ("Restock in %d:%02d"):format(left // 60, left % 60)
 end
 
 local function renderAxes()
@@ -494,18 +536,59 @@ local function renderAxes()
 	for i, def in ShopConfig.Axes do
 		local card = makeCard(axeWindow.grid, i, def.Rarity)
 		local view = card:FindFirstChild("View") :: ViewportFrame
-		view.Position = UDim2.fromScale(0, 0.12)
-		view.Size = UDim2.fromScale(1, 0.62)
+		view.Position = UDim2.fromScale(0, 0.14)
+		view.Size = UDim2.fromScale(1, 0.56)
 		axeViewport(view, def.Model)
 		local have = owns(def.Model)
-		local state = if def.Model == current_ then "Equipped" elseif have then "Equip" else "$" .. abbreviate(def.Price)
-		local stateColor = if def.Model == current_ then Color3.fromRGB(255, 255, 255) elseif have then Color3.fromRGB(120, 200, 255) else VALUE_GREEN
+		local locked = not have and unlockedZones() < def.Zone
+		local stock = stockOf(def.Model)
+		local soldOut = not have and not locked and stock <= 0
+		local state, stateColor
+		if def.Model == current_ then
+			state, stateColor = "Equipped", Color3.fromRGB(255, 255, 255)
+		elseif have then
+			state, stateColor = "Equip", Color3.fromRGB(120, 200, 255)
+		elseif locked then
+			state, stateColor = ("Zone %d"):format(def.Zone), LOCKED_COLOR
+		elseif soldOut then
+			state, stateColor = "Sold Out", SOLD_OUT_COLOR
+		else
+			state, stateColor = "$" .. abbreviate(def.Price), VALUE_GREEN
+		end
 		cardText(card, def.Name, state, stateColor, ("%s Damage"):format(abbreviate(def.Damage)))
 		if def.Model == current_ then
 			new("Frame", { Name = "Tint", BackgroundColor3 = CHECK_COLOR, BackgroundTransparency = 0.75, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(4) })
 		end
+		if not have and not locked then
+			-- Stock badge (top-left corner).
+			text({
+				Name = "StockLabel",
+				Text = if soldOut then "x0" else "x" .. stock,
+				TextColor3 = if soldOut then SOLD_OUT_COLOR else STOCK_COLOR,
+				Position = UDim2.fromScale(0.05, 0.25),
+				Size = UDim2.fromScale(0.42, 0.2),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 3,
+				Parent = card,
+			})
+		end
+		if locked or soldOut then
+			card.BackgroundTransparency = 0.35
+			view.ImageTransparency = 0.45
+			new("Frame", { Name = "Shade", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.55, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(4) })
+		end
+		if locked then
+			text({ Name = "Lock", Text = "🔒", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromScale(0.4, 0.3), ZIndex = 3, Parent = card })
+		end
 		card.Activated:Connect(function()
 			if busy or def.Model == equipped() then
+				return
+			end
+			if locked then
+				showToast(axeWindow, ("Unlock Zone %d to buy this axe!"):format(def.Zone), SOLD_OUT_COLOR)
+				return
+			elseif soldOut and not owns(def.Model) then
+				showToast(axeWindow, "Sold out! Wait for the restock", SOLD_OUT_COLOR)
 				return
 			end
 			busy = true
@@ -595,6 +678,8 @@ local function open(kind: string, prompt: ProximityPrompt?)
 		renderAxes()
 		table.insert(watchers, player:GetAttributeChangedSignal("EquippedAxe"):Connect(renderAxes))
 		watch(folder("Axes"), renderAxes)
+		watch(stockFolder(), renderAxes)
+		table.insert(watchers, player:GetAttributeChangedSignal("UnlockedZones"):Connect(renderAxes))
 		local stats = player:FindFirstChild("leaderstats")
 		local m = stats and stats:FindFirstChild("Money")
 		if m then
@@ -623,7 +708,7 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 	end
 end)
 
--- Walked away: close.
+-- Walked away: close. Also ticks the restock countdown.
 local acc = 0
 RunService.Heartbeat:Connect(function(dt)
 	acc += dt
@@ -631,6 +716,10 @@ RunService.Heartbeat:Connect(function(dt)
 		return
 	end
 	acc = 0
+	if current.kind == "LumberAxe" then
+		axeWindow.subtitle.Text = restockText()
+		axeWindow.subtitle.TextColor3 = STOCK_COLOR
+	end
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local anchor = current.anchor
 	if not root or (anchor and (root.Position - anchor.Position).Magnitude > ShopConfig.CloseDistance) then

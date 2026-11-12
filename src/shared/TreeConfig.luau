@@ -20,6 +20,7 @@ export type MaterialDef = {
 	Rarity: Rarity,
 	Value: number, -- money per item when sold
 	Visual: Visual,
+	Image: string?, -- optional UI icon (rbxassetid://...); without it the UI draws a 3D icon from Visual
 }
 
 export type DropEntry = {
@@ -65,10 +66,10 @@ TreeConfig.HoverOutlineColor = Color3.fromRGB(255, 255, 255)
 TreeConfig.TargetRing = {
 	Color = Color3.fromRGB(255, 45, 45),
 	Transparency = 0.05,
-	SpinSpeed = 0.9, -- radians per second
-	DashLength = 2.4, -- studs
-	GapLength = 1.5, -- studs between dashes
-	DashWidth = 0.85, -- studs (radial thickness)
+	SpinSpeed = 2.4, -- radians per second
+	DashLength = 1.2, -- studs
+	GapLength = 0.8, -- studs between dashes
+	DashWidth = 0.4, -- studs (radial thickness)
 	RadiusScale = 1, -- ring radius = half the dirt mound's widest side * this + Padding
 	Padding = 0.6,
 	MinRadius = 2,
