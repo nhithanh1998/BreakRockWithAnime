@@ -1,7 +1,9 @@
 -- TreeHitService: turns player clicks into tree damage and hands out drops when a tree falls.
 --
 -- Client -> server  Remotes.HitTree(tree, hitPosition)
--- Server -> all     Remotes.TreeHit(tree, attacker, damage, hitPosition, felled)   (shake / leaves / numbers)
+-- Server -> all     Remotes.TreeHit(tree, attacker, damage, hitPosition, felled, fromPosition?)
+--                   (shake / leaves / numbers; attacker is nil and fromPosition is the hero for hero hits)
+-- Heroes working a HeroSlot hit through TreeHitService.HeroHit; their drops go to the slot's owner.
 -- Server -> owner   Remotes.TreeDrops(origin, groundY, drops, chest)                (drops fly into the chest)
 --
 -- Drops go into the plot's chest the moment the tree falls (ChestService "Contents"); the player
@@ -120,26 +122,16 @@ local function canHit(player: Player, tree: any): boolean
 	return true
 end
 
-local function onHit(player: Player, tree: any, hitPos: any)
-	local now = os.clock()
-	if now - (lastHit[player] or 0) < TreeConfig.ClickCooldown * 0.8 then
-		return
-	end
-	if not canHit(player, tree) then
-		return
-	end
-	lastHit[player] = now
-
-	local model = tree :: Model
+-- Damages the tree, tells every client, and on a fell hands the drops to `player`.
+local function applyHit(player: Player, model: Model, damage: number, hitPos: any, attacker: Player?, fromPos: Vector3?): boolean
 	local cf, size = model:GetBoundingBox()
 	if typeof(hitPos) ~= "Vector3" or (hitPos - cf.Position).Magnitude > size.Magnitude then
 		hitPos = cf.Position
 	end
 
-	local damage = player:GetAttribute("ClickDamage") or TreeConfig.ClickDamage
 	local felled = TreeService.Damage(model, damage)
 
-	TreeHit:FireAllClients(model, player, damage, hitPos, felled)
+	TreeHit:FireAllClients(model, attacker, damage, hitPos, felled, fromPos)
 
 	if felled then
 		local plot = plotOf(model)
@@ -149,7 +141,7 @@ local function onHit(player: Player, tree: any, hitPos: any)
 		if not chest then
 			grantDrops(player, drops)
 			TreeDrops:FireClient(player, cf.Position, groundY, drops, nil)
-			return
+			return true
 		end
 		-- Auto sell turns materials into money right away; only the rest goes in the chest.
 		local toStore = if ChestService.IsAutoSell(player) then ChestService.SellMaterials(player, drops) else drops
@@ -181,6 +173,33 @@ local function onHit(player: Player, tree: any, hitPos: any)
 			ChestService.AddDrops(chest, kept)
 		end
 	end
+	return felled
+end
+
+local function onHit(player: Player, tree: any, hitPos: any)
+	local now = os.clock()
+	if now - (lastHit[player] or 0) < TreeConfig.ClickCooldown * 0.8 then
+		return
+	end
+	if not canHit(player, tree) then
+		return
+	end
+	lastHit[player] = now
+
+	local damage = player:GetAttribute("ClickDamage") or TreeConfig.ClickDamage
+	applyHit(player, tree :: Model, damage, hitPos, player, nil)
+end
+
+-- A hero (HeroWorkerService) swings at a tree on its owner's plot. Returns true if it felled the tree.
+function TreeHitService.HeroHit(owner: Player, heroRoot: BasePart, tree: Model, damage: number, hitPos: Vector3): boolean
+	if not tree.Parent or tree:GetAttribute("Dead") or (tree:GetAttribute("HP") or 0) <= 0 then
+		return false
+	end
+	local plot = plotOf(tree)
+	if not plot or plot:GetAttribute("OwnerUserId") ~= owner.UserId then
+		return false
+	end
+	return applyHit(owner, tree, damage, hitPos, nil, heroRoot.Position)
 end
 
 function TreeHitService.Start()

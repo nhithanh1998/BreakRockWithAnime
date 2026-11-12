@@ -24,6 +24,9 @@
         },
         "ItemsAdded": {
           "$className": "RemoteEvent"
+        },
+        "HeroSlot": {
+          "$className": "RemoteEvent"
         }
       }
     },

@@ -2,8 +2,9 @@
 -- "Added!" / "New!" frames that pop up above it after taking items out of the chest.
 --
 -- Hotbar: the player's heroes (player.Heroes, one IntValue per hero = how many they own), highest
--- MinePower (HeroConfig) first, in 9 numbered slots. Keys 1-9 or a click select a slot (local highlight only for now; hook
--- equipping up in `select`). Hovering a slot shows a tooltip.
+-- MinePower (HeroConfig) first, in 9 numbered slots. Keys 1-9 or a click select a slot; the selection is
+-- sent to the server (Remotes.HeroSlot "Select") so E at an empty hero pad places that hero. Hovering a
+-- slot shows a tooltip.
 --
 -- Popups: ChestService fires Remotes.ItemsAdded({ {Stack, Amount, New} }) after Take All. Up to
 -- MAX_POPUPS frames pop in (a "+N More" frame covers the rest) and hide again after POPUP_TIME.
@@ -19,6 +20,7 @@ local UserInputService = game:GetService("UserInputService")
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
 local ItemsAdded = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ItemsAdded") :: RemoteEvent
+local HeroSlotRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HeroSlot") :: RemoteEvent
 
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui"):WaitForChild("HotbarGui") :: ScreenGui
@@ -84,6 +86,15 @@ local slots: { Slot } = {}
 local selectedHero: string? = nil
 local hoveredSlot: Slot? = nil
 local renderQueued = false
+local sentHero: string? = nil
+
+-- Tells the server which hero E at an empty hero pad should place.
+local function sendSelection()
+	if sentHero ~= selectedHero then
+		sentHero = selectedHero
+		HeroSlotRemote:FireServer("Select", selectedHero)
+	end
+end
 
 local function heroesFolder(): Folder?
 	return player:FindFirstChild("Heroes") :: Folder?
@@ -208,6 +219,7 @@ local function render()
 	if selectedHero and ownedCount(selectedHero) <= 0 then
 		selectedHero = nil
 	end
+	sendSelection()
 	for i, slot in slots do
 		slot.hero = heroes[i]
 		drawSlot(slot)
@@ -236,8 +248,7 @@ local function selectSlot(index: number)
 		return
 	end
 	selectedHero = if selectedHero == slot.hero then nil else slot.hero
-	-- TODO: equip/unequip `selectedHero` here once heroes can be equipped.
-	render()
+	render() -- also sends the selection to the server
 end
 
 for i = 1, SLOT_COUNT do

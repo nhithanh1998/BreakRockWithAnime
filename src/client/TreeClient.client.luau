@@ -166,11 +166,11 @@ end)
 
 -- Server results -------------------------------------------------------------------------------
 
-TreeHit.OnClientEvent:Connect(function(tree: Model?, attacker: Player?, damage: number, hitPos: Vector3, felled: boolean)
+TreeHit.OnClientEvent:Connect(function(tree: Model?, attacker: Player?, damage: number, hitPos: Vector3, felled: boolean, heroPos: Vector3?)
 	if not tree or not tree.Parent then
 		return
 	end
-	local fromPos: Vector3? = nil
+	local fromPos: Vector3? = heroPos -- set when a hero (not a player) made the hit
 	local attackerRoot = attacker and attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if attackerRoot then
 		fromPos = attackerRoot.Position
