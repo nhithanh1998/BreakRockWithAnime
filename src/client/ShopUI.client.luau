@@ -572,6 +572,59 @@ local function renderAxes()
 				Parent = card,
 			})
 		end
+		if have then
+			-- Copies owned (each hero pad can hold one, HeroUpgradeUI) and a "+1" to buy another.
+			local axes = folder("Axes")
+			local v = axes and axes:FindFirstChild(def.Model)
+			local copies = v and v:GetAttribute("Copies")
+			text({
+				Name = "CopiesLabel",
+				Text = "x" .. tostring(if typeof(copies) == "number" then copies else 1),
+				TextColor3 = STOCK_COLOR,
+				Position = UDim2.fromScale(0.05, 0.25),
+				Size = UDim2.fromScale(0.36, 0.17),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 3,
+				Parent = card,
+			})
+			local plus = button({
+				Text = if stock > 0 then "+1 $" .. abbreviate(def.Price) else "+1 Sold Out",
+				Color = if stock > 0 then GREEN_BUTTON else GREY_BUTTON,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.fromScale(0.97, 0.23),
+				Size = UDim2.fromScale(0.6, 0.22),
+				Parent = card,
+			})
+			plus.Name = "BuyCopy"
+			-- Small card: no inner padding, so the text can be as big as the button.
+			local pad = plus:FindFirstChildOfClass("UIPadding")
+			if pad then
+				pad.PaddingTop = UDim.new(0.08, 0)
+				pad.PaddingBottom = UDim.new(0.08, 0)
+				pad.PaddingLeft = UDim.new(0, 2)
+				pad.PaddingRight = UDim.new(0, 2)
+			end
+			plus.ZIndex = 4
+			plus.Activated:Connect(function()
+				if busy then
+					return
+				end
+				if stockOf(def.Model) <= 0 then
+					showToast(axeWindow, "Sold out! Wait for the restock", SOLD_OUT_COLOR)
+					return
+				end
+				busy = true
+				pop(plus)
+				local ok, result = pcall(ShopAction.InvokeServer, ShopAction, "BuyAxeCopy", def.Model)
+				busy = false
+				if ok and result and result.ok then
+					showToast(axeWindow, result.message or "Bought!", VALUE_GREEN)
+				else
+					showToast(axeWindow, if ok and result and result.message then result.message else "Could not buy", Color3.fromRGB(255, 90, 80))
+				end
+				renderAxes()
+			end)
+		end
 		if locked or soldOut then
 			card.BackgroundTransparency = 0.35
 			view.ImageTransparency = 0.45
@@ -698,8 +751,21 @@ local function open(kind: string, prompt: ProximityPrompt?)
 	end))
 end
 
+-- True when the prompt sits on a plot this player owns (or on no plot at all, e.g. Workspace.Shops).
+local function isMine(prompt: ProximityPrompt): boolean
+	local inst = prompt.Parent
+	while inst and inst ~= workspace do
+		local owner = inst:GetAttribute("OwnerUserId")
+		if owner ~= nil then
+			return owner == Players.LocalPlayer.UserId
+		end
+		inst = inst.Parent
+	end
+	return true
+end
+
 ProximityPromptService.PromptTriggered:Connect(function(prompt)
-	if prompt.Name ~= "ShopPrompt" then
+	if prompt.Name ~= "ShopPrompt" or not isMine(prompt) then
 		return
 	end
 	local kind = prompt:GetAttribute("Shop")

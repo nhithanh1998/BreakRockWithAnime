@@ -90,7 +90,7 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 		end
 		local levelLabel = container:FindFirstChild("Level")
 		if levelLabel and levelLabel:IsA("TextLabel") then
-			levelLabel.Text = "Level 1" -- no hero upgrades yet
+			levelLabel.Text = "Level 1" -- workers overwrite this with their pad's Damage level (HeroWorkerService)
 		end
 		local rarityLabel = container:FindFirstChild("Rarity")
 		if rarityLabel and rarityLabel:IsA("TextLabel") then
@@ -180,13 +180,88 @@ local function scaleTool(tool: Tool, factor: number)
 end
 
 -- `scale` resizes the axe to match a hero that was scaled (Model:ScaleTo) away from its template size.
-function HeroModels.GiveAxe(model: Model, humanoid: Humanoid, scale: number?): Tool?
+-- The shop axe models (ReplicatedStorage.Axes.<Model>) are the same design as the hero tool
+-- ServerStorage.WoodenAxe at SHOP_MODEL_SCALE x the size, with their "Handle" being the tool's
+-- "Shaft". So a shop axe becomes a hero tool by shrinking it and gripping its shaft the way the
+-- tool grips its own: Grip = (shaft offset from the tool's Handle)^-1 * tool.Grip.
+local SHOP_MODEL_SCALE = 2
+
+local function toolFromShopAxe(axeModel: string, factor: number): Tool?
+	local base = ServerStorage:FindFirstChild(AXE_NAME)
+	local axes = ReplicatedStorage:FindFirstChild("Axes")
+	local source = axes and axes:FindFirstChild(axeModel)
+	if not base or not base:IsA("Tool") or not source or not source:IsA("Model") then
+		return nil
+	end
+	local baseHandle = base:FindFirstChild("Handle") :: BasePart?
+	local baseShaft = base:FindFirstChild("Shaft", true) :: BasePart?
+	if not baseHandle or not baseShaft then
+		return nil
+	end
+	local m = source:Clone()
+	local shaft = m:FindFirstChild("Handle") :: BasePart?
+	if not shaft then
+		m:Destroy()
+		return nil
+	end
+	for _, d in m:GetDescendants() do
+		if d:IsA("LayerCollector") then
+			d:Destroy() -- e.g. the shop's RarityLabel billboard
+		end
+	end
+	pcall(m.ScaleTo, m, m:GetScale() * factor / SHOP_MODEL_SCALE)
+
+	local tool = Instance.new("Tool")
+	tool.Name = axeModel
+	tool.RequiresHandle = true
+	local rel = baseHandle.CFrame:ToObjectSpace(baseShaft.CFrame)
+	rel = rel - rel.Position + rel.Position * factor
+	tool.Grip = rel:Inverse() * base.Grip
+	for _, d in m:GetDescendants() do
+		if d:IsA("BasePart") and d ~= shaft then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = shaft
+			weld.Part1 = d
+			weld.Parent = d
+		end
+	end
+	shaft.Name = "Handle"
+	shaft.Parent = tool
+	m.Name = "Axe"
+	m.PrimaryPart = nil
+	m.Parent = tool
+	return tool
+end
+
+-- Gives the hero an axe and equips it. `axeModel` = a shop axe (ShopConfig.Axes Model) to hold;
+-- nil = the default ServerStorage.WoodenAxe.
+function HeroModels.GiveAxe(model: Model, humanoid: Humanoid, scale: number?, axeModel: string?): Tool?
+	if axeModel then
+		local tool = toolFromShopAxe(axeModel, if scale and scale > 0 then scale else 1)
+		if tool then
+			for _, d in tool:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.Anchored = false
+					d.CanCollide = false
+					d.CanTouch = false
+					d.CanQuery = false
+					d.Massless = true
+				end
+			end
+			tool.CanBeDropped = false
+			tool:SetAttribute("HeroAxe", true)
+			tool.Parent = model
+			humanoid:EquipTool(tool)
+			return tool
+		end
+	end
 	local source = ServerStorage:FindFirstChild(AXE_NAME)
 	if not source or not source:IsA("Tool") then
 		warn(("[HeroModels] ServerStorage.%s (Tool) is missing"):format(AXE_NAME))
 		return nil
 	end
 	local axe = source:Clone()
+	axe:SetAttribute("HeroAxe", true)
 	if scale and scale > 0 then
 		scaleTool(axe, scale)
 	end
@@ -259,6 +334,23 @@ end
 
 function HeroModels.ChopAnimationId(): string?
 	return animationFromConfig("ChopAnimation", "ChopKeyframes", "swing")
+end
+
+-- Every swing animation to pick from (HeroConfig.Worker.ChopAnimations, else the single fallback).
+function HeroModels.ChopAnimationIds(): { string }
+	local list = {}
+	for _, id in HeroConfig.Worker.ChopAnimations or {} do
+		if id ~= "" then
+			table.insert(list, id)
+		end
+	end
+	if #list == 0 then
+		local id = HeroModels.ChopAnimationId()
+		if id then
+			table.insert(list, id)
+		end
+	end
+	return list
 end
 
 function HeroModels.RunAnimationId(): string?

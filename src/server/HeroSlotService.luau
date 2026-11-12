@@ -11,6 +11,18 @@
 -- for HeroConfig.Slots.UnlockPrices[slot] Money. Each slot's "Unlocked" attribute mirrors this.
 -- Prompts use Style = Custom (drawn by SlotPromptUI on the client) and must be held for
 -- HeroConfig.Slots.HoldDuration seconds.
+-- Upgrades: each pad has stat levels (HeroConfig.Upgrades: Damage / Speed / Walk), shown on the slot
+-- as attributes "LevelDamage" etc. The client's Upgrade window (HeroUpgradeUI, opened from the
+-- plaque on the pad) buys them through Remotes.HeroUpgrade (RemoteFunction: slotIndex, stat -> ok,
+-- message). Levels stay with the pad when heroes change.
+-- Grades: each pad stat also has a grade F..SSS (HeroConfig.Grades), slot attributes "GradeDamage"
+-- etc. HeroUpgrade(slotIndex, "Reroll", lockedStats?) rolls them again, except the stats in
+-- lockedStats (a list of stat names), for HeroConfig.RerollCostFor(#locked).
+-- Stored in the same per-pad table as the levels, as "Grade<stat>" = position in GradeOrder.
+-- HeroUpgrade(slotIndex, "RerollStat", stat) rolls just that stat for HeroConfig.RerollStatCost.
+-- Axes: HeroUpgrade(slotIndex, "EquipAxe", model | "") gives the pad's hero a copy of an owned axe
+-- (ShopService.Copies; each copy goes to one pad) or takes it off. Slot attribute "HeroAxe";
+-- the hero holds it and deals ShopConfig HeroBoost x damage (HeroWorkerService). Saved per pad.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -21,6 +33,13 @@ local HeroWorkerService = require(script.Parent:WaitForChild("HeroWorkerService"
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local HeldHeroService = require(script.Parent:WaitForChild("HeldHeroService"))
 local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
+local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
+
+-- ShopService requires this module, so it is looked up lazily (when an axe is equipped).
+local function axeCopies(player: Player, model: string): number
+	local ShopService = require(script.Parent:WaitForChild("ShopService")) :: any
+	return ShopService.Copies(player, model)
+end
 
 local PROMPT_NAME = "HeroSlotPrompt"
 local PROMPT_DISTANCE = 10
@@ -36,11 +55,20 @@ if not HeroSlotRemote then
 	HeroSlotRemote = remote
 end
 local remote = HeroSlotRemote :: RemoteEvent
+local upgradeRemote = Remotes:FindFirstChild("HeroUpgrade") :: RemoteFunction?
+if not upgradeRemote then
+	local rf = Instance.new("RemoteFunction")
+	rf.Name = "HeroUpgrade"
+	rf.Parent = Remotes
+	upgradeRemote = rf
+end
 
 type PlotState = {
 	plot: Model,
 	owner: Player,
 	placed: { [number]: string }, -- slot index -> hero name
+	levels: { [number]: { [string]: number } }, -- slot index -> stat -> level (missing = 1), and "Grade<stat>" -> grade position
+	axes: { [number]: string }, -- slot index -> axe model its hero holds
 	connections: { RBXScriptConnection },
 }
 
@@ -91,6 +119,28 @@ end
 
 local function canPlace(state: PlotState, hero: string?): boolean
 	return hero ~= nil and HeroConfig.Get(hero) ~= nil and owned(state.owner, hero) > placedCount(state, hero)
+end
+
+-- Upgrade levels ---------------------------------------------------------------------------------
+
+local function levelOf(state: PlotState, index: number, stat: string): number
+	local levels = state.levels[index]
+	return levels and levels[stat] or 1
+end
+
+-- Grade letter of a pad stat (DefaultGrade when never rerolled).
+local function gradeIn(levels: { [string]: number }?, stat: string): string
+	local position = levels and levels[HeroConfig.GradeAttribute(stat)]
+	return position and HeroConfig.GradeOrder[position] or HeroConfig.DefaultGrade
+end
+
+-- Mirrors a pad's levels and grades onto its slot (attributes) so clients and HeroWorkerService can
+-- read them.
+local function writeLevels(slot: Model, levels: { [string]: number }?)
+	for stat in HeroConfig.Upgrades do
+		slot:SetAttribute(HeroConfig.LevelAttribute(stat), levels and levels[stat] or 1)
+		slot:SetAttribute(HeroConfig.GradeAttribute(stat), gradeIn(levels, stat))
+	end
 end
 
 -- Pad visuals ------------------------------------------------------------------------------------
@@ -162,7 +212,7 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 			end
 			local levelLabel = info:FindFirstChild("Level") :: TextLabel?
 			if levelLabel then
-				local level = slot:GetAttribute("Level") -- no upgrades yet: default 1
+				local level = slot:GetAttribute(HeroConfig.LevelAttribute("Damage"))
 				levelLabel.Text = "Level " .. tostring(if typeof(level) == "number" then level else 1)
 			end
 			local rarityLabel = info:FindFirstChild("Rarity") :: TextLabel?
@@ -181,7 +231,9 @@ end
 -- chopping trees). Rebuilt only when the pad's hero changes.
 local function drawPadHero(slot: Model, hero: string?)
 	local current = slot:FindFirstChild(PAD_HERO_NAME)
-	if current and hero and current:GetAttribute("Hero") == hero then
+	local axe = slot:GetAttribute("HeroAxe")
+	axe = if typeof(axe) == "string" and axe ~= "" then axe else nil
+	if current and hero and current:GetAttribute("Hero") == hero and current:GetAttribute("Axe") == axe then
 		return
 	end
 	if current then
@@ -220,7 +272,8 @@ local function drawPadHero(slot: Model, hero: string?)
 	root.Anchored = true
 	model.Parent = slot
 
-	HeroModels.GiveAxe(model, humanoid, factor)
+	model:SetAttribute("Axe", axe)
+	HeroModels.GiveAxe(model, humanoid, factor, axe)
 	local anims = HeroModels.Anims(humanoid)
 	local idle = HeroModels.LoadTrack(humanoid, anims.Idle, Enum.AnimationPriority.Core, true)
 	local hold = HeroModels.LoadTrack(humanoid, anims.Hold, Enum.AnimationPriority.Action, true)
@@ -256,6 +309,8 @@ local function refresh(state: PlotState)
 	for i, slot in slotsOf(state.plot) do
 		local prompt = getPrompt(slot)
 		local locked = i > unlocked
+		writeLevels(slot, state.levels[i])
+		slot:SetAttribute("HeroAxe", state.axes[i] or "")
 		drawPad(slot, locked)
 		if locked then
 			-- Pads can get locked again (e.g. an upgrade is reset): send its hero home.
@@ -366,10 +421,145 @@ local function onPrompt(state: PlotState, index: number, player: Player)
 	refresh(state)
 end
 
+-- Upgrading --------------------------------------------------------------------------------------
+
+local function upgrade(state: PlotState, index: number, stat: string): (boolean, string)
+	local slot = slotsOf(state.plot)[index]
+	if not slot or index > unlockedCount(state.owner) then
+		return false, "Locked pad"
+	end
+	if not state.placed[index] then
+		return false, "No hero on this pad"
+	end
+	local level = levelOf(state, index, stat)
+	local cost = HeroConfig.UpgradeCost(stat, level)
+	if not cost then
+		return false, "Max level!"
+	end
+	if not ChestService.SpendMoney(state.owner, cost) then
+		local short = cost - ChestService.GetMoney(state.owner)
+		return false, ("Need %s more Cash!"):format(HeroConfig.Abbreviate(math.ceil(short)))
+	end
+	state.levels[index] = state.levels[index] or {}
+	state.levels[index][stat] = level + 1
+	writeLevels(slot, state.levels[index])
+	drawGui(slot, state.placed[index])
+	HeroWorkerService.ApplyLevels(state.plot, index)
+	return true, ("%s Lv %d!"):format(HeroConfig.Upgrades[stat].Name, level + 1)
+end
+
+local rerollRng = Random.new()
+
+-- Rolls a new grade for every stat of the pad that isn't locked.
+local function reroll(state: PlotState, index: number, locked: { [string]: boolean }): (boolean, string)
+	local slot = slotsOf(state.plot)[index]
+	if not slot or index > unlockedCount(state.owner) then
+		return false, "Locked pad"
+	end
+	if not state.placed[index] then
+		return false, "No hero on this pad"
+	end
+	local lockCount = 0
+	for _ in locked do
+		lockCount += 1
+	end
+	local cost = HeroConfig.RerollCostFor(lockCount)
+	if not cost or lockCount >= #HeroConfig.UpgradeOrder then
+		return false, "Can't lock every stat"
+	end
+	if not ChestService.SpendMoney(state.owner, cost) then
+		local short = cost - ChestService.GetMoney(state.owner)
+		return false, ("Need %s more Cash!"):format(HeroConfig.Abbreviate(math.ceil(short)))
+	end
+	local levels = state.levels[index] or {}
+	state.levels[index] = levels
+	local rolled = {}
+	for _, stat in HeroConfig.UpgradeOrder do
+		if locked[stat] then
+			table.insert(rolled, gradeIn(levels, stat) .. "🔒") -- kept
+			continue
+		end
+		local grade = HeroConfig.RollGrade(rerollRng)
+		levels[HeroConfig.GradeAttribute(stat)] = table.find(HeroConfig.GradeOrder, grade)
+		table.insert(rolled, grade)
+	end
+	writeLevels(slot, levels)
+	HeroWorkerService.ApplyLevels(state.plot, index)
+	return true, "Rerolled: " .. table.concat(rolled, " / ")
+end
+
+-- Rolls a new grade for one stat of the pad.
+local function rerollStat(state: PlotState, index: number, stat: string): (boolean, string)
+	local slot = slotsOf(state.plot)[index]
+	if not slot or index > unlockedCount(state.owner) then
+		return false, "Locked pad"
+	end
+	if not state.placed[index] then
+		return false, "No hero on this pad"
+	end
+	local cost = HeroConfig.RerollStatCost
+	if not ChestService.SpendMoney(state.owner, cost) then
+		local short = cost - ChestService.GetMoney(state.owner)
+		return false, ("Need %s more Cash!"):format(HeroConfig.Abbreviate(math.ceil(short)))
+	end
+	local levels = state.levels[index] or {}
+	state.levels[index] = levels
+	local grade = HeroConfig.RollGrade(rerollRng)
+	levels[HeroConfig.GradeAttribute(stat)] = table.find(HeroConfig.GradeOrder, grade)
+	writeLevels(slot, levels)
+	HeroWorkerService.ApplyLevels(state.plot, index)
+	return true, ("%s: %s"):format(HeroConfig.Upgrades[stat].Name, grade)
+end
+
+-- Copies of `model` this plot's pads hold, not counting pad `except`.
+local function axesInUse(state: PlotState, model: string, except: number?): number
+	local n = 0
+	for i, m in state.axes do
+		if m == model and i ~= except then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- Gives the pad's hero a copy of `model` ("" = take the axe off).
+local function equipAxe(state: PlotState, index: number, model: string): (boolean, string)
+	local slot = slotsOf(state.plot)[index]
+	if not slot or index > unlockedCount(state.owner) then
+		return false, "Locked pad"
+	end
+	if model == "" then
+		state.axes[index] = nil
+	else
+		local def = ShopConfig.GetAxe(model)
+		if not def then
+			return false, "Unknown axe"
+		end
+		if not state.placed[index] then
+			return false, "No hero on this pad"
+		end
+		local copies = axeCopies(state.owner, model)
+		if copies <= 0 then
+			return false, "You don't own that axe"
+		end
+		if axesInUse(state, model, index) >= copies then
+			return false, "No free copy! Buy another at the Lumber Axe shop"
+		end
+		state.axes[index] = model
+	end
+	slot:SetAttribute("HeroAxe", state.axes[index] or "")
+	drawPadHero(slot, state.placed[index])
+	HeroWorkerService.ApplyLevels(state.plot, index)
+	local def = state.axes[index] and ShopConfig.GetAxe(state.axes[index])
+	return true, if def then ("%s equipped!"):format(def.Name) else "Axe removed"
+end
+
 -- Saved pads (DataService) -----------------------------------------------------------------------
 
 -- Placements loaded before the player's plot was set up wait here.
 local pendingPlaced: { [Player]: { [number]: string } } = {}
+local pendingLevels: { [Player]: { [number]: { [string]: number } } } = {}
+local pendingAxes: { [Player]: { [number]: string } } = {}
 
 -- Puts saved heroes back on their pads (only pads that are open and heroes the player still owns).
 local function restorePlaced(state: PlotState, placed: { [number]: string })
@@ -387,7 +577,7 @@ end
 
 function HeroSlotService.SetupPlot(plot: Model, owner: Player)
 	HeroSlotService.ResetPlot(plot)
-	local state: PlotState = { plot = plot, owner = owner, placed = {}, connections = {} }
+	local state: PlotState = { plot = plot, owner = owner, placed = {}, levels = {}, axes = {}, connections = {} }
 	states[plot] = state
 	for i, slot in slotsOf(plot) do
 		table.insert(state.connections, getPrompt(slot).Triggered:Connect(function(player)
@@ -422,6 +612,20 @@ function HeroSlotService.SetupPlot(plot: Model, owner: Player)
 			end
 		end))
 	end
+	local levels = pendingLevels[owner]
+	if levels then
+		pendingLevels[owner] = nil
+		state.levels = levels
+	end
+	local axes = pendingAxes[owner]
+	if axes then
+		pendingAxes[owner] = nil
+		for index, model in axes do
+			if ShopConfig.GetAxe(model) and axesInUse(state, model, index) < axeCopies(owner, model) then
+				state.axes[index] = model
+			end
+		end
+	end
 	refresh(state)
 	local pending = pendingPlaced[owner]
 	if pending then
@@ -445,6 +649,8 @@ function HeroSlotService.ResetPlot(plot: Model)
 		drawPad(slot, locked)
 		drawGui(slot, nil, locked)
 		drawPadHero(slot, nil)
+		writeLevels(slot, nil)
+		slot:SetAttribute("HeroAxe", "")
 		local prompt = slot.Pad:FindFirstChild(PROMPT_NAME)
 		if prompt then
 			prompt:Destroy()
@@ -485,6 +691,64 @@ function HeroSlotService.RestorePlaced(player: Player, placed: { [number]: strin
 	end
 end
 
+-- Pad levels of the plot this player owns (slot index -> stat -> level), or nil without a plot.
+function HeroSlotService.GetLevelsFor(player: Player): { [number]: { [string]: number } }?
+	local state = stateOf(player)
+	if not state then
+		return nil
+	end
+	local out = {}
+	for index, levels in state.levels do
+		out[index] = table.clone(levels)
+	end
+	return out
+end
+
+-- Saved pad levels, from DataService. Applied now if the plot is ready, otherwise when it is set up.
+function HeroSlotService.RestoreLevels(player: Player, levels: { [number]: { [string]: number } })
+	local state = stateOf(player)
+	if state then
+		for index, stats in levels do
+			state.levels[index] = stats
+		end
+		refresh(state)
+		for index in levels do
+			HeroWorkerService.ApplyLevels(state.plot, index)
+		end
+	else
+		pendingLevels[player] = levels
+	end
+end
+
+-- Axes on the pads of the plot this player owns (slot index -> axe model), or nil without a plot.
+function HeroSlotService.GetAxesFor(player: Player): { [number]: string }?
+	local state = stateOf(player)
+	return if state then table.clone(state.axes) else nil
+end
+
+-- Saved pad axes, from DataService (after the owned axes are applied). Copies the player doesn't
+-- have any more are dropped.
+local function applyAxes(state: PlotState, axes: { [number]: string })
+	for index, model in axes do
+		if ShopConfig.GetAxe(model) and axesInUse(state, model, index) < axeCopies(state.owner, model) then
+			state.axes[index] = model
+		end
+	end
+	refresh(state)
+	for index in axes do
+		HeroWorkerService.ApplyLevels(state.plot, index)
+	end
+end
+
+function HeroSlotService.RestoreAxes(player: Player, axes: { [number]: string })
+	local state = stateOf(player)
+	if state then
+		applyAxes(state, axes)
+	else
+		pendingAxes[player] = axes
+	end
+end
+
 function HeroSlotService.Start()
 	HeldHeroService.Start()
 	-- Free plots show the locked pads too, not only claimed ones.
@@ -511,9 +775,50 @@ function HeroSlotService.Start()
 			refresh(state)
 		end
 	end)
+	upgradeRemote.OnServerInvoke = function(player, index, stat, lockList)
+		local action = stat
+		if typeof(index) ~= "number" or typeof(action) ~= "string" then
+			return false, "Bad request"
+		end
+		if action == "RerollStat" or action == "EquipAxe" then
+			local state = stateOf(player)
+			if not state then
+				return false, "No plot"
+			end
+			if action == "EquipAxe" then
+				return equipAxe(state, math.floor(index), if typeof(lockList) == "string" then lockList else "")
+			end
+			if typeof(lockList) ~= "string" or not HeroConfig.Upgrades[lockList] then
+				return false, "Bad request"
+			end
+			return rerollStat(state, math.floor(index), lockList)
+		end
+		if not (HeroConfig.Upgrades[stat] or stat == "Reroll") then
+			return false, "Bad request"
+		end
+		local state = stateOf(player)
+		if not state then
+			return false, "No plot"
+		end
+		if stat == "Reroll" then
+			-- Only real stat names count as locks (each once).
+			local locked: { [string]: boolean } = {}
+			if typeof(lockList) == "table" then
+				for _, name in lockList do
+					if typeof(name) == "string" and HeroConfig.Upgrades[name] then
+						locked[name] = true
+					end
+				end
+			end
+			return reroll(state, math.floor(index), locked)
+		end
+		return upgrade(state, math.floor(index), stat)
+	end
 	Players.PlayerRemoving:Connect(function(player)
 		selected[player] = nil
 		pendingPlaced[player] = nil
+		pendingLevels[player] = nil
+		pendingAxes[player] = nil
 	end)
 end
 

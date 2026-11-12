@@ -2,7 +2,8 @@
 -- key "u_<UserId>").
 --
 -- Saved:  Money (leaderstats.Money), Inventory + Heroes (IntValues), Axes owned + EquippedAxe,
---         UnlockedSlots (bought hero pads), AutoSell, which heroes stand on which pad, and skill
+--         UnlockedSlots (bought hero pads), AutoSell, which heroes stand on which pad, each pad's
+--         upgrade levels (PadLevels, HeroSlotService), and skill
 --         tree levels (player.Skills, SkillTreeService), UnlockedZones + CurrentZone (Zones board).
 -- Not saved: the shared TreasureChest's contents (it isn't anyone's) and trees.
 --
@@ -32,10 +33,13 @@ export type SaveData = {
 	Inventory: { [string]: number },
 	Heroes: { [string]: number },
 	Axes: { string },
+	AxeCopies: { [string]: number }?, -- axe model -> copies owned
+	PadAxes: { [string]: string }?, -- slot index (as text) -> axe model held by that pad's hero
 	EquippedAxe: string?,
 	UnlockedSlots: number?,
 	AutoSell: boolean?,
 	Placed: { [string]: string }?, -- slot index (as text) -> hero name
+	PadLevels: { [string]: { [string]: number } }?, -- slot index (as text) -> stat -> level, "Grade<stat>" -> grade position
 	Skills: { [string]: number }?, -- "Tree/Node" -> level
 	UnlockedZones: number?, -- highest zone bought on the Zones board (ZoneBoardService)
 	CurrentZone: number?, -- zone the plot is set to
@@ -47,6 +51,8 @@ local store: DataStore? = nil
 local loaded: { [Player]: boolean } = {}
 local saving: { [Player]: boolean } = {}
 local placedCache: { [Player]: { [string]: string } } = {}
+local levelsCache: { [Player]: { [string]: { [string]: number } } } = {}
+local padAxesCache: { [Player]: { [string]: string } } = {}
 
 local function keyFor(player: Player): string
 	return "u_" .. player.UserId
@@ -97,13 +103,40 @@ local function placedNow(player: Player): { [string]: string }?
 	return out
 end
 
+local function levelsNow(player: Player): { [string]: { [string]: number } }?
+	local levels = HeroSlotService.GetLevelsFor(player)
+	if not levels then
+		return nil
+	end
+	local out = {}
+	for index, stats in levels do
+		out[tostring(index)] = stats
+	end
+	return out
+end
+
+local function padAxesNow(player: Player): { [string]: string }?
+	local axes = HeroSlotService.GetAxesFor(player)
+	if not axes then
+		return nil
+	end
+	local out = {}
+	for index, model in axes do
+		out[tostring(index)] = model
+	end
+	return out
+end
+
 local function collect(player: Player): SaveData
 	local axes = {}
+	local axeCopies = {}
 	local axesFolder = player:FindFirstChild("Axes")
 	if axesFolder then
 		for _, v in axesFolder:GetChildren() do
 			if v:IsA("BoolValue") and v.Value then
 				table.insert(axes, v.Name)
+				local n = v:GetAttribute("Copies")
+				axeCopies[v.Name] = if typeof(n) == "number" then n else 1
 			end
 		end
 	end
@@ -118,10 +151,13 @@ local function collect(player: Player): SaveData
 		Inventory = counts(player:FindFirstChild("Inventory")),
 		Heroes = counts(player:FindFirstChild("Heroes")),
 		Axes = axes,
+		AxeCopies = axeCopies,
+		PadAxes = padAxesNow(player) or padAxesCache[player],
 		EquippedAxe = if typeof(equipped) == "string" then equipped else nil,
 		UnlockedSlots = if typeof(unlocked) == "number" then unlocked else nil,
 		AutoSell = player:GetAttribute("AutoSell") == true,
 		Placed = placedNow(player) or placedCache[player],
+		PadLevels = levelsNow(player) or levelsCache[player],
 		Skills = counts(player:FindFirstChild("Skills")),
 		UnlockedZones = if typeof(unlockedZones) == "number" then unlockedZones else nil,
 		CurrentZone = if typeof(currentZone) == "number" then currentZone else nil,
@@ -144,7 +180,7 @@ local function apply(player: Player, data: SaveData)
 			ChestService.AddItem(player, "Heroes", name, amount)
 		end
 	end
-	ShopService.ApplySaved(player, data.Axes or {}, data.EquippedAxe)
+	ShopService.ApplySaved(player, data.Axes or {}, data.EquippedAxe, data.AxeCopies)
 	if typeof(data.UnlockedSlots) == "number" then
 		local now = player:GetAttribute("UnlockedSlots")
 		player:SetAttribute("UnlockedSlots", math.max(data.UnlockedSlots, if typeof(now) == "number" then now else 0))
@@ -160,6 +196,32 @@ local function apply(player: Player, data: SaveData)
 		player:SetAttribute("CurrentZone", data.CurrentZone)
 	end
 	SkillTreeService.ApplySaved(player, data.Skills)
+	if typeof(data.PadLevels) == "table" then
+		local levels: { [number]: { [string]: number } } = {}
+		for index, stats in data.PadLevels do
+			local i = tonumber(index)
+			if i and typeof(stats) == "table" then
+				local clean = {}
+				for stat, level in stats do
+					if typeof(stat) == "string" and typeof(level) == "number" then
+						clean[stat] = math.max(1, math.floor(level))
+					end
+				end
+				levels[i] = clean
+			end
+		end
+		HeroSlotService.RestoreLevels(player, levels)
+	end
+	if typeof(data.PadAxes) == "table" then
+		local padAxes: { [number]: string } = {}
+		for index, model in data.PadAxes do
+			local i = tonumber(index)
+			if i and typeof(model) == "string" then
+				padAxes[i] = model
+			end
+		end
+		HeroSlotService.RestoreAxes(player, padAxes)
+	end
 	if data.Placed then
 		local placed: { [number]: string } = {}
 		for index, hero in data.Placed do
@@ -223,8 +285,17 @@ end
 -- Call before the player's plot is cleared (PlotService.PlotReleased) so the heroes on its pads
 -- are still known when the leave-save runs.
 function DataService.RememberPlaced(player: Player)
-	local placed = placedNow(player)	if placed then
+	local placed = placedNow(player)
+	if placed then
 		placedCache[player] = placed
+	end
+	local levels = levelsNow(player)
+	if levels then
+		levelsCache[player] = levels
+	end
+	local padAxes = padAxesNow(player)
+	if padAxes then
+		padAxesCache[player] = padAxes
 	end
 end
 
@@ -234,6 +305,8 @@ local function onLeave(player: Player)
 	-- Same thread, no yield after Save returns: a save waiting in BindToClose sees this and skips.
 	loaded[player] = nil
 	placedCache[player] = nil
+	levelsCache[player] = nil
+	padAxesCache[player] = nil
 end
 
 function DataService.Start()

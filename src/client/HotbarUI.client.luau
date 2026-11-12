@@ -99,7 +99,6 @@ local selectedHero: string? = nil
 local hoveredSlot: Slot? = nil
 local renderQueued = false
 local sentHero: string? = nil
-local backpackOpen = false -- the backpack button (or `) shows all 10 slots, empty ones included
 
 -- Tells the server which hero E at an empty hero pad should place.
 local function sendSelection()
@@ -187,8 +186,8 @@ local function drawSlot(slot: Slot)
 	local countLabel = button:FindFirstChild("Count") :: TextLabel
 	local gradient = button:FindFirstChildOfClass("UIGradient")
 	local hero = slot.hero
-	-- Empty slots only show while the backpack is open (heroes fill the bar from the left).
-	button.Visible = hero ~= nil or backpackOpen
+	-- Empty slots are hidden (heroes fill the bar from the left).
+	button.Visible = hero ~= nil
 
 	if not hero then
 		button.BackgroundColor3 = EMPTY_COLOR
@@ -312,11 +311,13 @@ for i = 1, SLOT_COUNT do
 	button.Parent = slotsFrame
 end
 
+-- The backpack button (or `) opens/closes the inventory window (InventoryUI watches "Open").
 local function toggleBackpack()
 	bump(backpackButton, 0.88)
-	backpackOpen = not backpackOpen
-	render()
-	-- TODO: open the full hero inventory window here.
+	local inventoryGui = player.PlayerGui:FindFirstChild("InventoryGui")
+	if inventoryGui then
+		inventoryGui:SetAttribute("Open", inventoryGui:GetAttribute("Open") ~= true)
+	end
 end
 
 backpackButton.Activated:Connect(toggleBackpack)

@@ -36,6 +36,9 @@
         },
         "ZoneAction": {
           "$className": "RemoteFunction"
+        },
+        "FeedbackAction": {
+          "$className": "RemoteFunction"
         }
       },
       "SkillTreeTemplates": {

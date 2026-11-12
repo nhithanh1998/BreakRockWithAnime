@@ -14,6 +14,9 @@
 -- played at the hero's ChopSpeed; its ChopPower (HeroConfig.ChopDamage) lands on the animation's "Hit"
 -- marker, or near the end of the swing if the marker never fires (e.g. the animation failed to load).
 -- Trees a worker fells give drops to the slot's owner, exactly like their own clicks (TreeHitService.HeroHit).
+-- Stats come from the pad's upgrade levels (slot attributes "LevelDamage" / "LevelSpeed" / "LevelWalk",
+-- HeroConfig.Upgrades) times their grades ("GradeDamage" ..., HeroConfig.StatValue): damage and swing speed are read every swing, walk speed and the "Level N"
+-- on the HeroBar are set on spawn and by HeroWorkerService.ApplyLevels(plot, slotIndex).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -22,6 +25,7 @@ local TreeService = require(script.Parent:WaitForChild("TreeService"))
 local TreeHitService = require(script.Parent:WaitForChild("TreeHitService"))
 local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
 local Movement = require(script.Parent:WaitForChild("Movement"))
+local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 
 local ATTACK_RANGE = HeroConfig.Worker.AttackRange or 2.5 -- studs from the trunk's center at which a hero stops and chops
 local MIN_SURFACE_GAP = 0.5 -- never stand closer than this to the trunk's surface (thick trunks)
@@ -44,6 +48,8 @@ type Worker = {
 	alive: boolean,
 	target: Model?,
 	tracks: { [string]: AnimationTrack },
+	chops: { AnimationTrack }, -- swing animations, one picked at random per swing
+	lastChop: number?,
 	running: boolean?, -- tracks.Walk is the run animation (HeroModels.RunAnimationId)
 	spawnCFrame: CFrame,
 	exit: Vector3?,
@@ -55,6 +61,53 @@ local HeroWorkerService = {}
 local workersByPlot: { [Model]: { [number]: Worker } } = {}
 local claims: { [Model]: number } = {} -- tree -> how many workers are after it
 local rng = Random.new()
+
+-- The pad's level for `stat` (1 when the pad or attribute is missing).
+local function levelOf(plot: Model, slot: number, stat: string): number
+	local slots = plot:FindFirstChild("HeroSlots")
+	local model = slots and slots:FindFirstChild("Slot" .. slot)
+	local level = model and model:GetAttribute(HeroConfig.LevelAttribute(stat))
+	return if typeof(level) == "number" then level else 1
+end
+
+-- The pad's grade letter for `stat` (nil = HeroConfig.DefaultGrade).
+local function gradeOf(plot: Model, slot: number, stat: string): string?
+	local slots = plot:FindFirstChild("HeroSlots")
+	local model = slots and slots:FindFirstChild("Slot" .. slot)
+	local grade = model and model:GetAttribute(HeroConfig.GradeAttribute(stat))
+	return if typeof(grade) == "string" then grade else nil
+end
+
+-- The axe the pad gives its hero (slot "HeroAxe"), or nil for the default axe.
+local function axeOf(plot: Model, slot: number): string?
+	local slots = plot:FindFirstChild("HeroSlots")
+	local model = slots and slots:FindFirstChild("Slot" .. slot)
+	local axe = model and model:GetAttribute("HeroAxe")
+	return if typeof(axe) == "string" and ShopConfig.GetAxe(axe) then axe else nil
+end
+
+local function statOf(w: Worker, stat: string): number
+	local value = HeroConfig.StatValue(stat, levelOf(w.plot, w.slot, stat), gradeOf(w.plot, w.slot, stat), w.hero)
+	if stat == "Damage" then
+		local axe = axeOf(w.plot, w.slot)
+		local def = axe and ShopConfig.GetAxe(axe)
+		if def then
+			value = math.max(1, math.floor(value * def.HeroBoost))
+		end
+	end
+	return value
+end
+
+-- "Level N" on the HeroBar above the hero = the pad's Damage level.
+local function drawBarLevel(w: Worker)
+	local attachment = w.root:FindFirstChild("InfoAttachment")
+	local bar = attachment and attachment:FindFirstChild("HeroBar")
+	local container = bar and bar:FindFirstChild("Container")
+	local label = container and container:FindFirstChild("Level")
+	if label and label:IsA("TextLabel") then
+		label.Text = "Level " .. levelOf(w.plot, w.slot, "Damage")
+	end
+end
 
 local function isAlive(w: Worker): boolean
 	return w.alive and w.model.Parent ~= nil and w.owner.Parent ~= nil and w.humanoid.Health > 0
@@ -113,7 +166,14 @@ local function setupAnimations(w: Worker)
 	w.running = runTrack ~= nil
 	w.tracks.Walk = runTrack or load(set.Walk, Enum.AnimationPriority.Movement, true)
 	w.tracks.Hold = load(set.Hold, Enum.AnimationPriority.Action, true)
-	w.tracks.Chop = load(HeroModels.ChopAnimationId(), Enum.AnimationPriority.Action2, false)
+	w.chops = {}
+	for _, id in HeroModels.ChopAnimationIds() do
+		local track = HeroModels.LoadTrack(w.humanoid, id, Enum.AnimationPriority.Action2, false)
+		if track then
+			table.insert(w.chops, track)
+		end
+	end
+	w.tracks.Chop = w.chops[1]
 	if w.tracks.Idle then
 		w.tracks.Idle:Play()
 	end
@@ -221,9 +281,20 @@ end
 
 -- One swing. Returns true when this swing felled the tree.
 local function swing(w: Worker, tree: Model, center: Vector3, radius: number): boolean
-	local track = w.tracks.Chop
-	local speed = HeroConfig.ChopSpeed(w.hero)
+	-- A random swing, never the same one twice in a row (so it doesn't look repetitive).
+	local track: AnimationTrack? = nil
+	local count = #w.chops
+	if count > 0 then
+		local pick = math.random(1, count)
+		if count > 1 and pick == w.lastChop then
+			pick = pick % count + 1
+		end
+		w.lastChop = pick
+		track = w.chops[pick]
+	end
+	local speed = statOf(w, "Speed")
 	local length = (if track and track.Length > 0 then track.Length else 0.8) / speed
+	local hitAt = length * (if track and track.Length > 0 then (HeroConfig.Worker.HitFraction or 0.9) else 0.9)
 	local landed = false
 	local conn: RBXScriptConnection? = nil
 	if track then
@@ -234,7 +305,7 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 		track:AdjustSpeed(speed)
 	end
 	local start = os.clock()
-	while not landed and os.clock() - start < length * 0.9 and isAlive(w) do
+	while not landed and os.clock() - start < hitAt and isAlive(w) do
 		task.wait()
 	end
 	if conn then
@@ -246,7 +317,7 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 
 	local dir = flatDir(center, w.root.Position)
 	local hitPos = center + dir * radius + Vector3.new(0, 0.5, 0)
-	local felled = TreeHitService.HeroHit(w.owner, w.root, tree, HeroConfig.ChopDamage(w.hero), hitPos)
+	local felled = TreeHitService.HeroHit(w.owner, w.root, tree, statOf(w, "Damage"), hitPos)
 
 	local rest = length - (os.clock() - start)
 	if rest > 0 then
@@ -261,7 +332,15 @@ end
 local function run(w: Worker)
 	-- Wait for the swing animation so its length (and markers) are known.
 	local t0 = os.clock()
-	while w.tracks.Chop and w.tracks.Chop.Length == 0 and os.clock() - t0 < 3 do
+	local function loading(): boolean
+		for _, t in w.chops do
+			if t.Length == 0 then
+				return true
+			end
+		end
+		return false
+	end
+	while loading() and os.clock() - t0 < 3 do
 		task.wait(0.1)
 	end
 
@@ -364,6 +443,34 @@ function HeroWorkerService.DespawnPlot(plot: Model)
 	workersByPlot[plot] = nil
 end
 
+-- The pad's levels changed: new walk speed and HeroBar level now (damage / swing speed apply on the
+-- next swing by themselves).
+function HeroWorkerService.ApplyLevels(plot: Model, slot: number)
+	local list = workersByPlot[plot]
+	local w = list and list[slot]
+	if not w or not w.alive then
+		return
+	end
+	if w.movement then
+		w.movement:SetSpeed(statOf(w, "Walk"))
+		if w.movement:IsMoving() then
+			setWalking(w, true) -- walk animation speed follows
+		end
+	end
+	drawBarLevel(w)
+	-- The pad's axe changed: swap the one in the hero's hands.
+	local want = axeOf(plot, slot)
+	if w.model:GetAttribute("Axe") ~= want then
+		w.model:SetAttribute("Axe", want)
+		for _, child in w.model:GetChildren() do
+			if child:IsA("Tool") and child:GetAttribute("HeroAxe") then
+				child:Destroy()
+			end
+		end
+		HeroModels.GiveAxe(w.model, w.humanoid, nil, want)
+	end
+end
+
 function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, owner: Player): Model?
 	HeroWorkerService.Despawn(plot, slot)
 
@@ -386,11 +493,13 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 	model.Parent = workersFolder(plot)
 	pcall(root.SetNetworkOwner, root, nil)
 
-	HeroModels.GiveAxe(model, humanoid)
+	local axe = axeOf(plot, slot)
+	model:SetAttribute("Axe", axe)
+	HeroModels.GiveAxe(model, humanoid, nil, axe)
 
 	-- Anchors the root and moves the model by CFrame every Heartbeat; snaps it onto the ground now.
 	local movement = Movement.new(model, {
-		Speed = HeroConfig.Worker.WalkSpeed,
+		Speed = HeroConfig.StatValue("Walk", levelOf(plot, slot, "Walk"), gradeOf(plot, slot, "Walk"), heroName),
 		GroundInstances = groundOf(plot),
 		GroundRayOffset = GROUND_RAY_OFFSET,
 		GroundRayDistance = 60,
@@ -407,11 +516,13 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 		alive = true,
 		target = nil,
 		tracks = {},
+		chops = {},
 		spawnCFrame = spawnCFrame,
 		exit = if exitPart then exitPart.Position + Vector3.new(rng:NextNumber(-3, 3), 0, rng:NextNumber(-1, 3)) else nil,
 		movement = movement,
 	}
 	setupAnimations(w)
+	drawBarLevel(w)
 
 	workersByPlot[plot] = workersByPlot[plot] or {}
 	workersByPlot[plot][slot] = w

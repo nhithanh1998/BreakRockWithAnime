@@ -1,4 +1,7 @@
--- ShopService: the Sell and Lumber Axe shops (Workspace.Shops, see ShopConfig).
+-- ShopService: the Sell and Lumber Axe shops (see ShopConfig).
+--
+-- Every plot has its own shops in plot.Shops (Models with a "Shop" attribute), so each player uses
+-- the shops on their own plot. A Workspace.Shops folder still works too (shared by everyone).
 --
 -- Each shop model gets a ProximityPrompt "ShopPrompt" (attribute Shop = "Sell" | "LumberAxe") on its
 -- "PromptPart"; the client opens the matching window (ShopUI). The window talks to the server through
@@ -7,6 +10,9 @@
 --                                   stack (heroes on a pad are kept). Must stand near the Sell shop.
 --   ("BuyAxe", model)              buys + equips the axe (near the Lumber Axe shop).
 --   ("EquipAxe", model)            equips an owned axe (near the Lumber Axe shop).
+--   ("BuyAxeCopy", model)          buys one more copy of an owned axe (near the shop, uses stock).
+-- Copies: player.Axes.<Model> has a "Copies" attribute (owned = at least 1). Hero pads each hold
+-- one copy (HeroSlotService), see ShopService.Copies.
 -- Owned axes: player.Axes.<Model> (BoolValue). Equipped: player "EquippedAxe" attribute; it also sets
 -- the "ClickDamage" attribute that TreeHitService uses.
 -- Stock: ReplicatedStorage.AxeStock.<Model> (IntValue, shared by the whole server), refilled every
@@ -33,12 +39,26 @@ type Result = { ok: boolean, message: string?, earned: number? }
 
 local ShopService = {}
 
-local function shopsFolder(): Instance?
-	return workspace:FindFirstChild("Shops")
+-- Every folder that holds shops: each plot's "Shops" and the old shared Workspace.Shops.
+local function shopFolders(): { Instance }
+	local list = {}
+	local plots = workspace:FindFirstChild("Plots")
+	if plots then
+		for _, plot in plots:GetChildren() do
+			local f = plot:FindFirstChild("Shops")
+			if f then
+				table.insert(list, f)
+			end
+		end
+	end
+	local shared = workspace:FindFirstChild("Shops")
+	if shared then
+		table.insert(list, shared)
+	end
+	return list
 end
 
-local function findShop(kind: string): Model?
-	local folder = shopsFolder()
+local function shopIn(folder: Instance?, kind: string): Model?
 	if folder then
 		for _, m in folder:GetChildren() do
 			if m:IsA("Model") and m:GetAttribute("Shop") == kind then
@@ -49,9 +69,15 @@ local function findShop(kind: string): Model?
 	return nil
 end
 
+-- The shop of this kind the player uses: the one on their own plot, else a shared one.
+function ShopService.FindShop(player: Player, kind: string): Model?
+	local plot = PlotService.GetPlot(player)
+	return shopIn(plot and plot:FindFirstChild("Shops"), kind) or shopIn(workspace:FindFirstChild("Shops"), kind)
+end
+
 -- Is the player standing near a shop of this kind? (Stops remote calls from across the map.)
 local function isNear(player: Player, kind: string): boolean
-	local shop = findShop(kind)
+	local shop = ShopService.FindShop(player, kind)
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not shop or not root then
 		return false
@@ -173,7 +199,8 @@ local function owns(player: Player, model: string): boolean
 	return v ~= nil and v:IsA("BoolValue") and v.Value
 end
 
-local function giveAxe(player: Player, model: string)
+-- Makes sure the player owns `model` with at least `copies` copies (default 1).
+local function giveAxe(player: Player, model: string, copies: number?)
 	local folder = folderOf(player, "Axes")
 	local v = folder:FindFirstChild(model) :: BoolValue?
 	if not v then
@@ -183,6 +210,19 @@ local function giveAxe(player: Player, model: string)
 		v = newValue
 	end
 	(v :: BoolValue).Value = true
+	local now = (v :: BoolValue):GetAttribute("Copies")
+	local have = if typeof(now) == "number" then now else 0
+	;(v :: BoolValue):SetAttribute("Copies", math.max(have, copies or 1, 1))
+end
+
+-- How many copies of `model` the player has (0 when not owned).
+function ShopService.Copies(player: Player, model: string): number
+	if not owns(player, model) then
+		return 0
+	end
+	local v = folderOf(player, "Axes"):FindFirstChild(model) :: BoolValue
+	local n = v:GetAttribute("Copies")
+	return if typeof(n) == "number" then math.max(1, n) else 1
 end
 
 local function equip(player: Player, model: string)
@@ -218,6 +258,23 @@ local function buyAxe(player: Player, model: any): Result
 	return { ok = true }
 end
 
+local function buyAxeCopy(player: Player, model: any): Result
+	local def = typeof(model) == "string" and ShopConfig.GetAxe(model)
+	if not def or not owns(player, def.Model) then
+		return { ok = false, message = "Buy the axe first" }
+	end
+	local stock = stockValue(def.Model)
+	if stock.Value <= 0 then
+		return { ok = false, message = "Out of stock! Wait for the restock" }
+	end
+	if not ChestService.SpendMoney(player, def.Price) then
+		return { ok = false, message = ("Need %s more Cash!"):format(HeroConfig.Abbreviate(math.ceil(def.Price - ChestService.GetMoney(player)))) }
+	end
+	stock.Value -= 1
+	giveAxe(player, def.Model, ShopService.Copies(player, def.Model) + 1)
+	return { ok = true, message = ("%s x%d!"):format(def.Name, ShopService.Copies(player, def.Model)) }
+end
+
 local function equipAxe(player: Player, model: any): Result
 	if typeof(model) ~= "string" or not ShopConfig.GetAxe(model) or not owns(player, model) then
 		return { ok = false, message = "You don't own that axe" }
@@ -234,9 +291,12 @@ local function onAction(player: Player, action: any, arg: any): Result
 			return { ok = false, message = "Go to the Sell shop" }
 		end
 		return sell(player, arg)
-	elseif action == "BuyAxe" or action == "EquipAxe" then
+	elseif action == "BuyAxe" or action == "EquipAxe" or action == "BuyAxeCopy" then
 		if not isNear(player, "LumberAxe") then
 			return { ok = false, message = "Go to the Lumber Axe shop" }
+		end
+		if action == "BuyAxeCopy" then
+			return buyAxeCopy(player, arg)
 		end
 		return if action == "BuyAxe" then buyAxe(player, arg) else equipAxe(player, arg)
 	end
@@ -268,11 +328,12 @@ local function onPlayer(player: Player)
 	equip(player, ShopConfig.StartAxe)
 end
 
--- Saved data (DataService): owned axes + the equipped one.
-function ShopService.ApplySaved(player: Player, axes: { any }, equipped: any)
+-- Saved data (DataService): owned axes + the equipped one + copies per axe.
+function ShopService.ApplySaved(player: Player, axes: { any }, equipped: any, copies: any)
 	for _, model in axes do
 		if typeof(model) == "string" and ShopConfig.GetAxe(model) then
-			giveAxe(player, model)
+			local n = typeof(copies) == "table" and copies[model]
+			giveAxe(player, model, if typeof(n) == "number" then math.floor(n) else 1)
 		end
 	end
 	if typeof(equipped) == "string" and owns(player, equipped) then
@@ -301,8 +362,7 @@ function ShopService.Start()
 		end
 	end)
 
-	local folder = shopsFolder()
-	if folder then
+	local function watchFolder(folder: Instance)
 		for _, m in folder:GetChildren() do
 			if m:IsA("Model") then
 				setupShop(m)
@@ -313,8 +373,23 @@ function ShopService.Start()
 				task.defer(setupShop, m)
 			end
 		end)
-	else
-		warn("[ShopService] Workspace.Shops is missing")
+	end
+	local folders = shopFolders()
+	for _, folder in folders do
+		watchFolder(folder)
+	end
+	if #folders == 0 then
+		warn("[ShopService] no shops: put a Shops folder in each plot")
+	end
+	-- Plots added later (more plots in the future) get their shops set up too.
+	local plots = workspace:FindFirstChild("Plots")
+	if plots then
+		plots.ChildAdded:Connect(function(plot)
+			local f = plot:WaitForChild("Shops", 10)
+			if f then
+				watchFolder(f)
+			end
+		end)
 	end
 
 	Players.PlayerAdded:Connect(onPlayer)

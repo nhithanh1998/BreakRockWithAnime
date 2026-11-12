@@ -9,7 +9,10 @@
 
 local Players = game:GetService("Players")
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
+local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 
 local SCALE = 0.7 -- size of the held copy compared to the full hero
 local OFFSET = CFrame.new(0, 0.9, -2.4) -- from the HumanoidRootPart: in front of the chest
@@ -79,7 +82,11 @@ local function build(player: Player, state: Held)
 	model.Parent = folder()
 
 	-- The little hero idles in the player's hands.
-	local idle = HeroModels.LoadTrack(humanoid, HeroModels.Anims(humanoid).Idle, Enum.AnimationPriority.Idle, true)
+	-- R6 heroes use HeroConfig.IdleAnimations.Held, others their default idle.
+	local idleId = if humanoid.RigType == Enum.HumanoidRigType.R6 and HeroConfig.IdleAnimations.Held ~= ""
+		then HeroConfig.IdleAnimations.Held
+		else HeroModels.Anims(humanoid).Idle
+	local idle = HeroModels.LoadTrack(humanoid, idleId, Enum.AnimationPriority.Idle, true)
 	if idle then
 		idle:Play()
 	end

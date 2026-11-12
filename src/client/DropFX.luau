@@ -131,7 +131,11 @@ local function playIdle(hero: HeroVisual)
 	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
 	animator.Parent = humanoid
 	local anim = Instance.new("Animation")
-	anim.AnimationId = DEFAULT_IDLE[humanoid.RigType] or DEFAULT_IDLE[Enum.HumanoidRigType.R6]
+	-- R6 heroes use HeroConfig.IdleAnimations.Drop, others Roblox's default idle.
+	local dropIdle = HeroConfig.IdleAnimations.Drop
+	anim.AnimationId = if humanoid.RigType == Enum.HumanoidRigType.R6 and dropIdle ~= ""
+		then dropIdle
+		else DEFAULT_IDLE[humanoid.RigType] or DEFAULT_IDLE[Enum.HumanoidRigType.R6]
 	local ok, track = pcall(function()
 		return (animator :: Animator):LoadAnimation(anim)
 	end)

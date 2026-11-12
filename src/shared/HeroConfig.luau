@@ -47,23 +47,36 @@ HeroConfig.FallbackTemplate = "UzumakiKid"
 
 -- Heroes placed on a plot's HeroSlots walk out of the HeroGate and chop trees (HeroWorkerService).
 HeroConfig.Worker = {
-	WalkSpeed = 12, -- studs/s
+	WalkSpeed = 8, -- studs/s
 	ModelScale = 1.44, -- heroes chopping trees are this much bigger than the template (1 = template size)
 	AttackRange = 2.5, -- studs from the trunk's center at which a hero stops and swings
 	MoundGap = 0.4, -- studs between a tree's dirt mound and a hero chopping it (heroes stand outside it)
 	SwingCooldown = 0.15, -- seconds between swings (on top of the swing animation)
-	-- Swing animation. Upload ServerStorage.RBX_ANIMSAVES.mymodel.ChopHorizontal and put its
-	-- "rbxassetid://..." here. While empty, that KeyframeSequence is played directly (works in
-	-- Studio playtests only). The swing's damage lands on its "Hit" marker.
+	-- Swing animations: every swing picks one of these at random (never the same twice in a row).
+	-- The damage lands on the animation's "Hit" marker, or at HitFraction of the swing without one.
+	ChopAnimations = {
+		"rbxassetid://108118702779504",
+		"rbxassetid://116941453608539",
+		"rbxassetid://140540897077688",
+	} :: { string },
+	HitFraction = 0.55,
+	-- Fallback swing when ChopAnimations is empty. Upload ServerStorage.RBX_ANIMSAVES.mymodel.ChopHorizontal
+	-- and put its "rbxassetid://..." here. While empty, that KeyframeSequence is played directly
+	-- (works in Studio playtests only).
 	ChopAnimation = "",
 	ChopKeyframes = "ChopHorizontal",
-	-- Run animation heroes use instead of the default walk. Same as the swing: upload
-	-- ServerStorage.RBX_ANIMSAVES.mymodel.HeroRun and put its "rbxassetid://..." here; while empty
-	-- the KeyframeSequence is played directly (Studio playtests only, the default walk is used live).
-	RunAnimation = "",
+	-- Run animation (axe run, R6) heroes use instead of the default walk. While empty the
+	-- KeyframeSequence RBX_ANIMSAVES.mymodel.HeroRun is played directly (Studio playtests only).
+	RunAnimation = "rbxassetid://104469645043314",
 	RunKeyframes = "HeroRun",
 	RunAnimSpeed = 16, -- studs/s the run animation is made for (its playback speed follows WalkSpeed)
 	RaritySpeed = { Common = 1, Uncommon = 1.05, Rare = 1.1, Epic = 1.2, Legendary = 1.35, Mythic = 1.5 } :: { [string]: number },
+}
+
+-- Idle animations for R6 heroes (R15 heroes keep Roblox's default idle).
+HeroConfig.IdleAnimations = {
+	Drop = "rbxassetid://140077308386686", -- a hero that just dropped from a felled tree (DropFX)
+	Held = "rbxassetid://113945537027249", -- the small hero a player holds in their hands (HeldHeroService)
 }
 
 -- Gradient on the rarity text above heroes (HeroBar) and above hero pads (HeroInfo.Rarity), left to right.
@@ -79,6 +92,37 @@ HeroConfig.RarityGradients = {
 	Mythic = gradient(Color3.fromRGB(255, 120, 200), Color3.fromRGB(255, 220, 90)),
 } :: { [string]: ColorSequence }
 
+-- Moving gradient on those rarity labels (client RarityGradientFX animates every UIGradient tagged
+-- RarityGradientTag, reading its "Rarity" attribute). Colors loop seamlessly across the text:
+--   Colors = palette, looped (last blends back into the first)
+--   (all rarities sweep at the same RarityGradientSweep speed)
+--   Span   = how many palette loops fit across the label at once
+local rgb = Color3.fromRGB
+HeroConfig.RarityGradientTag = "RarityGradient"
+HeroConfig.RarityGradientSweep = 0.3 -- label widths per second the colours move, same for every rarity
+HeroConfig.RarityGradientFX = {
+	Common = { Span = 0.6, Colors = { rgb(170, 170, 170), rgb(255, 255, 255) } },
+	Uncommon = { Span = 0.7, Colors = { rgb(60, 210, 80), rgb(190, 255, 140), rgb(120, 240, 110) } },
+	Rare = { Span = 0.8, Colors = { rgb(40, 110, 255), rgb(120, 225, 255), rgb(80, 170, 255) } },
+	Epic = { Span = 0.9, Colors = { rgb(150, 60, 255), rgb(255, 120, 230), rgb(200, 90, 255) } },
+	Legendary = {
+		Span = 1,
+		Colors = { rgb(255, 140, 10), rgb(255, 245, 130), rgb(255, 190, 40), rgb(255, 255, 220) },
+	},
+	Mythic = {
+		Span = 1,
+		Colors = {
+			rgb(255, 80, 80),
+			rgb(255, 190, 60),
+			rgb(255, 255, 90),
+			rgb(90, 255, 140),
+			rgb(80, 200, 255),
+			rgb(170, 110, 255),
+			rgb(255, 110, 220),
+		},
+	},
+} :: { [string]: { Span: number, Colors: { Color3 } } }
+
 -- Sets a rarity label's text and gradient (its UIGradient child, made if missing).
 function HeroConfig.PaintRarity(label: TextLabel, rarity: string)
 	label.Text = rarity
@@ -90,6 +134,9 @@ function HeroConfig.PaintRarity(label: TextLabel, rarity: string)
 	end
 	g.Color = HeroConfig.RarityGradients[rarity] or ColorSequence.new(Color3.new(1, 1, 1))
 	g.Rotation = 0
+	g.Offset = Vector2.zero
+	g:SetAttribute("Rarity", rarity)
+	game:GetService("CollectionService"):AddTag(g, HeroConfig.RarityGradientTag)
 end
 
 -- Hero pads (plot.HeroSlots.Slot1..Slot9). Without upgrades only the first StartUnlocked pads work.
@@ -104,6 +151,138 @@ HeroConfig.Slots = {
 	LockedPadColor = Color3.fromRGB(105, 105, 110),
 	PriceColor = Color3.fromRGB(90, 255, 60), -- the price shown above a locked pad
 }
+
+-- ===================== PAD UPGRADES =====================
+-- Each hero pad has its own stat levels (all start at 1), bought in the Upgrade window (press F at a
+-- pad with a hero on it; HeroUpgradeUI / HeroSlotService). The hero standing on the pad uses them,
+-- whichever hero it is. Saved with the player (DataService "PadLevels").
+--   Name     = shown in the window
+--   MaxLevel = highest level
+--   Value    = function(level, hero) -> the stat at that level
+--   Cost     = Money for level L -> L+1 is floor(CostBase * CostGrowth ^ (L - 1))
+-- The "Level N" text above a hero (pad billboard and HeroBar) is its Damage level.
+HeroConfig.UpgradeOrder = { "Damage", "Speed", "Walk" } :: { string }
+HeroConfig.Upgrades = {
+	Damage = {
+		Name = "Chop Damage",
+		MaxLevel = 100,
+		CostBase = 150,
+		CostGrowth = 1.17,
+		-- +15% of the hero's base damage per level.
+		Value = function(level: number, hero: string): number
+			return math.floor(HeroConfig.ChopDamage(hero) * (1 + 0.15 * (level - 1)))
+		end,
+	},
+	Speed = {
+		Name = "Chop Speed",
+		MaxLevel = 50,
+		CostBase = 250,
+		CostGrowth = 1.2,
+		-- Swing speed multiplier: +3% of the hero's base speed per level.
+		Value = function(level: number, hero: string): number
+			return HeroConfig.ChopSpeed(hero) * (1 + 0.03 * (level - 1))
+		end,
+	},
+	Walk = {
+		Name = "Walk Speed",
+		MaxLevel = 30,
+		CostBase = 100,
+		CostGrowth = 1.22,
+		-- Studs/s: Worker.WalkSpeed at level 1, +0.4 per level (8 -> 19.6 at 30).
+		Value = function(level: number, _hero: string): number
+			return HeroConfig.Worker.WalkSpeed + 0.4 * (level - 1)
+		end,
+	},
+} :: { [string]: { Name: string, MaxLevel: number, CostBase: number, CostGrowth: number, Value: (number, string) -> number } }
+
+-- ===================== STAT GRADES (REROLL) =====================
+-- Each pad's stats also have a grade, F (worst) .. SSS (best), that multiplies the stat. "Reroll" in
+-- the Upgrade window (costs RerollCost Money) rolls a new grade for every stat of that pad at once.
+-- A pad that was never rerolled is DefaultGrade. Saved with the pad levels.
+--   Multiplier  = stat x this at full effect
+--   Weight      = roll chance (relative; they don't need to add up to 100)
+--   Color       = badge colour; Gradient = name of a RarityGradientFX entry to animate the badge text
+--   GradeEffect = per stat, how much of the multiplier applies (1 = all of it): grade 1.5x on a stat
+--                 with effect 0.4 gives 1 + 0.5 * 0.4 = 1.2x. Keeps walk speed from going wild.
+HeroConfig.GradeOrder = { "F", "E", "D", "C", "B", "A", "S", "SS", "SSS" } :: { string }
+HeroConfig.Grades = {
+	F = { Multiplier = 0.7, Weight = 28, Color = rgb(150, 150, 150) },
+	E = { Multiplier = 0.85, Weight = 22, Color = rgb(170, 120, 80) },
+	D = { Multiplier = 1, Weight = 18, Color = rgb(90, 200, 90) },
+	C = { Multiplier = 1.15, Weight = 13, Color = rgb(60, 200, 200) },
+	B = { Multiplier = 1.3, Weight = 9, Color = rgb(70, 140, 255) },
+	A = { Multiplier = 1.5, Weight = 5.5, Color = rgb(170, 90, 255) },
+	S = { Multiplier = 1.8, Weight = 2.8, Color = rgb(255, 200, 40), Gradient = "Legendary" },
+	SS = { Multiplier = 2.2, Weight = 1.2, Color = rgb(255, 110, 60), Gradient = "Legendary" },
+	SSS = { Multiplier = 3, Weight = 0.5, Color = rgb(255, 80, 200), Gradient = "Mythic" },
+} :: { [string]: { Multiplier: number, Weight: number, Color: Color3, Gradient: string? } }
+HeroConfig.DefaultGrade = "D"
+HeroConfig.RerollCost = 2500 -- "Reroll All" (all unlocked stats)
+HeroConfig.RerollStatCost = 1000 -- the reroll button on one stat's row
+-- Locking stats (lock icon on a grade badge) keeps their grade on the next reroll, but multiplies
+-- that reroll's price: by number of locked stats. At least one stat must stay unlocked.
+HeroConfig.RerollLockMultipliers = { [0] = 1, [1] = 3, [2] = 10 } :: { [number]: number }
+
+-- Price of a reroll with `locked` stats locked (nil when that many can't be locked).
+function HeroConfig.RerollCostFor(locked: number): number?
+	local mult = HeroConfig.RerollLockMultipliers[locked]
+	return if mult then math.floor(HeroConfig.RerollCost * mult) else nil
+end
+HeroConfig.GradeEffect = { Damage = 1, Speed = 0.6, Walk = 0.4 } :: { [string]: number }
+
+-- Slot attribute that holds a pad's grade letter for `stat` (e.g. "GradeDamage").
+function HeroConfig.GradeAttribute(stat: string): string
+	return "Grade" .. stat
+end
+
+-- A random grade letter, by Weight.
+function HeroConfig.RollGrade(rng: Random): string
+	local total = 0
+	for _, grade in HeroConfig.GradeOrder do
+		total += HeroConfig.Grades[grade].Weight
+	end
+	local pick = rng:NextNumber() * total
+	for _, grade in HeroConfig.GradeOrder do
+		pick -= HeroConfig.Grades[grade].Weight
+		if pick <= 0 then
+			return grade
+		end
+	end
+	return HeroConfig.GradeOrder[1]
+end
+
+-- Chance (0..1) of rolling `grade`.
+function HeroConfig.GradeChance(grade: string): number
+	local total = 0
+	for _, g in HeroConfig.GradeOrder do
+		total += HeroConfig.Grades[g].Weight
+	end
+	local def = HeroConfig.Grades[grade]
+	return if def and total > 0 then def.Weight / total else 0
+end
+
+-- The stat a pad gives its hero: upgrade level value x grade multiplier (scaled by GradeEffect).
+function HeroConfig.StatValue(stat: string, level: number, grade: string?, hero: string): number
+	local up = HeroConfig.Upgrades[stat]
+	local def = HeroConfig.Grades[grade or HeroConfig.DefaultGrade] or HeroConfig.Grades[HeroConfig.DefaultGrade]
+	local mult = 1 + (def.Multiplier - 1) * (HeroConfig.GradeEffect[stat] or 1)
+	local value = up.Value(level, hero) * mult
+	return if stat == "Damage" then math.max(1, math.floor(value)) else value
+end
+
+-- Slot attribute that holds a pad's level for `stat` (e.g. "LevelDamage").
+function HeroConfig.LevelAttribute(stat: string): string
+	return "Level" .. stat
+end
+
+-- Money to go from `level` to `level + 1`, or nil at max level.
+function HeroConfig.UpgradeCost(stat: string, level: number): number?
+	local up = HeroConfig.Upgrades[stat]
+	if not up or level >= up.MaxLevel then
+		return nil
+	end
+	return math.floor(up.CostBase * up.CostGrowth ^ (level - 1))
+end
 
 -- 1234 -> "1.2K", 47700000000 -> "47.7B", 1.57e22 -> "15.7Sx".
 local UNITS = {
