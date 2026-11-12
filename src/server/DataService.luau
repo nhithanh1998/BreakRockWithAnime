@@ -3,7 +3,7 @@
 --
 -- Saved:  Money (leaderstats.Money), Inventory + Heroes (IntValues), Axes owned + EquippedAxe,
 --         UnlockedSlots (bought hero pads), AutoSell, which heroes stand on which pad, and skill
---         tree levels (player.Skills, SkillTreeService).
+--         tree levels (player.Skills, SkillTreeService), UnlockedZones + CurrentZone (Zones board).
 -- Not saved: the shared TreasureChest's contents (it isn't anyone's) and trees.
 --
 -- Load: when the player joins (3 tries). Saved amounts are ADDED to whatever the player already
@@ -37,6 +37,8 @@ export type SaveData = {
 	AutoSell: boolean?,
 	Placed: { [string]: string }?, -- slot index (as text) -> hero name
 	Skills: { [string]: number }?, -- "Tree/Node" -> level
+	UnlockedZones: number?, -- highest zone bought on the Zones board (ZoneBoardService)
+	CurrentZone: number?, -- zone the plot is set to
 }
 
 local DataService = {}
@@ -107,6 +109,8 @@ local function collect(player: Player): SaveData
 	end
 	local unlocked = player:GetAttribute("UnlockedSlots")
 	local equipped = player:GetAttribute("EquippedAxe")
+	local unlockedZones = player:GetAttribute("UnlockedZones")
+	local currentZone = player:GetAttribute("CurrentZone")
 	return {
 		Version = DATA_VERSION,
 		SavedAt = os.time(),
@@ -119,6 +123,8 @@ local function collect(player: Player): SaveData
 		AutoSell = player:GetAttribute("AutoSell") == true,
 		Placed = placedNow(player) or placedCache[player],
 		Skills = counts(player:FindFirstChild("Skills")),
+		UnlockedZones = if typeof(unlockedZones) == "number" then unlockedZones else nil,
+		CurrentZone = if typeof(currentZone) == "number" then currentZone else nil,
 	}
 end
 
@@ -145,6 +151,13 @@ local function apply(player: Player, data: SaveData)
 	end
 	if typeof(data.AutoSell) == "boolean" then
 		player:SetAttribute("AutoSell", data.AutoSell)
+	end
+	if typeof(data.UnlockedZones) == "number" then
+		local now = player:GetAttribute("UnlockedZones")
+		player:SetAttribute("UnlockedZones", math.max(data.UnlockedZones, if typeof(now) == "number" then now else 1))
+	end
+	if typeof(data.CurrentZone) == "number" and player:GetAttribute("CurrentZone") == nil then
+		player:SetAttribute("CurrentZone", data.CurrentZone)
 	end
 	SkillTreeService.ApplySaved(player, data.Skills)
 	if data.Placed then

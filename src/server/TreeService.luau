@@ -4,6 +4,7 @@
 --   "HP"/"MaxHP" attributes and an HP bar (InfoAttachment.TreeBar ... HPFill); the bar is drawn by
 --   the client (TreeClient). An old-style "Info" BillboardGui (HPBar.Fill/TextLabel) still works.
 --   Optional template attribute "SpawnWeight" (default 1) makes a tree more or less common.
+--   Only templates listed in the zone's ZoneDrops Trees are spawned.
 -- Trees go into the plot's "TreeSpawns" folder, at random spots on Floor.Ground.
 -- When a tree's HP reaches 0 (TreeService.Damage, or any script setting the "HP" attribute)
 --   it gets the "Dead" attribute, is removed TreeConfig.FellTime later (clients play the fall
@@ -13,6 +14,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
+local ZoneDrops = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneDrops"))
 
 local CONFIG = {
 	TemplateFolder = "Trees",
@@ -50,8 +52,9 @@ local function templatesFor(plot: Model): { Model }
 	local folder = root:FindFirstChild("Map" .. zone) or root:FindFirstChild("Map1")
 	local list = {}
 	if folder then
+		-- Only trees that the zone configures in ZoneDrops grow there.
 		for _, child in folder:GetChildren() do
-			if child:IsA("Model") then
+			if child:IsA("Model") and ZoneDrops.GrowsIn(zone, child.Name) then
 				table.insert(list, child)
 			end
 		end

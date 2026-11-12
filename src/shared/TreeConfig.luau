@@ -214,7 +214,65 @@ TreeConfig.Materials = {
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 170, 30), Material = Enum.Material.Plastic },
 	},
-	-- Zone 2
+	-- Zone 2 (Orchard Valley) - Berry Tree
+	-- Keys get an "Orchard" prefix where Zone 1 already uses the plain key ("Apple", "Orange").
+	BerryLog = {
+		Name = "Berry Log",
+		Value = 15,
+		Rarity = "Common",
+		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(105, 62, 70), Material = Enum.Material.Plastic },
+	},
+	BerryCluster = {
+		Name = "Berry Cluster",
+		Value = 60,
+		Rarity = "Uncommon",
+		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(125, 50, 170), Material = Enum.Material.Plastic },
+	},
+	BerryJam = {
+		Name = "Berry Jam",
+		Value = 350,
+		Rarity = "Rare",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(170, 40, 120), Material = Enum.Material.Plastic },
+	},
+	-- Zone 2 (Orchard Valley) - Orange Tree
+	OrangeSeed = {
+		Name = "Orange Seed",
+		Value = 70,
+		Rarity = "Uncommon",
+		Visual = { Shape = "Block", Size = Vector3.new(0.8, 0.8, 0.8), Color = Color3.fromRGB(240, 215, 150), Material = Enum.Material.Plastic },
+	},
+	OrchardOrange = {
+		Name = "Orange",
+		Value = 400,
+		Rarity = "Rare",
+		Visual = { Shape = "Block", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(250, 140, 20), Material = Enum.Material.Plastic },
+	},
+	OrangeJam = {
+		Name = "Orange Jam",
+		Value = 1500,
+		Rarity = "Epic",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 120, 10), Material = Enum.Material.Plastic },
+	},
+	-- Zone 2 (Orchard Valley) - Apple Tree
+	OrchardApple = {
+		Name = "Apple",
+		Value = 450,
+		Rarity = "Rare",
+		Visual = { Shape = "Block", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(220, 40, 45), Material = Enum.Material.Plastic },
+	},
+	AppleJam = {
+		Name = "Apple Jam",
+		Value = 1800,
+		Rarity = "Epic",
+		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(200, 25, 40), Material = Enum.Material.Plastic },
+	},
+	HeartOfTheOrchard = {
+		Name = "Heart of the Orchard",
+		Value = 8000,
+		Rarity = "Legendary",
+		Visual = { Shape = "Gem", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(255, 205, 60), Material = Enum.Material.Plastic },
+	},
+	-- Old placeholder items (no longer dropped; kept so saved inventories can still be sold)
 	Leaf = {
 		Name = "Leaf",
 		Value = 2,

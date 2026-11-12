@@ -1,25 +1,27 @@
 --!strict
--- ZoneDrops: which items can drop from trees in each zone.
+-- ZoneDrops: which trees grow in each zone, and what EACH tree drops.
 --
 -- A plot's zone is its "Zone" attribute (the same number that picks the tree models from
--- ReplicatedStorage.Trees.Map<Zone>).
+-- ReplicatedStorage.Trees.Map<Zone>, falling back to Map1).
 --
--- Each drop entry:
---   Item   = a key in TreeConfig.Materials (e.g. "Honey") or a hero Name from HeroConfig.luau (e.g. "Uzumaki Kid")
---   Chance = 0..1, rolled on its own every time a tree is felled (0.25 = 25%)
---   Min/Max = how many drop when it hits (default 1)
+-- Every zone lists its trees in `Trees`. Each tree:
+--   Name   = display name (only for reading the config / warnings)
+--   Models = tree model names -> size multiplier. A multiplier scales Chance (max 100%; a
+--            Chance of 1 stays 1) and Min/Max (at least 1) of every drop, so saplings give less
+--            and old trees give more.
+--   Drops  = what THIS tree drops (written for a normal-size tree, multiplier 1):
+--     Item    = a key in TreeConfig.Materials (e.g. "OakBark") or a hero Name from HeroConfig.luau
+--     Chance  = 0..1, rolled on its own every time the tree is felled (0.25 = 25%)
+--     Min/Max = how many drop when it hits (default 1)
 --
--- Drops      = what every tree in the zone can drop.
--- Trees      = optional per-tree list (key = tree model name). When a tree has one, it is used
---              INSTEAD of Drops for that tree.
--- Zones without an entry fall back to zone 1.
+-- Only models listed in a zone's Trees grow in that zone, and a tree only drops its own list:
+-- there is no zone-wide drop list any more. Zones without an entry use zone 1.
 --
 -- Heroes (optional, per zone):
 --   HeroChance = 0..1, chance that a felled tree drops ONE hero (any tree type). The player's
 --                "HeroLuck" attribute multiplies it (default 1; for the skill tree / boosts).
 --   Heroes     = which hero it is, picked by Weight (bigger = more common). The chance shown on a
 --                dropped hero is HeroChance * luck * its weight share.
--- Heroes can also still be listed in Drops / Trees with their own Chance (rolled on their own).
 --
 -- New item? Add it to TreeConfig.Materials (or HeroConfig.Heroes) first, then list it here.
 
@@ -32,96 +34,129 @@ export type HeroEntry = {
 	Weight: number,
 }
 
+export type TreeDef = {
+	Name: string,
+	Models: { [string]: number },
+	Drops: { DropEntry },
+}
+
 export type ZoneDef = {
 	Name: string,
-	Drops: { DropEntry },
-	Trees: { [string]: { DropEntry } }?,
+	Trees: { [string]: TreeDef },
 	HeroChance: number?,
 	Heroes: { HeroEntry }?,
 }
 
 local ZoneDrops = {}
 
--- Zone 1 (Green Wood) helpers ------------------------------------------------------------------
-
--- Builds a tree's material drops, scaled by `amount` (sapling < normal < old).
-local function greenWoodTree(common: string, uncommon: string, rare: string, amount: number): { DropEntry }
+-- The usual three sizes of a tree family ("Oak" -> OakSapling / OakTree / OldOakTree).
+local function sizes(family: string): { [string]: number }
 	return {
-		{ Item = common, Chance = 1, Min = math.max(1, math.floor(2 * amount)), Max = math.max(1, math.floor(4 * amount)) },
-		{ Item = uncommon, Chance = math.min(1, 0.35 * amount), Min = 1, Max = math.max(1, math.floor(2 * amount)) },
-		{ Item = rare, Chance = math.min(1, 0.08 * amount), Min = 1, Max = 1 },
+		[family .. "Sapling"] = 0.5,
+		[family .. "Tree"] = 1,
+		["Old" .. family .. "Tree"] = 1.5,
 	}
 end
 
-local function oak(amount: number)
-	return greenWoodTree("OakBark", "Acorn", "OakResin", amount)
-end
-
-local function birch(amount: number)
-	return greenWoodTree("BirchTwig", "BirchLog", "BirchSyrup", amount)
-end
-
-local function apple(amount: number)
-	return greenWoodTree("AppleBranch", "Apple", "GoldenApple", amount)
-end
-
-local function berry(amount: number)
-	return greenWoodTree("BerryTwig", "Berry", "StarBerry", amount)
-end
-
-local function orange(amount: number)
-	return greenWoodTree("OrangePeel", "Orange", "SunOrange", amount)
-end
+-- Green Wood heroes, reused by Orchard Valley for now.
+local GREEN_WOOD_HEROES: { HeroEntry } = {
+	{ Item = "Sling Pirate", Weight = 40 }, -- Common
+	{ Item = "Taijutsu Ninja", Weight = 40 }, -- Common
+	{ Item = "Uzumaki Kid", Weight = 15 }, -- Uncommon
+	{ Item = "Copy Ninja", Weight = 4 }, -- Rare
+	{ Item = "Perfect Bioform", Weight = 1 }, -- Epic
+}
 
 ZoneDrops.Zones = {
 	[1] = {
 		Name = "Green Wood",
-		Drops = oak(1), -- fallback for any tree not listed below
 		Trees = {
-			-- Oak Tree: Oak Bark (Common), Acorn (Uncommon), Oak Resin (Rare)
-			OakSapling = oak(0.5),
-			OakTree = oak(1),
-			OldOakTree = oak(1.5),
-			-- Birch Tree: Birch Twig (Common), Birch Log (Uncommon), Birch Syrup (Rare)
-			BirchSapling = birch(0.5),
-			BirchTree = birch(1),
-			OldBirchTree = birch(1.5),
-			-- Apple Tree: Apple Branch (Common), Apple (Uncommon), Golden Apple (Rare)
-			AppleSapling = apple(0.5),
-			AppleTree = apple(1),
-			OldAppleTree = apple(1.5),
-			-- Berry Tree: Berry Twig (Common), Berry (Uncommon), Star Berry (Rare)
-			BerrySapling = berry(0.5),
-			BerryTree = berry(1),
-			OldBerryTree = berry(1.5),
-			-- Orange Tree: Orange Peel (Common), Orange (Uncommon), Sun Orange (Rare)
-			OrangeSapling = orange(0.5),
-			OrangeTree = orange(1),
-			OldOrangeTree = orange(1.5),
+			Oak = {
+				Name = "Oak Tree",
+				Models = sizes("Oak"),
+				Drops = {
+					{ Item = "OakBark", Chance = 1, Min = 2, Max = 4 }, -- Common
+					{ Item = "Acorn", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
+					{ Item = "OakResin", Chance = 0.08 }, -- Rare
+				},
+			},
+			Birch = {
+				Name = "Birch Tree",
+				Models = sizes("Birch"),
+				Drops = {
+					{ Item = "BirchTwig", Chance = 1, Min = 2, Max = 4 }, -- Common
+					{ Item = "BirchLog", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
+					{ Item = "BirchSyrup", Chance = 0.08 }, -- Rare
+				},
+			},
+			Apple = {
+				Name = "Apple Tree",
+				Models = sizes("Apple"),
+				Drops = {
+					{ Item = "AppleBranch", Chance = 1, Min = 2, Max = 4 }, -- Common
+					{ Item = "Apple", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
+					{ Item = "GoldenApple", Chance = 0.08 }, -- Rare
+				},
+			},
+			Berry = {
+				Name = "Berry Tree",
+				Models = sizes("Berry"),
+				Drops = {
+					{ Item = "BerryTwig", Chance = 1, Min = 2, Max = 4 }, -- Common
+					{ Item = "Berry", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
+					{ Item = "StarBerry", Chance = 0.08 }, -- Rare
+				},
+			},
+			Orange = {
+				Name = "Orange Tree",
+				Models = sizes("Orange"),
+				Drops = {
+					{ Item = "OrangePeel", Chance = 1, Min = 2, Max = 4 }, -- Common
+					{ Item = "Orange", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
+					{ Item = "SunOrange", Chance = 0.08 }, -- Rare
+				},
+			},
 		},
 		-- 20% of felled trees drop a hero. Shares: 40% / 40% / 15% / 4% / 1% of those,
 		-- i.e. 8% / 8% / 3% / 0.8% / 0.2% per tree.
 		HeroChance = 0.2,
-		Heroes = {
-			{ Item = "Sling Pirate", Weight = 40 }, -- Common
-			{ Item = "Taijutsu Ninja", Weight = 40 }, -- Common
-			{ Item = "Uzumaki Kid", Weight = 15 }, -- Uncommon
-			{ Item = "Copy Ninja", Weight = 4 }, -- Rare
-			{ Item = "Perfect Bioform", Weight = 1 }, -- Epic
-		},
+		Heroes = GREEN_WOOD_HEROES,
 	},
 
-	-- Example for the next zone; edit freely.
 	[2] = {
-		Name = "Fruit Grove",
-		Drops = {
-			{ Item = "Leaf", Chance = 0.8, Min = 2, Max = 5 },
-			{ Item = "Fruit", Chance = 0.6, Min = 1, Max = 3 },
-			{ Item = "Amber", Chance = 0.12 },
-			{ Item = "Crystal", Chance = 0.05 },
-			{ Item = "Copy Ninja", Chance = 0.03 },
-			{ Item = "Flame Pillar", Chance = 0.01 },
+		Name = "Orchard Valley",
+		-- Only these three trees grow here (Oak / Birch do not).
+		Trees = {
+			Berry = {
+				Name = "Berry Tree",
+				Models = sizes("Berry"),
+				Drops = {
+					{ Item = "BerryLog", Chance = 1, Min = 2, Max = 4 }, -- Common
+					{ Item = "BerryCluster", Chance = 0.35, Min = 1, Max = 2 }, -- Uncommon
+					{ Item = "BerryJam", Chance = 0.08 }, -- Rare
+				},
+			},
+			Orange = {
+				Name = "Orange Tree",
+				Models = sizes("Orange"),
+				Drops = {
+					{ Item = "OrangeSeed", Chance = 1, Min = 1, Max = 3 }, -- Uncommon
+					{ Item = "OrchardOrange", Chance = 0.25, Min = 1, Max = 2 }, -- Rare
+					{ Item = "OrangeJam", Chance = 0.04 }, -- Epic
+				},
+			},
+			Apple = {
+				Name = "Apple Tree",
+				Models = sizes("Apple"),
+				Drops = {
+					{ Item = "OrchardApple", Chance = 1, Min = 1, Max = 2 }, -- Rare
+					{ Item = "AppleJam", Chance = 0.12 }, -- Epic
+					{ Item = "HeartOfTheOrchard", Chance = 0.005 }, -- Legendary (0.5%)
+				},
+			},
 		},
+		HeroChance = 0.2,
+		Heroes = GREEN_WOOD_HEROES,
 	},
 } :: { [number]: ZoneDef }
 
@@ -129,32 +164,71 @@ function ZoneDrops.GetZone(zone: number?): ZoneDef
 	return ZoneDrops.Zones[zone or 1] or ZoneDrops.Zones[1]
 end
 
--- The drop list for a tree of `treeType` in `zone`.
-function ZoneDrops.GetDrops(zone: number?, treeType: string?): { DropEntry }
-	local def = ZoneDrops.GetZone(zone)
-	local perTree = def.Trees and treeType and def.Trees[treeType]
-	return perTree or def.Drops
+-- The tree definition (and size multiplier) for a model name in `zone`, or nil.
+function ZoneDrops.GetTree(zone: number?, modelName: string?): (TreeDef?, number)
+	if not modelName then
+		return nil, 1
+	end
+	for _, tree in ZoneDrops.GetZone(zone).Trees do
+		local mult = tree.Models[modelName]
+		if mult then
+			return tree, mult
+		end
+	end
+	return nil, 1
+end
+
+-- Whether a tree model is allowed to grow in `zone`.
+function ZoneDrops.GrowsIn(zone: number?, modelName: string): boolean
+	return (ZoneDrops.GetTree(zone, modelName)) ~= nil
+end
+
+local scaledCache: { [TreeDef]: { [number]: { DropEntry } } } = {}
+
+-- The drop list for a felled tree model in `zone` (already scaled by its size). Empty if the
+-- model is not configured for that zone.
+function ZoneDrops.GetDrops(zone: number?, modelName: string?): { DropEntry }
+	local tree, mult = ZoneDrops.GetTree(zone, modelName)
+	if not tree then
+		return {}
+	end
+	local byMult = scaledCache[tree]
+	if not byMult then
+		byMult = {}
+		scaledCache[tree] = byMult
+	end
+	local list = byMult[mult]
+	if not list then
+		list = {}
+		for _, entry in tree.Drops do
+			local min = entry.Min or 1
+			local max = entry.Max or min
+			table.insert(list, {
+				Item = entry.Item,
+				-- Guaranteed drops stay guaranteed; only their amount scales.
+				Chance = if entry.Chance >= 1 then 1 else math.min(1, entry.Chance * mult),
+				Min = math.max(1, math.floor(min * mult)),
+				Max = math.max(1, math.floor(max * mult)),
+			})
+		end
+		byMult[mult] = list
+	end
+	return list
 end
 
 -- Warns about items that are not defined in TreeConfig (typos etc.). Called once by the server.
 function ZoneDrops.Validate()
-	local function check(where: string, list: { DropEntry })
-		for _, entry in list do
-			if not TreeConfig.Materials[entry.Item] and not TreeConfig.GetHero(entry.Item) then
-				warn(("[ZoneDrops] %s: unknown item %q (add it to TreeConfig.Materials or HeroConfig)"):format(where, entry.Item))
-			end
-		end
-	end
 	for zone, def in ZoneDrops.Zones do
-		check(("Zone %d"):format(zone), def.Drops)
 		for _, hero in def.Heroes or {} do
 			if not TreeConfig.GetHero(hero.Item) then
 				warn(("[ZoneDrops] Zone %d Heroes: unknown hero %q (add it to HeroConfig)"):format(zone, hero.Item))
 			end
 		end
-		if def.Trees then
-			for tree, list in def.Trees do
-				check(("Zone %d / %s"):format(zone, tree), list)
+		for key, tree in def.Trees do
+			for _, entry in tree.Drops do
+				if not TreeConfig.Materials[entry.Item] and not TreeConfig.GetHero(entry.Item) then
+					warn(("[ZoneDrops] Zone %d / %s: unknown item %q (add it to TreeConfig.Materials or HeroConfig)"):format(zone, key, entry.Item))
+				end
 			end
 		end
 	end
