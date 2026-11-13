@@ -41,8 +41,32 @@ end
 
 -- Drops ----------------------------------------------------------------------------------------
 
+local function luckOf(player: Player?, stat: string): number
+	local value = player and player:GetAttribute(stat)
+	return if typeof(value) == "number" then value else 1
+end
+
+-- A hero drop of `heroName`: rolls its mutation and size (HeroConfig.RollVariant, boosted by the
+-- player's MutationLuck / SizeLuck) and names it after them ("Diamond Huge Sling Scout").
+local function heroDrop(heroName: string, amount: number, chance: number, player: Player?): Drop?
+	local base = TreeConfig.GetHero(heroName)
+	if not base then
+		return nil
+	end
+	local mutation, size, variantChance = HeroConfig.RollVariant(rng, luckOf(player, "MutationLuck"), luckOf(player, "SizeLuck"))
+	return {
+		Kind = "Anime",
+		Name = HeroConfig.VariantName(base.Name, mutation, size),
+		Amount = amount,
+		Rarity = base.Rarity,
+		Chance = chance * variantChance, -- chance of this exact hero + mutation + size per tree
+		Mutation = mutation,
+		Size = size,
+	}
+end
+
 -- One roll for the zone's hero drop (ZoneDrops HeroChance / Heroes), boosted by the player's
--- "HeroLuck" attribute (multiplier, default 1).
+-- "HeroLuck" attribute (multiplier, default 1). The hero then rolls its mutation and size.
 local function rollHero(zone: number?, player: Player?): Drop?
 	local def = ZoneDrops.GetZone(zone)
 	local heroes = def.Heroes
@@ -67,17 +91,7 @@ local function rollHero(zone: number?, player: Player?): Drop?
 			break
 		end
 	end
-	local hero = TreeConfig.GetHero(picked.Item)
-	if not hero then
-		return nil
-	end
-	return {
-		Kind = "Anime",
-		Name = hero.Name,
-		Amount = 1,
-		Rarity = hero.Rarity,
-		Chance = chance * picked.Weight / total, -- this hero's real chance per tree
-	}
+	return heroDrop(picked.Item, 1, chance * picked.Weight / total, player)
 end
 
 -- Rolls the zone's drop list (ZoneDrops) for a felled tree.
@@ -102,13 +116,13 @@ local function rollDrops(zone: number?, treeType: string?, player: Player?): { D
 					Chance = entry.Chance,
 				})
 			elseif hero then
-				table.insert(drops, {
-					Kind = "Anime",
-					Name = hero.Name,
-					Amount = amount,
-					Rarity = hero.Rarity,
-					Chance = entry.Chance,
-				})
+				-- Each copy rolls its own mutation / size.
+				for _ = 1, amount do
+					local drop = heroDrop(hero.Name, 1, entry.Chance, player)
+					if drop then
+						table.insert(drops, drop)
+					end
+				end
 			end
 		end
 	end

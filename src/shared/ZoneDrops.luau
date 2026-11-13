@@ -71,7 +71,7 @@ end
 -- Weights are the % share of the hero drops (they add up to 100).
 local GREEN_WOOD_HEROES: { HeroEntry } = {
 	{ Item = "Sling Scout", Weight = 45 }, -- Common
-	{ Item = "Taijutsu Shounen", Weight = 25 }, -- Common
+	{ Item = "Taijutsu Ninja", Weight = 25 }, -- Common
 	{ Item = "Dragon Kid", Weight = 18 }, -- Uncommon
 	{ Item = "Copy Sensei", Weight = 9 }, -- Rare
 	{ Item = "Green Beetle", Weight = 3 }, -- Epic

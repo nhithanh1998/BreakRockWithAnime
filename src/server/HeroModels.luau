@@ -52,6 +52,76 @@ local function animId(animate: Instance?, child: string): string?
 	return if anim and anim.AnimationId ~= "" then anim.AnimationId else nil
 end
 
+-- Sparkles in the mutation's colour around a mutated hero (Rainbow cycles through its palette), and
+-- the name on its bar tinted the same. Particles instead of a Highlight: a client can only show 31
+-- Highlights at once and a plot can have many mutated heroes.
+function HeroModels.AddMutationFX(model: Model, root: BasePart, heroName: string)
+	local def = HeroConfig.Get(heroName)
+	local mutation = def and def.Mutation and HeroConfig.Mutations[def.Mutation]
+	if not def or not mutation then
+		return
+	end
+	model:SetAttribute("Mutation", def.Mutation)
+	local colors = mutation.Colors
+	local sequence: ColorSequence
+	if colors and #colors > 1 then
+		local points = {}
+		for i, c in colors do
+			table.insert(points, ColorSequenceKeypoint.new((i - 1) / (#colors - 1), c))
+		end
+		sequence = ColorSequence.new(points)
+	else
+		sequence = ColorSequence.new(mutation.Color)
+	end
+	local sparkles = Instance.new("ParticleEmitter")
+	sparkles.Name = "MutationSparkles"
+	sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparkles.Color = sequence
+	sparkles.LightEmission = 0.8
+	sparkles.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) })
+	sparkles.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	sparkles.Lifetime = NumberRange.new(0.8, 1.4)
+	sparkles.Rate = 6
+	sparkles.Speed = NumberRange.new(0.5, 1.5)
+	sparkles.SpreadAngle = Vector2.new(180, 180)
+	sparkles.Parent = root
+
+	local attachment = root:FindFirstChild("InfoAttachment")
+	local bar = attachment and attachment:FindFirstChild("HeroBar")
+	local container = bar and bar:FindFirstChild("Container")
+	local nameLabel = container and container:FindFirstChild("HeroName")
+	if nameLabel and nameLabel:IsA("TextLabel") then
+		nameLabel.TextColor3 = mutation.Color
+	end
+end
+
+-- The size badge ("HUGE", ...) of a sized hero, just above the top line of its HeroBar. The bar's
+-- Container stacks its labels in the middle (UIListLayout), so its text reaches half the stack's
+-- height above the bar's centre.
+local function drawSizeBadge(root: BasePart, size: string)
+	local attachment = root:FindFirstChild("InfoAttachment")
+	local bar = attachment and attachment:FindFirstChild("HeroBar")
+	local container = bar and bar:FindFirstChild("Container")
+	if not bar or not bar:IsA("BillboardGui") or not container or not container:IsA("GuiObject") then
+		return
+	end
+	local layout = container:FindFirstChildOfClass("UIListLayout")
+	local stack, count = 0, 0
+	for _, child in container:GetChildren() do
+		if child:IsA("GuiObject") and child.Visible then
+			stack += child.Size.Y.Scale
+			count += 1
+		end
+	end
+	if layout then
+		stack += layout.Padding.Scale * math.max(0, count - 1)
+	end
+	local containerStuds = bar.Size.Y.Scale * container.Size.Y.Scale
+	local nameLabel = container:FindFirstChild("HeroName")
+	local font = if nameLabel and nameLabel:IsA("TextLabel") then nameLabel.FontFace else nil
+	HeroConfig.PaintSizeBadge(bar, stack * containerStuds / 2, size, font)
+end
+
 function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 	local template = templateFor(heroName)
 	if not template then
@@ -86,7 +156,7 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 	if def and container then
 		local nameLabel = container:FindFirstChild("HeroName")
 		if nameLabel and nameLabel:IsA("TextLabel") then
-			nameLabel.Text = def.Name
+			nameLabel.Text = HeroConfig.DisplayName(def) -- the size goes on its own badge (drawSizeBadge)
 		end
 		local levelLabel = container:FindFirstChild("Level")
 		if levelLabel and levelLabel:IsA("TextLabel") then
@@ -102,7 +172,16 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 			powerLabel.Text = HeroConfig.Abbreviate(def.MinePower)
 		end
 	end
+	HeroModels.AddMutationFX(model, root, heroName)
+	if def and def.Size then
+		model:SetAttribute("Size", def.Size)
+		drawSizeBadge(root, def.Size)
+	end
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	-- Model:ScaleTo already resizes every part and updates the R15 scale values (HeadScale ...).
+	-- With automatic scaling on, the Humanoid applies HeadScale to the head AGAIN once the model is
+	-- in the workspace, so the head ends up scale^2 (tiny on small heroes, huge on big ones).
+	humanoid.AutomaticScalingEnabled = false
 	humanoid.BreakJointsOnDeath = false
 	humanoid.RequiresNeck = false
 	if not humanoid:FindFirstChildOfClass("Animator") then
@@ -183,6 +262,27 @@ function HeroModels.BodyHeight(model: Model): number
 	return if top > bottom then top - bottom else 0
 end
 
+-- Body height of a player's character; HeroConfig.Slots.PadHeroHeight when it isn't loaded yet.
+function HeroModels.PlayerBodyHeight(player: Player?): number
+	local character = player and player.Character
+	local height = if character then HeroModels.BodyHeight(character) else 0
+	return if height > 1 then height else HeroConfig.Slots.PadHeroHeight
+end
+
+-- Scales a CLONE so its body is `height` studs tall (the templates in ReplicatedStorage are never
+-- touched, so a new catalog model works at any size). Returns the factor applied (for the axe).
+function HeroModels.ScaleToHeight(model: Model, height: number): number
+	local current = HeroModels.BodyHeight(model)
+	if current <= 0 or height <= 0 then
+		return 1
+	end
+	local before = model:GetScale()
+	if pcall(model.ScaleTo, model, before * height / current) then
+		return model:GetScale() / before
+	end
+	return 1
+end
+
 -- Hides the bar above the hero (for copies that already have a label nearby, e.g. on a pad).
 function HeroModels.HideBar(model: Model)
 	local root = model.PrimaryPart
@@ -190,6 +290,10 @@ function HeroModels.HideBar(model: Model)
 	local bar = attachment and attachment:FindFirstChild("HeroBar")
 	if bar and bar:IsA("BillboardGui") then
 		bar.Enabled = false
+	end
+	local badge = attachment and attachment:FindFirstChild(HeroConfig.SizeBadgeName)
+	if badge and badge:IsA("BillboardGui") then
+		badge.Enabled = false
 	end
 end
 

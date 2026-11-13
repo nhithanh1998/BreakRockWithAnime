@@ -165,8 +165,15 @@ end
 -- Only one of them is shown at a time; their positions are set in Studio.
 local function billboard(pad: Instance, attachment: string): BillboardGui?
 	local a = pad:FindFirstChild(attachment)
-	local gui = a and a:FindFirstChildOfClass("BillboardGui")
-	return gui
+	if not a then
+		return nil
+	end
+	for _, child in a:GetChildren() do
+		if child:IsA("BillboardGui") and child.Name ~= HeroConfig.SizeBadgeName then
+			return child
+		end
+	end
+	return nil
 end
 
 -- The damage the pad's hero deals per swing (its Power x the pad's Damage level and grade, x the axe's
@@ -226,10 +233,18 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 	local info = billboard(pad, "HeroInfo")
 	if info then
 		info.Enabled = def ~= nil
+		-- Size badge ("HUGE", ...) just above the name: HeroInfo stacks its labels from the top.
+		local nameLabel = info:FindFirstChild("HeroName")
+		HeroConfig.PaintSizeBadge(
+			info,
+			info.Size.Y.Scale / 2,
+			if def then def.Size else nil,
+			if nameLabel and nameLabel:IsA("TextLabel") then nameLabel.FontFace else nil
+		)
 		if def then
 			local nameLabel = info:FindFirstChild("HeroName") :: TextLabel?
 			if nameLabel then
-				nameLabel.Text = def.Name
+				nameLabel.Text = HeroConfig.DisplayName(def) -- the size is on its own badge above
 			end
 			local levelLabel = info:FindFirstChild("Level") :: TextLabel?
 			if levelLabel then
@@ -250,12 +265,6 @@ end
 
 -- A copy of the placed hero standing idle on top of the pad with its axe (the working copy is out
 -- chopping trees). Rebuilt only when the pad's hero changes.
--- Body height of the plot owner's character (HeroConfig.Slots.PadHeroHeight without one).
-local function ownerHeight(owner: Player?): number
-	local character = owner and owner.Character
-	local height = if character then HeroModels.BodyHeight(character) else 0
-	return if height > 1 then height else HeroConfig.Slots.PadHeroHeight
-end
 
 local function drawPadHero(slot: Model, hero: string?, owner: Player?)
 	local current = slot:FindFirstChild(PAD_HERO_NAME)
@@ -281,14 +290,10 @@ local function drawPadHero(slot: Model, hero: string?, owner: Player?)
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
 
 	-- Body as tall as the owner's body (the axe gets the same factor so it stays in proportion).
-	local factor = 1
-	local height = HeroModels.BodyHeight(model)
-	if height > 0 then
-		local before = model:GetScale()
-		if pcall(model.ScaleTo, model, before * ownerHeight(owner) / height) then
-			factor = model:GetScale() / before
-		end
-	end
+	-- Bigger sizes (HeroConfig.Sizes PadScale) stand a bit taller on the pad.
+	local def = HeroConfig.Get(hero)
+	local padScale = if def and def.PadScale then def.PadScale else 1
+	local factor = HeroModels.ScaleToHeight(model, HeroModels.PlayerBodyHeight(owner) * padScale)
 
 	-- Feet on the pad's top face, facing the way the pad faces.
 	local look = Vector3.new(pad.CFrame.LookVector.X, 0, pad.CFrame.LookVector.Z)

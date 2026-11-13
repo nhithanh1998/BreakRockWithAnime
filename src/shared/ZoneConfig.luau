@@ -16,7 +16,8 @@ local ZoneConfig = {}
 
 ZoneConfig.Zones = {
 	[1] = { Name = "Green Wood", Price = 0, Color = Color3.fromRGB(80, 190, 70) },
-	[2] = { Name = "Orchard Valley", Price = 25000, -- ~15-20 min of zone 1 with a few upgraded heroes Color = Color3.fromRGB(235, 120, 40) },
+	-- Price: ~15-20 min of zone 1 with a few upgraded heroes.
+	[2] = { Name = "Orchard Valley", Price = 25000, Color = Color3.fromRGB(235, 120, 40) },
 } :: { [number]: ZoneInfo }
 
 -- Shown as a greyed-out row under the last zone; set to nil to hide it.

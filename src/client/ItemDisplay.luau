@@ -82,9 +82,35 @@ function ItemDisplay.SlotColor(rarity: string): Color3
 	return TreeConfig.RaritySlotColors[rarity] or Color3.fromRGB(120, 120, 120)
 end
 
--- Material picture: a 3D icon of the drop, shaped by Visual.Shape, filling ~ICON_FILL of the view.
+-- Material picture: a 3D icon of the drop, shaped by Visual.Shape, filling ICON_FILL of the view.
 local ICON_FOV = 30
-local ICON_FILL = 0.8 -- share of the view's height the bounding sphere takes up (the item itself is a bit smaller)
+local ICON_FILL = 0.92 -- share of the view the item's widest / tallest side takes up (1 = touches the edges)
+
+-- Puts `camera` on the line `dir` (unit, from the item towards the camera) so the box `boxCFrame` /
+-- `size` just fits ICON_FILL of the view, whichever side (width / height) is the tight one.
+-- Uses the 8 corners of the box seen in perspective, not its bounding sphere (that left the item
+-- much smaller than the card).
+local function fitCamera(view: ViewportFrame, camera: Camera, boxCFrame: CFrame, size: Vector3, dir: Vector3)
+	local center = boxCFrame.Position
+	local look = CFrame.lookAt(center + dir, center)
+	local right, up, back = look.RightVector, look.UpVector, look.LookVector * -1
+	local tanY = math.tan(math.rad(ICON_FOV / 2)) * ICON_FILL
+	local abs = view.AbsoluteSize
+	local aspect = if abs.X > 0 and abs.Y > 0 then abs.X / abs.Y else 1
+	local tanX = tanY * aspect
+	local distance = 0.1
+	for _, sx in { -1, 1 } do
+		for _, sy in { -1, 1 } do
+			for _, sz in { -1, 1 } do
+				local corner = boxCFrame:PointToWorldSpace(size * 0.5 * Vector3.new(sx, sy, sz)) - center
+				local depth = corner:Dot(back) -- towards the camera
+				distance = math.max(distance, math.abs(corner:Dot(up)) / tanY + depth, math.abs(corner:Dot(right)) / tanX + depth)
+			end
+		end
+	end
+	camera.FieldOfView = ICON_FOV
+	camera.CFrame = CFrame.lookAt(center + dir * distance, center)
+end
 
 local function studs(part: BasePart)
 	for _, face in { "Top", "Bottom", "Front", "Back", "Left", "Right" } do
@@ -175,15 +201,12 @@ local function fillModelViewport(view: ViewportFrame, key: string): boolean
 	end
 	local model = template:Clone()
 	-- Centre the visible parts at the origin, turned a little so it reads as 3D.
-	local box, size = model:GetBoundingBox()
+	local box = model:GetBoundingBox()
 	model:PivotTo(CFrame.Angles(0, math.rad(-25), 0) * box:ToObjectSpace(model:GetPivot()))
 	model.Parent = view
-	local radius = math.max(size.Magnitude / 2, 0.1)
-	local distance = radius / math.tan(math.rad(ICON_FOV / 2)) / ICON_FILL
+	local turned, size = model:GetBoundingBox()
 	local camera = Instance.new("Camera")
-	camera.FieldOfView = ICON_FOV
-	local dir = Vector3.new(0, 0.35, 1).Unit
-	camera.CFrame = CFrame.lookAt(dir * distance, Vector3.zero)
+	fitCamera(view, camera, turned, size, Vector3.new(0, 0.35, 1).Unit)
 	camera.Parent = view
 	view.CurrentCamera = camera
 	return true
@@ -202,14 +225,8 @@ function ItemDisplay.FillViewport(view: ViewportFrame, visual: TreeConfig.Visual
 	end
 	local part = iconPart(visual)
 	part.Parent = view
-	-- Frame the part's bounding sphere so it fills ICON_FILL of the view's height.
-	local radius = part.Size.Magnitude / 2
-	local distance = radius / math.tan(math.rad(ICON_FOV / 2)) / ICON_FILL
 	local camera = Instance.new("Camera")
-	camera.FieldOfView = ICON_FOV
-	local dir = Vector3.new(0, 0.3, 1).Unit
-	-- Aim a little above the part so it sits just below the card's middle, clear of the name.
-	camera.CFrame = CFrame.lookAt(dir * distance + Vector3.new(0, 0.25, 0), Vector3.new(0, 0.25, 0))
+	fitCamera(view, camera, part.CFrame, part.Size, Vector3.new(0, 0.3, 1).Unit)
 	camera.Parent = view
 	view.CurrentCamera = camera
 end
@@ -222,6 +239,7 @@ local PORTRAIT_HEADS = 2.8 -- the card is this many heads tall (smaller = bigger
 -- Heads the view's center sits above the head's center (bigger = hero lower). -0.3 puts the hero
 -- 0.42 heads = 15% of the card higher than 0.12 did.
 local PORTRAIT_LIFT = -0.3
+local PORTRAIT_AMBIENT = Color3.fromRGB(215, 215, 215) -- fill light on the hero (higher = brighter shadows)
 
 local function prepareModel(model: Model)
 	for _, d in model:GetDescendants() do
@@ -344,7 +362,12 @@ function ItemDisplay.FillHeroViewport(view: ViewportFrame, heroName: string): bo
 		stroke.LightColor = Color3.new(0, 0, 0)
 		stroke.ImageColor3 = STROKE_COLOR
 	end
-	layer(view, "Main", model, camera, view.ZIndex + 1, Vector2.zero)
+	local main = layer(view, "Main", model, camera, view.ZIndex + 1, Vector2.zero)
+	-- Bright, from the front: the default ViewportFrame light (grey, from behind the hero) left
+	-- the face and clothes in shadow.
+	main.Ambient = PORTRAIT_AMBIENT
+	main.LightColor = Color3.new(1, 1, 1)
+	main.LightDirection = (camera.CFrame.LookVector + Vector3.new(0, -0.6, 0)).Unit
 	camera:Destroy()
 	view:SetAttribute("Hero", heroName)
 	return true

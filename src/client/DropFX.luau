@@ -100,8 +100,21 @@ local function buildHero(drop: Drop, scale: number?): HeroVisual?
 		model:Destroy()
 		return nil
 	end
+	-- A stray "HeadWeld" (left in some templates, or added again later) pins the head out of place
+	-- and fights the Neck: remove it now and whenever one shows up again (same as HeroModels.Clone).
+	model.DescendantAdded:Connect(function(d)
+		if d.Name == "HeadWeld" and d:IsA("JointInstance") then
+			task.defer(function()
+				if d.Parent then
+					d:Destroy()
+				end
+			end)
+		end
+	end)
 	for _, d in model:GetDescendants() do
-		if d:IsA("BasePart") then
+		if d.Name == "HeadWeld" and d:IsA("JointInstance") then
+			d:Destroy()
+		elseif d:IsA("BasePart") then
 			d.CanCollide = false
 			d.CanQuery = false
 			d.CanTouch = false
@@ -113,6 +126,8 @@ local function buildHero(drop: Drop, scale: number?): HeroVisual?
 	end
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	-- Otherwise the R15 Humanoid applies HeadScale on top of ScaleTo and the head ends up scale^2.
+	humanoid.AutomaticScalingEnabled = false
 	model.PrimaryPart = root
 	model:ScaleTo(scale or HERO_SCALE)
 	local cf, size = model:GetBoundingBox()

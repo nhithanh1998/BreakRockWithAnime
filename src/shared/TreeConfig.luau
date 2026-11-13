@@ -40,6 +40,8 @@ export type Drop = {
 	Rarity: Rarity,
 	Chance: number,
 	Sold: boolean?, -- auto-sold on the spot (ChestService auto sell): flies to the player, not the chest
+	Mutation: string?, -- heroes only: rolled mutation (HeroConfig.Mutations), nil = none
+	Size: string?, -- heroes only: rolled size (HeroConfig.Sizes), nil = Normal
 }
 
 local TreeConfig = {}

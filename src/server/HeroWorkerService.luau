@@ -283,10 +283,21 @@ local function trunkOf(w: Worker, tree: Model): (Vector3, number)
 	return Vector3.new(center.X, w.root.Position.Y, center.Z), radius
 end
 
+-- Body size multiplier of a hero from its size (HeroConfig.Sizes Scale; 1 = Normal).
+local function sizeScale(heroName: string): number
+	local def = HeroConfig.Get(heroName)
+	return if def and def.Scale then def.Scale else 1
+end
+
+-- Extra studs a bigger hero keeps from the trunk (HeroConfig.Worker.SizeReach per +1 Scale).
+local function reachOf(w: Worker): number
+	return math.max(0, sizeScale(w.hero) - 1) * (HeroConfig.Worker.SizeReach or 0)
+end
+
 -- How far from the trunk's center the hero stands to chop, coming from `from`: just outside the
 -- tree's dirt mound ("Ground" model) on that side, so it never stands inside the roots; trees without
 -- a mound use the trunk radius.
-local function attackRange(tree: Model, center: Vector3, radius: number, from: Vector3): number
+local function attackRange(tree: Model, center: Vector3, radius: number, from: Vector3, reach: number?): number
 	local range = math.max(ATTACK_RANGE, radius + MIN_SURFACE_GAP)
 	local ground = tree:FindFirstChild("Ground")
 	if ground and ground:IsA("Model") then
@@ -303,7 +314,7 @@ local function attackRange(tree: Model, center: Vector3, radius: number, from: V
 			range = math.max(range, math.max(a, b) + MOUND_GAP)
 		end
 	end
-	return range
+	return range + (reach or 0)
 end
 
 local function flatDir(from: Vector3, to: Vector3): Vector3
@@ -492,13 +503,13 @@ local function run(w: Worker)
 		w.target = tree
 
 		local center, radius = trunkOf(w, tree)
-		local range = attackRange(tree, center, radius, w.root.Position)
+		local range = attackRange(tree, center, radius, w.root.Position, reachOf(w))
 		walkTo(w, center, range, function()
 			return not treeAlive(tree) or zoneBusy(w)
 		end)
 
 		center, radius = trunkOf(w, tree)
-		range = attackRange(tree, center, radius, w.root.Position)
+		range = attackRange(tree, center, radius, w.root.Position, reachOf(w))
 		if isAlive(w) and treeAlive(tree) and not zoneBusy(w) and flatDist(w.root.Position, center) <= range + RANGE_SLACK then
 			while isAlive(w) and treeAlive(tree) and not zoneBusy(w) do
 				w.movement:FaceTowards(center)
@@ -587,7 +598,7 @@ function HeroWorkerService.ApplyLevels(plot: Model, slot: number)
 				child:Destroy()
 			end
 		end
-		HeroModels.GiveAxe(w.model, w.humanoid, nil, want)
+		HeroModels.GiveAxe(w.model, w.humanoid, w.model:GetAttribute("AxeScale") :: number?, want)
 	end
 end
 
@@ -599,7 +610,11 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 		return nil
 	end
 	model.Name = "Slot" .. slot
-	pcall(model.ScaleTo, model, model:GetScale() * (HeroConfig.Worker.ModelScale or 1))
+	-- Body = HeightRatio x the owner's body (the template keeps its catalog size; only this copy is
+	-- scaled). The axe is scaled by the same factor so it stays in proportion.
+	-- Bigger sizes (HeroConfig.Sizes Scale) multiply that height.
+	local axeScale = HeroModels.ScaleToHeight(model, HeroModels.PlayerBodyHeight(owner) * (HeroConfig.Worker.HeightRatio or 0.5) * sizeScale(heroName))
+	model:SetAttribute("AxeScale", axeScale)
 	model:SetAttribute("OwnerUserId", owner.UserId)
 	model:SetAttribute("Slot", slot)
 
@@ -615,7 +630,7 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 
 	local axe = axeOf(plot, slot)
 	model:SetAttribute("Axe", axe)
-	HeroModels.GiveAxe(model, humanoid, nil, axe)
+	HeroModels.GiveAxe(model, humanoid, axeScale, axe)
 
 	-- Anchors the root and moves the model by CFrame every Heartbeat; snaps it onto the ground now.
 	local movement = Movement.new(model, {

@@ -7,7 +7,10 @@
 --                                    skills can be upgraded right now (requirements met + affordable)
 --     Window.ZoneList                one ZoneTab per tree: Core first, then the zones
 --     Window.TreeTitle               name of the open tree
---     Window.TreeArea.Lines / Nodes  connector lines + node buttons of the open tree
+--     Window.TreeArea                the tree view: drag (anywhere on the window's background, not
+--                                    on ZoneList / Preview) to pan, wheel / pinch / ZoomControls to zoom
+--       Canvas (UIScale) . Lines / Nodes   connector lines + node buttons of the open tree
+--       ZoomControls . ZoomIn / ZoomOut / Reset, Hint
 --     Window.Preview                 details of the hovered (else selected) node + Upgrade button
 --     Window.ExitButton, Window.Money
 --   ReplicatedStorage.SkillTreeTemplates (src/gui/SkillTreeTemplates.model.json)
@@ -22,6 +25,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local SkillTreeConfig = require(Shared:WaitForChild("SkillTreeConfig"))
@@ -44,8 +48,14 @@ local window = gui:WaitForChild("Window") :: Frame
 local zoneList = window:WaitForChild("ZoneList") :: ScrollingFrame
 local treeTitle = window:WaitForChild("TreeTitle") :: TextLabel
 local treeArea = window:WaitForChild("TreeArea") :: Frame
-local linesFrame = treeArea:WaitForChild("Lines") :: Frame
-local nodesFrame = treeArea:WaitForChild("Nodes") :: Frame
+local canvas = treeArea:WaitForChild("Canvas") :: Frame
+local canvasScale = canvas:WaitForChild("UIScale") :: UIScale
+local linesFrame = canvas:WaitForChild("Lines") :: Frame
+local nodesFrame = canvas:WaitForChild("Nodes") :: Frame
+local zoomControls = treeArea:WaitForChild("ZoomControls") :: GuiObject
+local zoomInButton = zoomControls:WaitForChild("ZoomIn") :: GuiButton
+local zoomOutButton = zoomControls:WaitForChild("ZoomOut") :: GuiButton
+local resetButton = zoomControls:WaitForChild("Reset") :: GuiButton
 local preview = window:WaitForChild("Preview") :: Frame
 local exitButton = window:WaitForChild("ExitButton") :: GuiButton
 local moneyLabel = window:WaitForChild("Money") :: TextLabel
@@ -79,6 +89,7 @@ local tabs: { [string]: GuiButton } = {}
 local nodeButtons: { [string]: GuiButton } = {}
 local lines: { { frame: Frame, treeId: string, from: string, level: number } } = {}
 local busy = false
+local dragMoved = false -- the last press on the tree view became a drag: its release is not a click
 
 -- Helpers --------------------------------------------------------------------------------------------
 
@@ -138,6 +149,7 @@ end
 
 local buildTree: (TreeDef) -> ()
 local refresh: () -> ()
+local resetView: (boolean) -> ()
 
 local function refreshTabs()
 	for _, tree in SkillTreeConfig.Trees do
@@ -173,6 +185,199 @@ local function buildTabs()
 		tabs[tree.Id] = tab
 	end
 end
+
+-- Pan / zoom ---------------------------------------------------------------------------------------
+-- Canvas (Lines + Nodes) is centred in TreeArea; `pan` moves it (pixels) and its UIScale zooms it
+-- (UIScale scales around the AnchorPoint = the canvas centre). Mouse: drag + wheel. Touch: one finger
+-- drags, two fingers pinch. ZoomControls: + / - / Fit for both.
+
+local MIN_ZOOM, MAX_ZOOM = 0.6, 2.5
+local BUTTON_ZOOM_STEP = 1.25
+local WHEEL_ZOOM_STEP = 1.12
+local DRAG_THRESHOLD = 8 -- pixels a press must move before it pans instead of clicking a node
+local VIEW_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local zoom = 1
+local BASE_POSITION = canvas.Position -- from the layout; pan is added to it
+local pan = Vector2.zero
+
+local function areaCenter(): Vector2
+	return treeArea.AbsolutePosition + treeArea.AbsoluteSize * Vector2.new(BASE_POSITION.X.Scale, BASE_POSITION.Y.Scale)
+end
+
+local function inside(gui: GuiObject, p: Vector2): boolean
+	local a, size = gui.AbsolutePosition, gui.AbsoluteSize
+	return p.X >= a.X and p.Y >= a.Y and p.X <= a.X + size.X and p.Y <= a.Y + size.Y
+end
+
+-- Keeps some of the tree on screen: the canvas centre may move at most half the extra (zoomed)
+-- size plus a bit past the area's centre.
+local function clampPan(p: Vector2, z: number): Vector2
+	local limit = treeArea.AbsoluteSize * (math.max(z - 1, 0) / 2 + 0.35)
+	return Vector2.new(math.clamp(p.X, -limit.X, limit.X), math.clamp(p.Y, -limit.Y, limit.Y))
+end
+
+local function applyView(animate: boolean)
+	local position = UDim2.new(BASE_POSITION.X.Scale, pan.X, BASE_POSITION.Y.Scale, pan.Y)
+	if animate then
+		TweenService:Create(canvasScale, VIEW_TWEEN, { Scale = zoom }):Play()
+		TweenService:Create(canvas, VIEW_TWEEN, { Position = position }):Play()
+	else
+		canvasScale.Scale = zoom
+		canvas.Position = position
+	end
+end
+
+-- Zoom to `newZoom` keeping the point under `screenPos` (default: the area's centre) in place.
+local function zoomAt(newZoom: number, screenPos: Vector2?, animate: boolean?)
+	newZoom = math.clamp(newZoom, MIN_ZOOM, MAX_ZOOM)
+	local offset = (screenPos or areaCenter()) - areaCenter()
+	local point = (offset - pan) / zoom -- that point on the unscaled canvas, from its centre
+	zoom = newZoom
+	pan = clampPan(offset - point * zoom, zoom)
+	applyView(animate == true)
+end
+
+local function panBy(delta: Vector2)
+	pan = clampPan(pan + delta, zoom)
+	applyView(false)
+end
+
+resetView = function(animate: boolean)
+	zoom = 1
+	pan = Vector2.zero
+	applyView(animate)
+end
+
+zoomInButton.Activated:Connect(function()
+	zoomAt(zoom * BUTTON_ZOOM_STEP, nil, true)
+end)
+zoomOutButton.Activated:Connect(function()
+	zoomAt(zoom / BUTTON_ZOOM_STEP, nil, true)
+end)
+resetButton.Activated:Connect(function()
+	resetView(true)
+end)
+
+-- Presses that started inside the tree view: the mouse, and each finger (touch InputObject -> pos).
+local mouseDown: Vector2? = nil
+local mouseLast: Vector2? = nil
+local touches: { [InputObject]: Vector2 } = {}
+local touchStart: Vector2? = nil
+local pinchDistance: number? = nil
+
+local function touchList(): { Vector2 }
+	local list = {}
+	for _, pos in touches do
+		table.insert(list, pos)
+	end
+	return list
+end
+
+local function releaseAll()
+	mouseDown, mouseLast = nil, nil
+	table.clear(touches)
+	touchStart, pinchDistance = nil, nil
+end
+
+-- The window's own panels and buttons keep their input (the zone list scrolls, the preview has the
+-- Upgrade button); a press anywhere else on the window, background included, drags the tree.
+local ownInput: { GuiObject } = { zoneList, preview, exitButton, zoomControls }
+
+local function onTreeBackground(p: Vector2): boolean
+	if not window.Visible or not inside(window, p) then
+		return false
+	end
+	for _, gui in ownInput do
+		if gui.Visible and inside(gui, p) then
+			return false
+		end
+	end
+	return true
+end
+
+UserInputService.InputBegan:Connect(function(input)
+	local p = Vector2.new(input.Position.X, input.Position.Y)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragMoved = false -- every new press starts as a click
+		if onTreeBackground(p) then
+			mouseDown, mouseLast = p, p
+		end
+	elseif input.UserInputType == Enum.UserInputType.Touch then
+		if next(touches) == nil then
+			dragMoved = false
+		end
+		if onTreeBackground(p) then
+			if next(touches) == nil then
+				dragMoved = false
+				touchStart = p
+			end
+			touches[input] = p
+			local list = touchList()
+			pinchDistance = if #list >= 2 then (list[1] - list[2]).Magnitude else nil
+		end
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not window.Visible then
+		return
+	end
+	local p = Vector2.new(input.Position.X, input.Position.Y)
+	if input.UserInputType == Enum.UserInputType.MouseWheel then
+		if onTreeBackground(p) then
+			-- Zoom on the cursor inside the tree view, on the view's centre elsewhere on the window.
+			local step = if input.Position.Z > 0 then WHEEL_ZOOM_STEP else 1 / WHEEL_ZOOM_STEP
+			zoomAt(zoom * step, if inside(treeArea, p) then p else nil, false)
+		end
+	elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+		if mouseDown and mouseLast then
+			if not dragMoved and (p - mouseDown).Magnitude >= DRAG_THRESHOLD then
+				dragMoved = true
+				mouseLast = p -- no jump when the drag starts
+			end
+			if dragMoved then
+				panBy(p - mouseLast)
+				mouseLast = p
+			end
+		end
+	elseif input.UserInputType == Enum.UserInputType.Touch and touches[input] then
+		local before = touchList()
+		local old = touches[input]
+		local oldCenter = if #before >= 2 then (before[1] + before[2]) / 2 else old
+		touches[input] = p
+		local list = touchList()
+		if #list >= 2 then
+			-- Pinch: zoom by the change in finger distance around their midpoint, and pan with it.
+			dragMoved = true
+			local center = (list[1] + list[2]) / 2
+			local distance = (list[1] - list[2]).Magnitude
+			if pinchDistance and pinchDistance > 0 then
+				zoomAt(zoom * distance / pinchDistance, center, false)
+			end
+			pinchDistance = distance
+			panBy(center - oldCenter)
+		else
+			if not dragMoved and touchStart and (p - touchStart).Magnitude >= DRAG_THRESHOLD then
+				dragMoved = true
+				old = p -- no jump when the drag starts
+			end
+			if dragMoved then
+				panBy(p - old)
+			end
+		end
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		mouseDown, mouseLast = nil, nil
+	elseif input.UserInputType == Enum.UserInputType.Touch and touches[input] then
+		touches[input] = nil
+		local list = touchList()
+		pinchDistance = if #list >= 2 then (list[1] - list[2]).Magnitude else nil
+	end
+end)
 
 -- Tree -----------------------------------------------------------------------------------------------
 
@@ -354,6 +559,9 @@ buildTree = function(tree: TreeDef)
 			end
 		end)
 		button.Activated:Connect(function()
+			if dragMoved then
+				return -- the press was used to pan the view
+			end
 			selectedId = node.Id
 			hoveredId = nil
 			refreshNodes()
@@ -363,6 +571,7 @@ buildTree = function(tree: TreeDef)
 		nodeButtons[node.Id] = button
 	end
 
+	resetView(false)
 	-- Preview the root (first node) until something is hovered / clicked.
 	selectedId = if tree.Nodes[1] then tree.Nodes[1].Id else nil
 	refresh()
@@ -423,9 +632,20 @@ end
 
 -- Open / close ---------------------------------------------------------------------------------------
 
+local SINK_WHEEL = "SkillTreeSinkWheel"
+
 local function setOpen(open: boolean)
 	window.Visible = open
 	sidebar.Enabled = not open
+	releaseAll()
+	-- The mouse wheel zooms the tree, not the game camera behind the window.
+	if open then
+		ContextActionService:BindActionAtPriority(SINK_WHEEL, function()
+			return Enum.ContextActionResult.Sink
+		end, false, Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseWheel)
+	else
+		ContextActionService:UnbindAction(SINK_WHEEL)
+	end
 	if open then
 		refresh()
 	end

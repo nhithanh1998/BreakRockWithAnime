@@ -66,6 +66,10 @@ SkillTreeConfig.Stats = {
 	ChestSize = { Base = 0, Format = "+%d chest slots" },
 	DropBonus = { Base = 1, Format = "+%d%% material drops" },
 	TreeGrowth = { Base = 0, Format = "+%d%% big tree growth" }, -- read by TreeService (TreeConfig.TreeLevels)
+	-- Multiply every mutation / size Chance of dropped heroes (HeroConfig.Mutations / Sizes),
+	-- read by TreeHitService.
+	MutationLuck = { Base = 1, Format = "+%d%% mutation chance" },
+	SizeLuck = { Base = 1, Format = "+%d%% big size chance" },
 } :: { [string]: StatDef }
 
 -- Percent stats store 0.1 for 10%; the preview multiplies by 100 for these.
@@ -76,6 +80,8 @@ SkillTreeConfig.PercentStats = {
 	SellBonus = true,
 	DropBonus = true,
 	TreeGrowth = true,
+	MutationLuck = true,
+	SizeLuck = true,
 } :: { [string]: boolean }
 
 SkillTreeConfig.Trees = {
@@ -117,7 +123,7 @@ SkillTreeConfig.Trees = {
 		Name = "Green Wood",
 		Icon = "🌲",
 		Columns = 3,
-		Rows = 3,
+		Rows = 4,
 		Nodes = {
 			{ Id = "Sapling", Name = "Sapling", Icon = "🌱", Pos = { 2, 1 }, MaxLevel = 3,
 				Cost = { Base = 250, Growth = 2.5 }, Stat = "DropBonus", PerLevel = 0.05 },
@@ -129,6 +135,11 @@ SkillTreeConfig.Trees = {
 				Cost = { 6000, 30000 }, Requires = { "Barkskin", "Seeker" }, Stat = "DropBonus", PerLevel = 0.15 },
 			{ Id = "FertileSoil", Name = "Fertile Soil", Icon = "🌿", Pos = { 1, 3 }, MaxLevel = 3,
 				Cost = { Base = 1500, Growth = 2.5 }, Requires = { { Node = "Sapling", Level = 1 } }, Stat = "TreeGrowth", PerLevel = 0.2 },
+			-- Mutation / size luck of this map.
+			{ Id = "Glimmer", Name = "Glimmer", Icon = "✨", Pos = { 3, 3 }, MaxLevel = 5,
+				Cost = { Base = 1200, Growth = 2.2 }, Requires = { { Node = "Seeker", Level = 1 } }, Stat = "MutationLuck", PerLevel = 0.05 },
+			{ Id = "GrowthSpurt", Name = "Growth Spurt", Icon = "📏", Pos = { 1, 4 }, MaxLevel = 5,
+				Cost = { Base = 1200, Growth = 2.2 }, Requires = { { Node = "FertileSoil", Level = 1 } }, Stat = "SizeLuck", PerLevel = 0.05 },
 		},
 	},
 	{
@@ -148,6 +159,11 @@ SkillTreeConfig.Trees = {
 				Cost = { 250000 }, Requires = { "Juicy", "Orchard" }, Stat = "HeroLuck", PerLevel = 0.3 },
 			{ Id = "AncientRoots", Name = "Ancient Roots", Icon = "🌲", Pos = { 3, 3 }, MaxLevel = 2,
 				Cost = { 30000, 120000 }, Requires = { { Node = "Harvest", Level = 1 } }, Stat = "TreeGrowth", PerLevel = 0.5 },
+			-- Mutation / size luck of this map.
+			{ Id = "GemHunter", Name = "Gem Hunter", Icon = "💎", Pos = { 1, 3 }, MaxLevel = 5,
+				Cost = { Base = 20000, Growth = 2.5 }, Requires = { { Node = "Juicy", Level = 1 } }, Stat = "MutationLuck", PerLevel = 0.1 },
+			{ Id = "GiantBlood", Name = "Giant Blood", Icon = "🗿", Pos = { 3, 1 }, MaxLevel = 5,
+				Cost = { Base = 20000, Growth = 2.5 }, Requires = { { Node = "Harvest", Level = 1 } }, Stat = "SizeLuck", PerLevel = 0.1 },
 		},
 	},
 } :: { TreeDef }
