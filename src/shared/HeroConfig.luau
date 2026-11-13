@@ -2,7 +2,7 @@
 -- HeroConfig: every anime hero in the game. Edit this list to add / tune heroes.
 --
 -- Each hero:
---   Name      = shown in the UI, and the name used in ZoneDrops (e.g. { Item = "Uzumaki Kid", Chance = 0.03 })
+--   Name      = shown in the UI, and the name used in ZoneDrops (e.g. { Item = "Uzumaki Shounen", Chance = 0.03 })
 --   Rarity    = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" (slot colour, sorting)
 --   Template  = name of the hero's model inside ReplicatedStorage.HeroTemplates
 --   (Power is NOT set here: it lives in HeroConfig.Power, by position in the list. Power IS the
@@ -41,7 +41,7 @@ local HeroConfig = {}
 -- Folder that holds the hero models named by `Template`.
 HeroConfig.TemplateFolder = "Heros"
 -- Model used when a hero's Template is not in the folder yet (so every hero can still work a slot).
-HeroConfig.FallbackTemplate = "UzumakiKid"
+HeroConfig.FallbackTemplate = "UzumakiShounen"
 
 -- Heroes placed on a plot's HeroSlots walk out of the HeroGate and chop trees (HeroWorkerService).
 HeroConfig.Worker = {
@@ -57,6 +57,18 @@ HeroConfig.Worker = {
 		"rbxassetid://116941453608539",
 		"rbxassetid://140540897077688",
 	} :: { string },
+	-- R15 heroes (ChopAnimations above are R6) pick from these instead: 2 quick swings + 1 charged swing.
+	-- Built by tools/BuildChopR15.luau into ServerStorage.RBX_ANIMSAVES.SaiyanWarrior. Until an entry of
+	-- ChopAnimationsR15 holds its uploaded "rbxassetid://...", the KeyframeSequence named at the same
+	-- index of ChopKeyframesR15 is played directly (works in Studio playtests only).
+	ChopAnimationsR15 = {
+		"rbxassetid://95909094562468", -- ChopR15_LightA: quick horizontal slash
+		"rbxassetid://126898210983268", -- ChopR15_LightB: quick diagonal chop
+		"rbxassetid://97801689050382", -- ChopR15_Heavy: charged swing
+	} :: { string },
+	ChopKeyframesR15 = { "ChopR15_LightA", "ChopR15_LightB", "ChopR15_Heavy" } :: { string },
+	-- Damage multiplier of each R15 swing (same order): the charged swing hits twice as hard.
+	ChopDamageMultR15 = { 1, 1, 2 } :: { number },
 	HitFraction = 0.55,
 	-- Fallback swing when ChopAnimations is empty. Upload ServerStorage.RBX_ANIMSAVES.mymodel.ChopHorizontal
 	-- and put its "rbxassetid://..." here. While empty, that KeyframeSequence is played directly
@@ -67,6 +79,8 @@ HeroConfig.Worker = {
 	-- KeyframeSequence RBX_ANIMSAVES.mymodel.HeroRun is played directly (Studio playtests only).
 	RunAnimation = "rbxassetid://104469645043314",
 	RunKeyframes = "HeroRun",
+	-- Run animation for R15 heroes (replaces Roblox's default walk on them).
+	RunAnimationR15 = "rbxassetid://109710881284083",
 	RunAnimSpeed = 16, -- studs/s the run animation is made for (its playback speed follows WalkSpeed)
 	RaritySpeed = { Common = 1, Uncommon = 1.05, Rare = 1.1, Epic = 1.2, Legendary = 1.35, Mythic = 1.5 } :: { [string]: number },
 }
@@ -398,11 +412,11 @@ HeroConfig.Power = {
 -- Hero list. Order matters: a hero's Power is HeroConfig.Power[its position].
 local HERO_LIST: { HeroEntry } = {
 	-- Zone 1 (Green Wood)
-	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate" },
-	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja" },
-	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid" },
-	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja" },
-	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform" },
+	{ Name = "Kabuto Boy", Rarity = "Common", Template = "KabutoBoy" },
+	{ Name = "Taijutsu Shounen", Rarity = "Common", Template = "TaijutsuShounen" },
+	{ Name = "Uzumaki Shounen", Rarity = "Uncommon", Template = "UzumakiShounen" },
+	{ Name = "Copy Sensei", Rarity = "Rare", Template = "CopySensei" },
+	{ Name = "Green Beetle", Rarity = "Epic", Template = "GreenBettle" },
 }
 
 HeroConfig.Heroes = {} :: { HeroDef }
@@ -422,6 +436,25 @@ end
 
 function HeroConfig.Get(name: string): HeroDef?
 	return byName[name]
+end
+
+-- Old hero names -> their current name, so saves made before a rename keep their heroes
+-- (DataService maps saved Heroes / Placed through HeroConfig.CurrentName).
+HeroConfig.RenamedHeroes = {
+	["Sling Pirate"] = "Kabuto Boy",
+	["Taijutsu Ninja"] = "Taijutsu Shounen",
+	["Uzumaki Kid"] = "Uzumaki Shounen",
+	["Copy Ninja"] = "Copy Sensei",
+	["Perfect Bioform"] = "Green Beetle",
+} :: { [string]: string }
+
+function HeroConfig.CurrentName(name: string): string
+	local seen = 0
+	while HeroConfig.RenamedHeroes[name] and seen < 10 do
+		name = HeroConfig.RenamedHeroes[name]
+		seen += 1
+	end
+	return name
 end
 
 -- The hero's model from ReplicatedStorage.Heros (not cloned), or nil if it is not there.

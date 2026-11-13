@@ -39,6 +39,7 @@ export type Drop = {
 	Amount: number,
 	Rarity: Rarity,
 	Chance: number,
+	Sold: boolean?, -- auto-sold on the spot (ChestService auto sell): flies to the player, not the chest
 }
 
 local TreeConfig = {}

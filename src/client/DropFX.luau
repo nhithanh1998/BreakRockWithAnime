@@ -273,6 +273,94 @@ end
 
 -- Materials --------------------------------------------------------------------------------------
 
+-- Custom voxel models live in ReplicatedStorage.DropModels, named after the TreeConfig.Materials key
+-- (e.g. "OakBark"). Each has an invisible "Root" PrimaryPart with every other part welded to it.
+local DROP_MODEL_HEIGHT = 2 -- studs; custom models are scaled to this height
+export type ItemVisual = { model: Model, root: BasePart, scale: number }
+
+-- These models are 150-500 parts each, so:
+--   * each kind is prepared ONCE (physics flags + scale baked in) and cached in `prepared`;
+--   * finished drops go back to a per-kind `pool` instead of being destroyed and re-cloned;
+--   * at most MAX_ACTIVE_MODELS are on screen at once; extra drops fall back to the cheap block;
+--   * they are never re-scaled per frame (ScaleTo on hundreds of parts every Heartbeat was the lag).
+local MAX_ACTIVE_MODELS = 8
+local POOL_PER_KIND = 4
+local prepared: { [string]: Model | false } = {}
+local pool: { [string]: { ItemVisual } } = {}
+local activeModels = 0
+
+local function preparedTemplate(kind: string): Model?
+	local cached = prepared[kind]
+	if cached ~= nil then
+		return cached or nil
+	end
+	local dropModels = ReplicatedStorage:FindFirstChild("DropModels")
+	local template = dropModels and dropModels:FindFirstChild(kind)
+	if not template or not template:IsA("Model") then
+		-- DropModels may still be replicating: don't cache the miss until the folder exists.
+		if dropModels then
+			prepared[kind] = false
+		end
+		return nil
+	end
+	local model = template:Clone()
+	local root = model.PrimaryPart or model:FindFirstChild("Root")
+	if not root or not root:IsA("BasePart") then
+		model:Destroy()
+		prepared[kind] = false
+		return nil
+	end
+	model.PrimaryPart = root
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+			d.CastShadow = false
+			d.Massless = true
+			d.Anchored = d == root
+		end
+	end
+	model:ScaleTo(DROP_MODEL_HEIGHT / math.max(model:GetExtentsSize().Y, 0.1))
+	prepared[kind] = model
+	return model
+end
+
+-- A ready-to-use copy of the material's custom model (from the pool when possible), held by its
+-- anchored root (the rest follow through welds). nil when there is no model or too many are out.
+local function acquireModel(kind: string): ItemVisual?
+	if activeModels >= MAX_ACTIVE_MODELS then
+		return nil
+	end
+	local free = pool[kind]
+	local item = free and table.remove(free)
+	if not item then
+		local template = preparedTemplate(kind)
+		if not template then
+			return nil
+		end
+		local model = template:Clone()
+		item = { model = model, root = model.PrimaryPart :: BasePart, scale = 1 }
+	end
+	activeModels += 1
+	return item
+end
+
+local function releaseModel(kind: string, item: ItemVisual)
+	activeModels -= 1
+	item.model.Parent = nil
+	local free = pool[kind]
+	if not free then
+		free = {}
+		pool[kind] = free
+	end
+	if #free < POOL_PER_KIND then
+		table.insert(free, item)
+	else
+		item.model:Destroy()
+	end
+end
+
 -- Builds a material's studded block. Returns the part and the half-height used to rest it on the ground.
 local function buildBlock(drop: Drop): (Part, number)
 	local p = basePart()
@@ -479,6 +567,7 @@ end
 
 local function playDrop(drop: Drop, origin: Vector3, groundY: number, index: number, chest: Model?)
 	local hero = if drop.Kind == "Anime" then buildHero(drop) else nil
+	local item = if hero then nil else acquireModel(drop.Kind)
 	local part: BasePart, halfHeight: number, labelY: number, shineY: number, shineStuds: number
 	local baseShine = SHINE_SIZE[drop.Rarity] or SHINE_SIZE.Common
 	if hero then
@@ -487,6 +576,12 @@ local function playDrop(drop: Drop, origin: Vector3, groundY: number, index: num
 		labelY = hero.height - hero.bottom + 1
 		shineY = hero.height / 2 - hero.bottom
 		shineStuds = baseShine
+	elseif item then
+		part = item.root
+		halfHeight = DROP_MODEL_HEIGHT / 2 + 0.3
+		labelY = DROP_MODEL_HEIGHT / 2 + 1
+		shineY = 0
+		shineStuds = baseShine * MATERIAL_SHINE * 1.4
 	else
 		local block, h = buildBlock(drop)
 		part = block
@@ -495,7 +590,7 @@ local function playDrop(drop: Drop, origin: Vector3, groundY: number, index: num
 		shineY = 0
 		shineStuds = baseShine * MATERIAL_SHINE
 	end
-	local visual: Instance = if hero then hero.model else part
+	local visual: Instance = if hero then hero.model elseif item then item.model else part
 	local function place(cf: CFrame)
 		if hero then
 			hero.model:PivotTo(cf)
@@ -592,6 +687,9 @@ local function playDrop(drop: Drop, origin: Vector3, groundY: number, index: num
 		if hero then
 			hero.model:ScaleTo(HERO_SCALE * math.max(shrink, 0.05))
 			place(CFrame.new(pos) * startRot * CFrame.Angles(0, t * 10, 0))
+		elseif item then
+			-- No per-frame ScaleTo here: the model is hundreds of parts.
+			place(CFrame.new(pos) * CFrame.Angles(0, t * 10, 0))
 		else
 			part.Size = startSize * shrink
 			place(CFrame.new(pos) * CFrame.Angles(0, t * 10, 0))
@@ -601,7 +699,11 @@ local function playDrop(drop: Drop, origin: Vector3, groundY: number, index: num
 		end
 		RunService.Heartbeat:Wait()
 	end
-	visual:Destroy()
+	if item then
+		releaseModel(drop.Kind, item)
+	else
+		visual:Destroy()
+	end
 	if chest then
 		ChestFX.Arrive(chest, drop.Amount, startPos)
 	end
@@ -610,6 +712,7 @@ end
 -- `waitFor` (optional) blocks until the drops may pop out, e.g. until a HeroCutscene has finished.
 -- The chest's in-flight count is bumped right away, so its counter doesn't jump ahead meanwhile.
 function DropFX.Play(origin: Vector3, groundY: number, drops: { Drop }, chest: Model?, waitFor: (() -> ())?)
+	-- Every drop flies into the chest (never into the player) when there is one.
 	if chest then
 		local total = 0
 		for _, drop in drops do

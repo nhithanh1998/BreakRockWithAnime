@@ -13,6 +13,7 @@ local FeedbackService = require(script.Parent:WaitForChild("FeedbackService"))
 
 PlotService.PlotClaimed:Connect(function(player, plot)
 	ChestService.ResetPlot(plot)
+	ChestService.SetupPlot(plot, player) -- puts the saved chest contents back
 	ZoneBoardService.SetupPlot(plot, player) -- sets the plot's Zone before trees grow
 	TreeService.StartPlot(plot)
 	HeroSlotService.SetupPlot(plot, player)

@@ -5,7 +5,8 @@
 --         UnlockedSlots (bought hero pads), AutoSell, which heroes stand on which pad, each pad's
 --         upgrade levels (PadLevels, HeroSlotService), and skill
 --         tree levels (player.Skills, SkillTreeService), UnlockedZones + CurrentZone (Zones board).
--- Not saved: the shared TreasureChest's contents (it isn't anyone's) and trees.
+--         The plot's TreasureChest contents (Chest; the shared fallback chest is not saved).
+-- Not saved: trees.
 --
 -- Load: when the player joins (3 tries). Saved amounts are ADDED to whatever the player already
 --   picked up during the load, so nothing gained in the first seconds is lost. If loading fails the
@@ -15,7 +16,9 @@
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local ShopService = require(script.Parent:WaitForChild("ShopService"))
 local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
@@ -43,6 +46,7 @@ export type SaveData = {
 	Skills: { [string]: number }?, -- "Tree/Node" -> level
 	UnlockedZones: number?, -- highest zone bought on the Zones board (ZoneBoardService)
 	CurrentZone: number?, -- zone the plot is set to
+	Chest: { [string]: number }?, -- plot chest stack name -> amount (ChestService)
 }
 
 local DataService = {}
@@ -53,6 +57,7 @@ local saving: { [Player]: boolean } = {}
 local placedCache: { [Player]: { [string]: string } } = {}
 local levelsCache: { [Player]: { [string]: { [string]: number } } } = {}
 local padAxesCache: { [Player]: { [string]: string } } = {}
+local chestCache: { [Player]: { [string]: number } } = {}
 
 local function keyFor(player: Player): string
 	return "u_" .. player.UserId
@@ -161,6 +166,8 @@ local function collect(player: Player): SaveData
 		Skills = counts(player:FindFirstChild("Skills")),
 		UnlockedZones = if typeof(unlockedZones) == "number" then unlockedZones else nil,
 		CurrentZone = if typeof(currentZone) == "number" then currentZone else nil,
+		-- Cache first: once the plot is released its chest is already emptied.
+		Chest = chestCache[player] or ChestService.GetContentsFor(player),
 	}
 end
 
@@ -177,7 +184,7 @@ local function apply(player: Player, data: SaveData)
 	end
 	for name, amount in data.Heroes or {} do
 		if typeof(amount) == "number" and amount > 0 then
-			ChestService.AddItem(player, "Heroes", name, amount)
+			ChestService.AddItem(player, "Heroes", HeroConfig.CurrentName(name), amount)
 		end
 	end
 	ShopService.ApplySaved(player, data.Axes or {}, data.EquippedAxe, data.AxeCopies)
@@ -196,6 +203,20 @@ local function apply(player: Player, data: SaveData)
 		player:SetAttribute("CurrentZone", data.CurrentZone)
 	end
 	SkillTreeService.ApplySaved(player, data.Skills)
+	if typeof(data.Chest) == "table" then
+		local stacks: { [string]: number } = {}
+		for name, amount in data.Chest do
+			if typeof(name) == "string" and typeof(amount) == "number" and amount > 0 then
+				if name:sub(1, 6) == "Anime:" then
+					name = "Anime:" .. HeroConfig.CurrentName(name:sub(7))
+				end
+				stacks[name] = (stacks[name] or 0) + math.floor(amount)
+			end
+		end
+		if next(stacks) then
+			ChestService.RestoreContents(player, stacks)
+		end
+	end
 	if typeof(data.PadLevels) == "table" then
 		local levels: { [number]: { [string]: number } } = {}
 		for index, stats in data.PadLevels do
@@ -227,7 +248,7 @@ local function apply(player: Player, data: SaveData)
 		for index, hero in data.Placed do
 			local i = tonumber(index)
 			if i and typeof(hero) == "string" then
-				placed[i] = hero
+				placed[i] = HeroConfig.CurrentName(hero)
 			end
 		end
 		HeroSlotService.RestorePlaced(player, placed)
@@ -297,6 +318,11 @@ function DataService.RememberPlaced(player: Player)
 	if padAxes then
 		padAxesCache[player] = padAxes
 	end
+	-- Keep the first snapshot: a later call (after PlotReleased) would only see the emptied chest.
+	local chest = ChestService.GetContentsFor(player)
+	if chest and not chestCache[player] then
+		chestCache[player] = chest
+	end
 end
 
 local function onLeave(player: Player)
@@ -307,6 +333,7 @@ local function onLeave(player: Player)
 	placedCache[player] = nil
 	levelsCache[player] = nil
 	padAxesCache[player] = nil
+	chestCache[player] = nil
 end
 
 function DataService.Start()

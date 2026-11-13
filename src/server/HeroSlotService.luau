@@ -23,6 +23,8 @@
 -- Axes: HeroUpgrade(slotIndex, "EquipAxe", model | "") gives the pad's hero a copy of an owned axe
 -- (ShopService.Copies; each copy goes to one pad) or takes it off. Slot attribute "HeroAxe";
 -- the hero holds it and deals ShopConfig HeroBoost x damage (HeroWorkerService). Saved per pad.
+-- Equip Best: HeroUpgrade(0, "EquipBest") (Inventory window button) puts the strongest owned heroes on the
+-- open pads (strongest on the best-upgraded pad) and the best axe copies on the strongest heroes.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -583,6 +585,146 @@ local function equipAxe(state: PlotState, index: number, model: string): (boolea
 	return true, if def then ("%s equipped!"):format(def.Name) else "Axe removed"
 end
 
+-- Equip Best -------------------------------------------------------------------------------------
+
+-- How much a pad multiplies its hero's output (Damage x Speed from its levels and grades), measured
+-- with `hero` so the pad's own formulas are used.
+local function padScore(state: PlotState, index: number, hero: string): number
+	local levels = state.levels[index]
+	local damage = HeroConfig.StatValue("Damage", levelOf(state, index, "Damage"), gradeIn(levels, "Damage"), hero)
+	local speed = HeroConfig.StatValue("Speed", levelOf(state, index, "Speed"), gradeIn(levels, "Speed"), hero)
+	return damage * speed
+end
+
+-- Fills the open pads with the strongest heroes the player owns (highest Power first) and gives
+-- the best axe copies to the strongest heroes. The strongest hero goes on the best-upgraded pad
+-- and gets the best axe, the next one the next best, ... so resources stack on the top heroes.
+-- Pads whose hero doesn't change keep their worker out chopping.
+local function equipBest(state: PlotState): (boolean, string)
+	local owner = state.owner
+	local slots = slotsOf(state.plot)
+	local unlocked = unlockedCount(owner)
+
+	-- Every owned copy, strongest first.
+	local heroes: { string } = {}
+	local folder = owner:FindFirstChild("Heroes")
+	for _, v in if folder then folder:GetChildren() else {} do
+		if v:IsA("IntValue") and HeroConfig.Get(v.Name) then
+			for _ = 1, v.Value do
+				table.insert(heroes, v.Name)
+			end
+		end
+	end
+	if #heroes == 0 then
+		return false, "You have no heroes"
+	end
+	table.sort(heroes, function(a, b)
+		local da, db = HeroConfig.ChopDamage(a), HeroConfig.ChopDamage(b)
+		if da ~= db then
+			return da > db
+		end
+		local sa, sb = HeroConfig.ChopSpeed(a), HeroConfig.ChopSpeed(b)
+		if sa ~= sb then
+			return sa > sb
+		end
+		return a < b
+	end)
+
+	-- Open pads, best upgraded first.
+	local pads: { number } = {}
+	for i in slots do
+		if i <= unlocked then
+			table.insert(pads, i)
+		end
+	end
+	if #pads == 0 then
+		return false, "No open pads"
+	end
+	local reference = heroes[1]
+	local scores: { [number]: number } = {}
+	for _, i in pads do
+		scores[i] = padScore(state, i, reference)
+	end
+	table.sort(pads, function(a, b)
+		if scores[a] ~= scores[b] then
+			return scores[a] > scores[b]
+		end
+		return a < b
+	end)
+
+	-- Every owned axe copy, highest HeroBoost first.
+	local axes: { string } = {}
+	for _, def in ShopConfig.Axes do
+		for _ = 1, axeCopies(owner, def.Model) do
+			table.insert(axes, def.Model)
+		end
+	end
+	table.sort(axes, function(a, b)
+		local ba, bb = (ShopConfig.GetAxe(a) :: ShopConfig.AxeDef).HeroBoost, (ShopConfig.GetAxe(b) :: ShopConfig.AxeDef).HeroBoost
+		if ba ~= bb then
+			return ba > bb
+		end
+		return a < b
+	end)
+
+	-- Plan: rank k -> pad pads[k], hero heroes[k], axe axes[k].
+	local wantHero: { [number]: string } = {}
+	local wantAxe: { [number]: string } = {}
+	for k, i in pads do
+		local hero = heroes[k]
+		if not hero then
+			break
+		end
+		wantHero[i] = hero
+		wantAxe[i] = axes[k]
+	end
+
+	-- Take back the heroes that change first, so their copies are free for the new pads.
+	local changedHeroes = 0
+	local changedAxes = 0
+	for _, i in pads do
+		if state.placed[i] and state.placed[i] ~= wantHero[i] then
+			takeBack(state, i)
+		end
+	end
+	for _, i in pads do
+		if state.axes[i] ~= wantAxe[i] then
+			changedAxes += 1
+		end
+		state.axes[i] = wantAxe[i]
+		slots[i]:SetAttribute("HeroAxe", wantAxe[i] or "") -- read by HeroWorkerService.Spawn
+	end
+	for _, i in pads do
+		local hero = wantHero[i]
+		if hero and state.placed[i] ~= hero and canPlace(state, hero) then
+			place(state, i, hero)
+			changedHeroes += 1
+		end
+	end
+
+	-- The held hero may have no copies left to place.
+	local held = selected[owner]
+	if held and not canPlace(state, held) then
+		selected[owner] = nil
+		HeldHeroService.Set(owner, nil)
+		remote:FireClient(owner, "Deselect", held)
+	end
+
+	refresh(state)
+	for _, i in pads do
+		HeroWorkerService.ApplyLevels(state.plot, i) -- swaps axes on heroes that stayed
+	end
+	if changedHeroes == 0 and changedAxes == 0 then
+		return true, "Already equipped best!"
+	end
+	return true, ("%d hero%s, %d axe%s swapped"):format(
+		changedHeroes,
+		if changedHeroes == 1 then "" else "es",
+		changedAxes,
+		if changedAxes == 1 then "" else "s"
+	)
+end
+
 -- Saved pads (DataService) -----------------------------------------------------------------------
 
 -- Placements loaded before the player's plot was set up wait here.
@@ -806,6 +948,13 @@ function HeroSlotService.Start()
 	end)
 	upgradeRemote.OnServerInvoke = function(player, index, stat, lockList)
 		local action = stat
+		if action == "EquipBest" then
+			local state = stateOf(player)
+			if not state then
+				return false, "No plot"
+			end
+			return equipBest(state)
+		end
 		if typeof(index) ~= "number" or typeof(action) ~= "string" then
 			return false, "Bad request"
 		end

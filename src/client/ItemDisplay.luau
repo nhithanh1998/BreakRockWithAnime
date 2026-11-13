@@ -13,7 +13,8 @@
 --                                             missing) and "Image" (ImageLabel, HeroConfig Image)
 --
 -- Hero picture order: model -> HeroConfig Image -> ★.
--- Material picture order: TreeConfig Materials[x].Image (optional rbxassetid) -> 3D render of Visual.
+-- Material picture order: TreeConfig Materials[x].Image (optional rbxassetid) -> the voxel model in
+-- ReplicatedStorage.DropModels.<key> (same as the drop in the world) -> 3D render of Visual.
 -- Materials use the full-size "HeroView" when the slot has one, so the icon fills the card.
 --
 -- A "stack" is "<Material key>" or "Anime:<Hero name>", the same names ChestService uses.
@@ -36,6 +37,7 @@ export type ItemInfo = {
 	value: number, -- sell value (material) or MinePower (hero)
 	visual: TreeConfig.Visual?,
 	image: string?,
+	key: string?, -- material key (TreeConfig.Materials / ReplicatedStorage.DropModels name)
 }
 
 function ItemDisplay.Commas(n: number): string
@@ -72,6 +74,7 @@ function ItemDisplay.Info(stack: string): ItemInfo
 		value = if def then def.Value else 0,
 		visual = def and def.Visual,
 		image = def and (def :: any).Image,
+		key = stack,
 	}
 end
 
@@ -123,8 +126,80 @@ local function iconPart(visual: TreeConfig.Visual): BasePart
 	return part
 end
 
-function ItemDisplay.FillViewport(view: ViewportFrame, visual: TreeConfig.Visual)
+-- Fixed lighting for material icons, so a card's colour never tints the item.
+local function lightView(view: ViewportFrame)
+	view.Ambient = Color3.fromRGB(190, 190, 190)
+	view.LightColor = Color3.new(1, 1, 1)
+	view.LightDirection = Vector3.new(-0.4, -1, -0.6)
+	view.ImageTransparency = 0
+	view.ImageColor3 = Color3.new(1, 1, 1)
+end
+
+-- The material's custom voxel model (ReplicatedStorage.DropModels.<key>, the same model the drops
+-- use in the world), prepared once: anchored, no physics, its invisible "Root" left out of sight.
+local preparedModels: { [string]: Model | false } = {}
+
+local function dropModel(key: string): Model?
+	local cached = preparedModels[key]
+	if cached ~= nil then
+		return cached or nil
+	end
+	local folder = ReplicatedStorage:FindFirstChild("DropModels")
+	local template = folder and folder:FindFirstChild(key)
+	if not template or not template:IsA("Model") then
+		if folder then
+			preparedModels[key] = false -- don't cache a miss while the folder is still replicating
+		end
+		return nil
+	end
+	local model = template:Clone()
+	for _, d in model:GetDescendants() do
+		if d:IsA("BaseScript") or d:IsA("Sound") or d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") then
+			d:Destroy()
+		elseif d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		end
+	end
+	preparedModels[key] = model
+	return model
+end
+
+-- Draws the material's voxel model in `view`, filling ~ICON_FILL of it. False without a model.
+local function fillModelViewport(view: ViewportFrame, key: string): boolean
+	local template = dropModel(key)
+	if not template then
+		return false
+	end
+	local model = template:Clone()
+	-- Centre the visible parts at the origin, turned a little so it reads as 3D.
+	local box, size = model:GetBoundingBox()
+	model:PivotTo(CFrame.Angles(0, math.rad(-25), 0) * box:ToObjectSpace(model:GetPivot()))
+	model.Parent = view
+	local radius = math.max(size.Magnitude / 2, 0.1)
+	local distance = radius / math.tan(math.rad(ICON_FOV / 2)) / ICON_FILL
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = ICON_FOV
+	local dir = Vector3.new(0, 0.35, 1).Unit
+	camera.CFrame = CFrame.lookAt(dir * distance, Vector3.zero)
+	camera.Parent = view
+	view.CurrentCamera = camera
+	return true
+end
+
+-- Material picture: the DropModels voxel model when there is one, otherwise the 3D icon of Visual.
+function ItemDisplay.FillViewport(view: ViewportFrame, visual: TreeConfig.Visual?, key: string?)
 	view:ClearAllChildren()
+	view:SetAttribute("Hero", nil)
+	lightView(view)
+	if key and fillModelViewport(view, key) then
+		return
+	end
+	if not visual then
+		return
+	end
 	local part = iconPart(visual)
 	part.Parent = view
 	-- Frame the part's bounding sphere so it fills ICON_FILL of the view's height.
@@ -314,9 +389,9 @@ function ItemDisplay.SetPicture(slot: Instance, info: ItemInfo)
 	elseif info.image and image then
 		image.Image = info.image
 		image.Visible = true
-	elseif info.visual and heroView then
+	elseif (info.visual or info.key) and heroView then
 		-- The full-size view (when the slot has one) so the icon is as big as a hero portrait.
-		ItemDisplay.FillViewport(heroView, info.visual)
+		ItemDisplay.FillViewport(heroView, info.visual, info.key)
 		heroView.Visible = true
 	end
 end

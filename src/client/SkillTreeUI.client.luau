@@ -443,6 +443,22 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
+-- Other scripts (NoticeUI) open the window on a node: SkillTreeGui.OpenSkill:Fire(treeId, nodeId).
+local openSkill = gui:FindFirstChild("OpenSkill") or Instance.new("BindableEvent")
+openSkill.Name = "OpenSkill"
+openSkill.Parent = gui
+;(openSkill :: BindableEvent).Event:Connect(function(treeId: any, nodeId: any)
+	local tree = typeof(treeId) == "string" and SkillTreeConfig.GetTree(treeId)
+	if tree and tree.Id ~= currentTree.Id then
+		buildTree(tree)
+	end
+	if tree and typeof(nodeId) == "string" and SkillTreeConfig.GetNode(tree.Id, nodeId) then
+		selectedId = nodeId
+		hoveredId = nil
+	end
+	setOpen(true)
+end)
+
 -- Live updates ---------------------------------------------------------------------------------------
 
 local function onMoney()

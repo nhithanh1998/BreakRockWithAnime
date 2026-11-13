@@ -62,6 +62,7 @@ type Worker = {
 	target: Model?,
 	tracks: { [string]: AnimationTrack },
 	chops: { AnimationTrack }, -- swing animations, one picked at random per swing
+	chopMults: { number }, -- damage multiplier of each swing in `chops` (the charged R15 swing hits harder)
 	lastChop: number?,
 	running: boolean?, -- tracks.Walk is the run animation (HeroModels.RunAnimationId)
 	spawnCFrame: CFrame, -- where it spawned (the gate may have moved since; see gateSpawn)
@@ -192,17 +193,20 @@ local function setupAnimations(w: Worker)
 	end
 	w.tracks.Idle = load(set.Idle, Enum.AnimationPriority.Core, true)
 	-- The hero's own run (HeroConfig.Worker.RunAnimation) replaces the default walk when there is one.
-	-- HeroRun is made for R6 rigs; R15 heroes keep their walk.
-	local run = if w.humanoid.RigType == Enum.HumanoidRigType.R6 then HeroModels.RunAnimationId() else nil
+	-- R6 heroes use RunAnimation, R15 heroes RunAnimationR15.
+	local run = HeroModels.RunAnimationId(w.humanoid)
 	local runTrack = run and HeroModels.LoadTrack(w.humanoid, run, Enum.AnimationPriority.Movement, true)
 	w.running = runTrack ~= nil
 	w.tracks.Walk = runTrack or load(set.Walk, Enum.AnimationPriority.Movement, true)
 	w.tracks.Hold = load(set.Hold, Enum.AnimationPriority.Action, true)
 	w.chops = {}
-	for _, id in HeroModels.ChopAnimationIds() do
+	w.chopMults = {}
+	local ids, mults = HeroModels.ChopAnimationIds(w.humanoid)
+	for i, id in ids do
 		local track = HeroModels.LoadTrack(w.humanoid, id, Enum.AnimationPriority.Action2, false)
 		if track then
 			table.insert(w.chops, track)
+			table.insert(w.chopMults, mults[i] or 1)
 		end
 	end
 	w.tracks.Chop = w.chops[1]
@@ -315,6 +319,7 @@ end
 local function swing(w: Worker, tree: Model, center: Vector3, radius: number): boolean
 	-- A random swing, never the same one twice in a row (so it doesn't look repetitive).
 	local track: AnimationTrack? = nil
+	local damageMult = 1
 	local count = #w.chops
 	if count > 0 then
 		local pick = math.random(1, count)
@@ -323,6 +328,7 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 		end
 		w.lastChop = pick
 		track = w.chops[pick]
+		damageMult = w.chopMults[pick] or 1
 	end
 	local speed = statOf(w, "Speed")
 	local length = (if track and track.Length > 0 then track.Length else 0.8) / speed
@@ -349,7 +355,11 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 
 	local dir = flatDir(center, w.root.Position)
 	local hitPos = center + dir * radius + Vector3.new(0, 0.5, 0)
-	local felled = TreeHitService.HeroHit(w.owner, w.root, tree, statOf(w, "Damage"), hitPos)
+	local damage = statOf(w, "Damage")
+	if damageMult ~= 1 then
+		damage = math.floor(damage * damageMult + 0.5)
+	end
+	local felled = TreeHitService.HeroHit(w.owner, w.root, tree, damage, hitPos)
 
 	local rest = length - (os.clock() - start)
 	if rest > 0 then
@@ -627,6 +637,7 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 		target = nil,
 		tracks = {},
 		chops = {},
+		chopMults = {},
 		spawnCFrame = spawnCFrame,
 		spread = spread,
 		exitOffset = Vector3.new(rng:NextNumber(-3, 3), 0, rng:NextNumber(-1, 3)),

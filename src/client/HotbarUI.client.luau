@@ -31,7 +31,7 @@ local popupsFrame = bar:WaitForChild("Popups") :: Frame
 local backpackButton = slotsFrame:WaitForChild("Backpack") :: TextButton
 local tooltip = gui:WaitForChild("Tooltip") :: Frame
 local templates = ReplicatedStorage:WaitForChild("HotbarTemplates") -- src/gui/HotbarTemplates.model.json
--- The hero slot lives in StarterGui.HotbarGui.Bar.Slots (filled as "Uzumaki Kid" so it can be
+-- The hero slot lives in StarterGui.HotbarGui.Bar.Slots (filled as "Uzumaki Shounen" so it can be
 -- designed in Studio). Take it out of the bar and use it as the template for every slot.
 local slotTemplate = (slotsFrame:FindFirstChild("HeroSlot") or gui:FindFirstChild("HeroSlot", true)
 	or slotsFrame:WaitForChild("HeroSlot")) :: TextButton

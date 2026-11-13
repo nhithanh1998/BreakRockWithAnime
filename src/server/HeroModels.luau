@@ -336,52 +336,92 @@ end
 -- HeroConfig.Worker[keyframesKey] in ServerStorage.RBX_ANIMSAVES registered on the fly (Studio only).
 local resolved: { [string]: string } = {}
 local warned: { [string]: boolean } = {}
+local failed: { [string]: boolean } = {} -- KeyframeSequences that are missing / failed to register
 
-local function animationFromConfig(configKey: string, keyframesKey: string, what: string): string?
-	local worker = HeroConfig.Worker :: any
-	local configured = worker[configKey]
-	if configured and configured ~= "" then
-		return configured
+-- name -> KeyframeSequence in ServerStorage.RBX_ANIMSAVES, built once (the folder is large).
+local keyframesByName: { [string]: KeyframeSequence }? = nil
+local function keyframeIndex(): { [string]: KeyframeSequence }
+	if keyframesByName then
+		return keyframesByName
 	end
-	if resolved[configKey] then
-		return resolved[configKey]
-	end
+	local index: { [string]: KeyframeSequence } = {}
 	local saves = ServerStorage:FindFirstChild("RBX_ANIMSAVES")
-	local sequence: Instance? = nil
 	if saves then
 		for _, d in saves:GetDescendants() do
-			if d:IsA("KeyframeSequence") and d.Name == worker[keyframesKey] then
-				sequence = d
-				break
+			if d:IsA("KeyframeSequence") and not index[d.Name] then
+				index[d.Name] = d
 			end
 		end
 	end
+	keyframesByName = index
+	return index
+end
+
+-- `configured` when set, else the KeyframeSequence `keyframes` in RBX_ANIMSAVES registered for this
+-- session. `setting` names the config entry to fill in (for the warnings).
+local function resolveAnimation(configured: string?, keyframes: string?, what: string, setting: string): string?
+	if configured and configured ~= "" then
+		return configured
+	end
+	if not keyframes or keyframes == "" then
+		return nil
+	end
+	if resolved[keyframes] then
+		return resolved[keyframes]
+	end
+	if failed[keyframes] then
+		return nil -- already looked (and warned): don't rescan RBX_ANIMSAVES on every hero spawn
+	end
+	local sequence = keyframeIndex()[keyframes]
 	if not sequence then
-		if not warned[configKey] then
-			warned[configKey] = true
-			warn(("[HeroModels] no %s animation: set HeroConfig.Worker.%s"):format(what, configKey))
+		failed[keyframes] = true
+		if not warned[keyframes] then
+			warned[keyframes] = true
+			warn(("[HeroModels] no %s animation: set HeroConfig.Worker.%s"):format(what, setting))
 		end
 		return nil
 	end
 	local ok, id = pcall(KeyframeSequenceProvider.RegisterKeyframeSequence, KeyframeSequenceProvider, sequence)
 	if ok then
-		resolved[configKey] = id
-		if not warned[configKey] then
-			warned[configKey] = true
-			warn(("[HeroModels] playing the %s from RBX_ANIMSAVES (Studio only). Upload it and set HeroConfig.Worker.%s before publishing."):format(what, configKey))
+		resolved[keyframes] = id
+		if not warned[keyframes] then
+			warned[keyframes] = true
+			warn(("[HeroModels] playing the %s %s from RBX_ANIMSAVES (Studio only). Upload it and set HeroConfig.Worker.%s before publishing."):format(what, keyframes, setting))
 		end
 		return id
 	end
+	failed[keyframes] = true
 	return nil
+end
+
+local function animationFromConfig(configKey: string, keyframesKey: string, what: string): string?
+	local worker = HeroConfig.Worker :: any
+	return resolveAnimation(worker[configKey], worker[keyframesKey], what, configKey)
 end
 
 function HeroModels.ChopAnimationId(): string?
 	return animationFromConfig("ChopAnimation", "ChopKeyframes", "swing")
 end
 
--- Every swing animation to pick from (HeroConfig.Worker.ChopAnimations, else the single fallback).
-function HeroModels.ChopAnimationIds(): { string }
-	local list = {}
+-- Every swing animation to pick from for this rig: R15 heroes use HeroConfig.Worker.ChopAnimationsR15
+-- (or their KeyframeSequences); R6 heroes HeroConfig.Worker.ChopAnimations, else the single fallback.
+-- Second result: each swing's damage multiplier (HeroConfig.Worker.ChopDamageMultR15; 1 for R6).
+function HeroModels.ChopAnimationIds(humanoid: Humanoid?): ({ string }, { number })
+	local list, mults = {}, {}
+	if humanoid and humanoid.RigType == Enum.HumanoidRigType.R15 then
+		local worker = HeroConfig.Worker
+		local ids = worker.ChopAnimationsR15 or {}
+		local names = worker.ChopKeyframesR15 or {}
+		local damage = worker.ChopDamageMultR15 or {}
+		for i = 1, math.max(#ids, #names) do
+			local id = resolveAnimation(ids[i], names[i], "R15 swing", ("ChopAnimationsR15[%d]"):format(i))
+			if id then
+				table.insert(list, id)
+				table.insert(mults, damage[i] or 1)
+			end
+		end
+		return list, mults
+	end
 	for _, id in HeroConfig.Worker.ChopAnimations or {} do
 		if id ~= "" then
 			table.insert(list, id)
@@ -393,10 +433,18 @@ function HeroModels.ChopAnimationIds(): { string }
 			table.insert(list, id)
 		end
 	end
-	return list
+	for _ in list do
+		table.insert(mults, 1)
+	end
+	return list, mults
 end
 
-function HeroModels.RunAnimationId(): string?
+-- R15 rigs use HeroConfig.Worker.RunAnimationR15; R6 (or no humanoid) RunAnimation / RunKeyframes.
+function HeroModels.RunAnimationId(humanoid: Humanoid?): string?
+	if humanoid and humanoid.RigType == Enum.HumanoidRigType.R15 then
+		local id = (HeroConfig.Worker :: any).RunAnimationR15
+		return if id and id ~= "" then id else nil
+	end
 	return animationFromConfig("RunAnimation", "RunKeyframes", "run")
 end
 

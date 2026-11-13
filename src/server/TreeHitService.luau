@@ -7,8 +7,8 @@
 -- Server -> owner   Remotes.TreeDrops(origin, groundY, drops, chest)                (drops fly into the chest)
 --
 -- Drops go into the plot's chest the moment the tree falls (ChestService "Contents"); the player
--- moves them into "Inventory" / "Heroes" with Take All. With Auto Sell on, materials are sold for
--- Money instead. When the chest is full, the extra items are lost. Nothing is saved yet.
+-- moves them into "Inventory" / "Heroes" with Take All and sells materials at the Sell shop.
+-- When the chest is full, the extra items are lost. Nothing is saved yet.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -186,21 +186,12 @@ local function applyHit(player: Player, model: Model, damage: number, hitPos: an
 			TreeDrops:FireClient(player, cf.Position, groundY, drops, nil)
 			return true
 		end
-		-- Auto sell turns materials into money right away; only the rest goes in the chest.
-		local toStore = if ChestService.IsAutoSell(player) then ChestService.SellMaterials(player, drops) else drops
-		local sold: { Drop } = {}
-		if toStore ~= drops then
-			for _, drop in drops do
-				if not table.find(toStore, drop) then
-					table.insert(sold, drop)
-				end
-			end
-		end
-		-- Only what fits in the chest is kept.
+		-- Every drop (materials too) flies into the chest; the player takes it from there and sells it
+		-- at the Sell shop. Only what fits in the chest is kept.
 		local room = ChestService.GetRoom(chest)
 		local total = 0
 		local kept: { Drop } = {}
-		for _, drop in toStore do
+		for _, drop in drops do
 			local amount = math.min(drop.Amount, room - total)
 			if amount > 0 then
 				drop.Amount = amount
@@ -208,10 +199,8 @@ local function applyHit(player: Player, model: Model, damage: number, hitPos: an
 				table.insert(kept, drop)
 			end
 		end
-		local shown = table.clone(kept)
-		table.move(sold, 1, #sold, #shown + 1, shown)
 		-- Fire before updating Stored so the client knows these items are still in flight.
-		TreeDrops:FireClient(player, cf.Position, groundY, shown, chest)
+		TreeDrops:FireClient(player, cf.Position, groundY, kept, chest)
 		if #kept > 0 then
 			ChestService.AddDrops(chest, kept)
 		end

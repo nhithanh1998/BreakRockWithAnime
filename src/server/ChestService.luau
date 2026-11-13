@@ -97,6 +97,82 @@ function ChestService.ResetPlot(plot: Model)
 	end
 end
 
+-- Saving the plot chest ---------------------------------------------------------------------------
+
+local pendingContents: { [Player]: { [string]: number } } = {}
+local chestReady: { [Player]: boolean } = {} -- plot claimed and its chest already reset
+
+Players.PlayerRemoving:Connect(function(player)
+	task.defer(function()
+		pendingContents[player] = nil
+		chestReady[player] = nil
+	end)
+end)
+
+-- The chest inside the plot this player owns (found via the player's "Plot" attribute, which stays
+-- set while PlotReleased runs). Never the shared chest.
+local function ownChest(player: Player): Model?
+	local plotName = player:GetAttribute("Plot")
+	local plots = workspace:FindFirstChild("Plots")
+	local plot = typeof(plotName) == "string" and plots and plots:FindFirstChild(plotName)
+	if not plot then
+		return nil
+	end
+	local own = plot:FindFirstChild("TreasureChest", true)
+	return if own and own:IsA("Model") then own else nil
+end
+
+-- Stack name -> amount in the player's plot chest, or nil without one.
+function ChestService.GetContentsFor(player: Player): { [string]: number }?
+	local chest = ownChest(player)
+	if not chest then
+		return nil
+	end
+	local out = {}
+	for _, v in contents(chest):GetChildren() do
+		if v:IsA("IntValue") and v.Value > 0 then
+			out[v.Name] = v.Value
+		end
+	end
+	return out
+end
+
+local function addStacks(chest: Model, stacks: { [string]: number })
+	local folder = contents(chest)
+	for name, amount in stacks do
+		local value = folder:FindFirstChild(name) :: IntValue?
+		if not value then
+			local newValue = Instance.new("IntValue")
+			newValue.Name = name
+			newValue.Parent = folder
+			value = newValue
+		end
+		(value :: IntValue).Value += amount
+	end
+	recount(chest)
+end
+
+-- Puts saved stacks back into the player's plot chest (now, or once their plot is set up).
+function ChestService.RestoreContents(player: Player, stacks: { [string]: number })
+	local chest = ownChest(player)
+	if chest and chestReady[player] then
+		addStacks(chest, stacks)
+	else
+		pendingContents[player] = stacks
+	end
+end
+
+-- Called right after the plot's chest was reset for its new owner.
+function ChestService.SetupPlot(plot: Model, player: Player)
+	chestReady[player] = true
+	local stacks = pendingContents[player]
+	pendingContents[player] = nil
+	local own = plot:FindFirstChild("TreasureChest", true)
+	if stacks and own and own:IsA("Model") then
+		addStacks(own, stacks)
+	end
+end
+
 -- Player data -----------------------------------------------------------------------------------
 
 local function getFolder(player: Player, name: string): Folder

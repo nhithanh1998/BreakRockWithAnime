@@ -70,11 +70,11 @@ end
 
 -- Green Wood heroes, reused by Orchard Valley for now.
 local GREEN_WOOD_HEROES: { HeroEntry } = {
-	{ Item = "Sling Pirate", Weight = 40 }, -- Common
-	{ Item = "Taijutsu Ninja", Weight = 40 }, -- Common
-	{ Item = "Uzumaki Kid", Weight = 15 }, -- Uncommon
-	{ Item = "Copy Ninja", Weight = 4 }, -- Rare
-	{ Item = "Perfect Bioform", Weight = 1 }, -- Epic
+	{ Item = "Kabuto Boy", Weight = 40 }, -- Common
+	{ Item = "Taijutsu Shounen", Weight = 40 }, -- Common
+	{ Item = "Uzumaki Shounen", Weight = 15 }, -- Uncommon
+	{ Item = "Copy Sensei", Weight = 4 }, -- Rare
+	{ Item = "Green Beetle", Weight = 1 }, -- Epic
 }
 
 ZoneDrops.Zones = {

@@ -6,6 +6,7 @@
 --   materials - player.Inventory (IntValue per TreeConfig.Materials key)
 -- Tabs: Panel.Tabs.All / Heroes / Materials. Panel.Search.Box filters by name.
 -- Cards are clones of InventoryGui.Templates.ItemSlot, drawn with ItemDisplay.
+-- Panel.EquipBest fills the hero pads with the strongest heroes and axes (HeroSlotService).
 --
 -- The layout lives in StarterGui.InventoryGui (edited in Studio); this script only fills it.
 
@@ -269,6 +270,43 @@ closeButton.Activated:Connect(function()
 	press(closeButton)
 	setOpen(false)
 end)
+
+-- Equip Best (Panel.EquipBest, designed in Studio; its text is in "Label"): the server puts the
+-- strongest heroes on the open pads and the best axes on the strongest of them (HeroSlotService).
+-- The label shows the answer for a moment.
+local equipBestButton = panel:FindFirstChild("EquipBest") :: TextButton?
+if equipBestButton then
+	local button = equipBestButton
+	local label = (button:FindFirstChild("Label") or button) :: TextLabel
+	local idleText = label.Text
+	local idleColor = label.TextColor3
+	local busy = false
+	-- Longer answers shrink to fit the button instead of spilling out (never bigger than the
+	-- size set in Studio).
+	if not label.TextScaled then
+		local limit = Instance.new("UITextSizeConstraint")
+		limit.MaxTextSize = label.TextSize
+		limit.Parent = label
+		label.TextScaled = true
+	end
+	button.Visible = true
+	button.Activated:Connect(function()
+		if busy then
+			return
+		end
+		busy = true
+		press(button)
+		label.Text = "..."
+		local upgradeRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HeroUpgrade") :: RemoteFunction
+		local ok, success, message = pcall(upgradeRemote.InvokeServer, upgradeRemote, 0, "EquipBest")
+		label.Text = if ok and typeof(message) == "string" then message else "Try again"
+		label.TextColor3 = if ok and success then idleColor else Color3.fromRGB(255, 150, 150)
+		task.wait(1.5)
+		label.Text = idleText
+		label.TextColor3 = idleColor
+		busy = false
+	end)
+end
 
 local function onViewportChanged()
 	if isOpen then
