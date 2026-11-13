@@ -75,7 +75,7 @@ end
 
 -- Heroes ---------------------------------------------------------------------------------------------
 
-type HeroVisual = { model: Model, root: BasePart, humanoid: Humanoid, bottom: number, height: number }
+export type HeroVisual = { model: Model, root: BasePart, humanoid: Humanoid, bottom: number, height: number }
 
 local function heroTemplate(name: string): Model?
 	local model = HeroConfig.GetTemplate(name)
@@ -88,7 +88,7 @@ local function heroTemplate(name: string): Model?
 end
 
 -- The hero's own model, held by its anchored root (the limbs stay free so the idle animation plays).
-local function buildHero(drop: Drop): HeroVisual?
+local function buildHero(drop: Drop, scale: number?): HeroVisual?
 	local template = heroTemplate(drop.Name)
 	if not template then
 		return nil
@@ -114,7 +114,7 @@ local function buildHero(drop: Drop): HeroVisual?
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
 	model.PrimaryPart = root
-	model:ScaleTo(HERO_SCALE)
+	model:ScaleTo(scale or HERO_SCALE)
 	local cf, size = model:GetBoundingBox()
 	return {
 		model = model,
@@ -607,7 +607,9 @@ local function playDrop(drop: Drop, origin: Vector3, groundY: number, index: num
 	end
 end
 
-function DropFX.Play(origin: Vector3, groundY: number, drops: { Drop }, chest: Model?)
+-- `waitFor` (optional) blocks until the drops may pop out, e.g. until a HeroCutscene has finished.
+-- The chest's in-flight count is bumped right away, so its counter doesn't jump ahead meanwhile.
+function DropFX.Play(origin: Vector3, groundY: number, drops: { Drop }, chest: Model?, waitFor: (() -> ())?)
 	if chest then
 		local total = 0
 		for _, drop in drops do
@@ -615,9 +617,21 @@ function DropFX.Play(origin: Vector3, groundY: number, drops: { Drop }, chest: M
 		end
 		ChestFX.AddInFlight(chest, total)
 	end
-	for i, drop in drops do
-		task.delay((i - 1) * 0.07, playDrop, drop, origin, groundY, i, chest)
-	end
+	task.spawn(function()
+		if waitFor then
+			waitFor()
+		end
+		for i, drop in drops do
+			task.delay((i - 1) * 0.07, playDrop, drop, origin, groundY, i, chest)
+		end
+	end)
 end
+
+-- Shared with HeroCutscene.
+DropFX.BuildHero = buildHero
+DropFX.PlayIdle = playIdle
+DropFX.BuildShine = buildShine
+DropFX.FormatChance = formatChance
+DropFX.RarityColor = rarityColor
 
 return DropFX

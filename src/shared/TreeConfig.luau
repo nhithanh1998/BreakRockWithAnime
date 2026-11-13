@@ -173,6 +173,11 @@ TreeConfig.RarityColors = {
 -- Rarities that get a burst effect when they drop.
 TreeConfig.FancyRarities = { Rare = true, Epic = true, Legendary = true, Mythic = true } :: { [string]: boolean }
 
+-- Heroes of these rarities get a cinematic cutscene when they drop (client/HeroCutscene.luau).
+TreeConfig.CutsceneRarities = { Epic = true, Legendary = true, Mythic = true } :: { [string]: boolean }
+-- Optional sound ids ("rbxassetid://...") for the cutscene; empty = silent.
+TreeConfig.CutsceneSounds = { Charge = "", Reveal = "" } :: { [string]: string }
+
 TreeConfig.Materials = {
 	-- Zone 1 (Green Wood) - Oak Tree
 	OakBark = {

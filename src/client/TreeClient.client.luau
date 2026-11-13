@@ -12,6 +12,7 @@ local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local TreeFX = require(script.Parent:WaitForChild("TreeFX"))
 local DropFX = require(script.Parent:WaitForChild("DropFX"))
+local HeroCutscene = require(script.Parent:WaitForChild("HeroCutscene"))
 local ChestFX = require(script.Parent:WaitForChild("ChestFX"))
 local TargetRing = require(script.Parent:WaitForChild("TargetRing"))
 
@@ -429,7 +430,10 @@ TreeHit.OnClientEvent:Connect(function(tree: Model?, attacker: Player?, damage: 
 end)
 
 TreeDrops.OnClientEvent:Connect(function(origin: Vector3, groundY: number, drops, chest: Model?)
-	DropFX.Play(origin, groundY, drops, chest)
+	-- A rare hero gets a cinematic first; the drops pop out once it's over.
+	local special = HeroCutscene.Pick(drops)
+	local waitFor = if special then HeroCutscene.Play(special, origin, groundY) else nil
+	DropFX.Play(origin, groundY, drops, chest, waitFor)
 end)
 
 ChestFX.Start()
