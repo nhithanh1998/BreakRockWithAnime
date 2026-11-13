@@ -20,7 +20,7 @@ export type MaterialDef = {
 	Rarity: Rarity,
 	Value: number, -- money per item when sold
 	Visual: Visual,
-	Image: string?, -- optional UI icon (rbxassetid://...); without it the UI draws a 3D icon from Visual
+	MaterialImage: string?, -- uploaded UI icon ("rbxassetid://123" or "123"); empty = 3D model / Visual
 }
 
 export type DropEntry = {
@@ -192,18 +192,21 @@ TreeConfig.Materials = {
 		Value = 5,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(96, 66, 44), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	Acorn = {
 		Name = "Acorn",
 		Value = 20,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(165, 112, 52), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	OakResin = {
 		Name = "Oak Resin",
 		Value = 120,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(235, 145, 35), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Zone 1 (Green Wood) - Birch Tree
 	BirchTwig = {
@@ -211,18 +214,21 @@ TreeConfig.Materials = {
 		Value = 6,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(150, 118, 88), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	BirchLog = {
 		Name = "Birch Log",
 		Value = 25,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(232, 226, 212), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	BirchSyrup = {
 		Name = "Birch Syrup",
 		Value = 150,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(200, 105, 40), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Zone 1 (Green Wood) - Apple Tree
 	AppleBranch = {
@@ -230,18 +236,21 @@ TreeConfig.Materials = {
 		Value = 7,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(122, 88, 62), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	Apple = {
 		Name = "Apple",
 		Value = 30,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(215, 51, 43), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	GoldenApple = {
 		Name = "Golden Apple",
 		Value = 180,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 200, 45), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Zone 1 (Green Wood) - Berry Tree
 	BerryTwig = {
@@ -249,18 +258,21 @@ TreeConfig.Materials = {
 		Value = 8,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(110, 74, 60), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	Berry = {
 		Name = "Berry",
 		Value = 35,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(106, 63, 181), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	StarBerry = {
 		Name = "Star Berry",
 		Value = 210,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(150, 110, 255), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Zone 1 (Green Wood) - Orange Tree
 	OrangePeel = {
@@ -268,18 +280,21 @@ TreeConfig.Materials = {
 		Value = 9,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(235, 150, 60), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	Orange = {
 		Name = "Orange",
 		Value = 40,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(242, 138, 28), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	SunOrange = {
 		Name = "Sun Orange",
 		Value = 250,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 170, 30), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Zone 2 (Orchard Valley). Values by rarity: Common ~50, Uncommon ~150, Rare 350-450, Epic 1.3K-1.5K,
 	-- Legendary 10K. Per normal-size tree: Berry ~265, Orange ~510, Apple ~730 (avg ~500; zone 1 ~50).
@@ -290,18 +305,21 @@ TreeConfig.Materials = {
 		Value = 50,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(105, 62, 70), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	BerryCluster = {
 		Name = "Berry Cluster",
 		Value = 150,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(125, 50, 170), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	BerryJam = {
 		Name = "Berry Jam",
 		Value = 450,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(170, 40, 120), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Zone 2 (Orchard Valley) - Orange Tree
 	OrangeSeed = {
@@ -309,18 +327,21 @@ TreeConfig.Materials = {
 		Value = 150,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(0.8, 0.8, 0.8), Color = Color3.fromRGB(240, 215, 150), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	OrchardOrange = {
 		Name = "Orange",
 		Value = 400,
 		Rarity = "Rare",
 		Visual = { Shape = "Block", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(250, 140, 20), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	OrangeJam = {
 		Name = "Orange Jam",
 		Value = 1500,
 		Rarity = "Epic",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 120, 10), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Zone 2 (Orchard Valley) - Apple Tree
 	OrchardApple = {
@@ -328,18 +349,21 @@ TreeConfig.Materials = {
 		Value = 350,
 		Rarity = "Rare",
 		Visual = { Shape = "Block", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(220, 40, 45), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	AppleJam = {
 		Name = "Apple Jam",
 		Value = 1300,
 		Rarity = "Epic",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(200, 25, 40), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	HeartOfTheOrchard = {
 		Name = "Heart of the Orchard",
 		Value = 10000,
 		Rarity = "Legendary",
 		Visual = { Shape = "Gem", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(255, 205, 60), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	-- Old placeholder items (no longer dropped; kept so saved inventories can still be sold)
 	Leaf = {
@@ -347,25 +371,34 @@ TreeConfig.Materials = {
 		Value = 2,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(95, 170, 85), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	Fruit = {
 		Name = "Fruit",
 		Value = 12,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(230, 60, 60), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	Amber = {
 		Name = "Amber",
 		Value = 150,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 160, 30), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 	Crystal = {
 		Name = "Crystal",
 		Value = 600,
 		Rarity = "Epic",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(90, 220, 255), Material = Enum.Material.Plastic },
+		MaterialImage = "", -- uploaded icon id ("rbxassetid://123" or "123"); empty = draw the 3D model
 	},
 } :: { [string]: MaterialDef }
+
+-- "123" -> "rbxassetid://123", "" -> nil (the UI then draws the 3D model).
+for _, def in TreeConfig.Materials do
+	def.MaterialImage = HeroConfig.AssetId(def.MaterialImage)
+end
 
 return TreeConfig

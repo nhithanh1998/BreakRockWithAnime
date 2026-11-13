@@ -43,6 +43,7 @@ export type AxeDef = {
 	HeroBoost: number, -- a hero holding this axe deals Chop Damage x this (HeroUpgradeUI "Axe")
 	Zone: number, -- the player must have unlocked this zone (UnlockedZones) to buy it
 	Stock: { number }, -- { min, max } copies in stock after each restock (rolled per axe, server-wide)
+	AxeImage: string?, -- uploaded icon ("rbxassetid://123" or "123"); empty = draw the 3D model
 }
 
 -- Shop order. Every player starts with StartAxe (1 copy).
@@ -50,16 +51,16 @@ export type AxeDef = {
 -- given to one hero pad (HeroSlotService); the player's own equipped axe doesn't use a copy.
 ShopConfig.StartAxe = "WoodenAxe"
 ShopConfig.Axes = {
-	{ Model = "WoodenAxe", Name = "Wooden Axe", Rarity = "Common", Price = 0, Damage = 10, HeroBoost = 1, Zone = 1, Stock = { 99, 99 } },
-	{ Model = "StoneAxe", Name = "Stone Axe", Rarity = "Common", Price = 750, Damage = 15, HeroBoost = 1.1, Zone = 1, Stock = { 5, 8 } },
-	{ Model = "CopperAxe", Name = "Copper Axe", Rarity = "Uncommon", Price = 3000, Damage = 25, HeroBoost = 1.25, Zone = 1, Stock = { 3, 6 } },
-	{ Model = "IronAxe", Name = "Iron Axe", Rarity = "Uncommon", Price = 12000, Damage = 40, HeroBoost = 1.45, Zone = 1, Stock = { 2, 4 } },
-	{ Model = "GoldenAxe", Name = "Golden Axe", Rarity = "Rare", Price = 50000, Damage = 65, HeroBoost = 1.7, Zone = 1, Stock = { 1, 3 } },
-	{ Model = "EmeraldAxe", Name = "Emerald Axe", Rarity = "Rare", Price = 80000, Damage = 100, HeroBoost = 2, Zone = 2, Stock = { 1, 3 } },
-	{ Model = "InfernoAxe", Name = "Inferno Axe", Rarity = "Epic", Price = 350000, Damage = 160, HeroBoost = 2.5, Zone = 2, Stock = { 0, 2 } },
-	{ Model = "FrostbiteAxe", Name = "Frostbite Axe", Rarity = "Epic", Price = 1200000, Damage = 250, HeroBoost = 3.1, Zone = 2, Stock = { 0, 2 } },
-	{ Model = "VoidReaperAxe", Name = "Void Reaper Axe", Rarity = "Legendary", Price = 25000000, Damage = 400, HeroBoost = 4, Zone = 3, Stock = { 0, 1 } },
-	{ Model = "CelestialAxe", Name = "Celestial Axe", Rarity = "Mythic", Price = 100000000, Damage = 650, HeroBoost = 5.5, Zone = 3, Stock = { 0, 1 } },
+	{ Model = "WoodenAxe", Name = "Wooden Axe", Rarity = "Common", Price = 0, Damage = 10, HeroBoost = 1, Zone = 1, Stock = { 99, 99 }, AxeImage = "" },
+	{ Model = "StoneAxe", Name = "Stone Axe", Rarity = "Common", Price = 750, Damage = 15, HeroBoost = 1.1, Zone = 1, Stock = { 5, 8 }, AxeImage = "" },
+	{ Model = "CopperAxe", Name = "Copper Axe", Rarity = "Uncommon", Price = 3000, Damage = 25, HeroBoost = 1.25, Zone = 1, Stock = { 3, 6 }, AxeImage = "" },
+	{ Model = "IronAxe", Name = "Iron Axe", Rarity = "Uncommon", Price = 12000, Damage = 40, HeroBoost = 1.45, Zone = 1, Stock = { 2, 4 }, AxeImage = "" },
+	{ Model = "GoldenAxe", Name = "Golden Axe", Rarity = "Rare", Price = 50000, Damage = 65, HeroBoost = 1.7, Zone = 1, Stock = { 1, 3 }, AxeImage = "" },
+	{ Model = "EmeraldAxe", Name = "Emerald Axe", Rarity = "Rare", Price = 80000, Damage = 100, HeroBoost = 2, Zone = 2, Stock = { 1, 3 }, AxeImage = "" },
+	{ Model = "InfernoAxe", Name = "Inferno Axe", Rarity = "Epic", Price = 350000, Damage = 160, HeroBoost = 2.5, Zone = 2, Stock = { 0, 2 }, AxeImage = "" },
+	{ Model = "FrostbiteAxe", Name = "Frostbite Axe", Rarity = "Epic", Price = 1200000, Damage = 250, HeroBoost = 3.1, Zone = 2, Stock = { 0, 2 }, AxeImage = "" },
+	{ Model = "VoidReaperAxe", Name = "Void Reaper Axe", Rarity = "Legendary", Price = 25000000, Damage = 400, HeroBoost = 4, Zone = 3, Stock = { 0, 1 }, AxeImage = "" },
+	{ Model = "CelestialAxe", Name = "Celestial Axe", Rarity = "Mythic", Price = 100000000, Damage = 650, HeroBoost = 5.5, Zone = 3, Stock = { 0, 1 }, AxeImage = "" },
 } :: { AxeDef }
 
 -- Restock: every RestockInterval seconds (aligned to the clock, so every server restocks at the same
@@ -70,6 +71,9 @@ ShopConfig.RestockInterval = 5 * 60
 
 local byModel: { [string]: AxeDef } = {}
 for _, axe in ShopConfig.Axes do
+	-- "123" -> "rbxassetid://123", "" -> nil (the UI then draws ReplicatedStorage.Axes.<Model>)
+	local image = axe.AxeImage and axe.AxeImage:gsub("^%s+", ""):gsub("%s+$", "")
+	axe.AxeImage = if image == nil or image == "" then nil elseif image:match("^%d+$") then "rbxassetid://" .. image else image
 	byModel[axe.Model] = axe
 end
 

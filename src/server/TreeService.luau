@@ -5,10 +5,13 @@
 --   the client (TreeClient). An old-style "Info" BillboardGui (HPBar.Fill/TextLabel) still works.
 --   Optional template attribute "SpawnWeight" (default 1) makes a tree more or less common.
 --   Only templates listed in the zone's ZoneDrops Trees are spawned.
+-- Zone base stats (ZoneConfig Base) + the owner's zone skill tree: MaxTrees, RespawnTime,
+--   TreeLevelWeights, OldTreeChance
+--   bumps a new tree one level older, TreeHP / HPCut scale its MaxHP.
 -- Trees go into the plot's "TreeSpawns" folder, at random spots on Floor.Ground.
 -- When a tree's HP reaches 0 (TreeService.Damage, or any script setting the "HP" attribute)
 --   it gets the "Dead" attribute, is removed TreeConfig.FellTime later (clients play the fall
---   animation meanwhile), and a new one grows back after CONFIG.RespawnDelay seconds.
+--   animation meanwhile), and a new one grows back after the zone's RespawnTime.
 -- Zone changes: ZoneService sets the plot's "ZoneBusy", removes the old trees, and clears "ZoneBusy" once the
 --   new floor is in place; the new zone's trees grow then.
 
@@ -18,11 +21,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ZoneDrops = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneDrops"))
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
+local SkillTreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SkillTreeConfig"))
+local ZoneConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneConfig"))
 
 local CONFIG = {
 	TemplateFolder = "Trees",
-	MaxTrees = 12,
-	RespawnDelay = 4, -- seconds
+	-- MaxTrees / RespawnTime / tree level weights: per zone, ZoneConfig Base.
 	EdgeMargin = 6, -- studs kept clear from the floor's edges (walls)
 	MinSpacing = 9, -- studs between tree centers
 	MaxAttempts = 30, -- random spots tried per tree
@@ -66,19 +70,57 @@ local function templatesFor(plot: Model): { Model }
 	return list
 end
 
--- Level weight of a template for this plot (TreeConfig.TreeLevels, boosted by the owner's TreeGrowth).
+-- Level weight of a template for this plot (zone TreeLevelWeights, boosted by the owner's TreeGrowth).
 local function levelWeight(plot: Model, template: Model, growth: number): number
 	local cfg = TreeConfig.TreeLevels
-	local level = ZoneDrops.GetLevel(plot:GetAttribute("Zone"), template.Name)
-	local base = cfg.Weights[level] or 0
+	local zone = plot:GetAttribute("Zone")
+	local level = ZoneDrops.GetLevel(zone, template.Name)
+	local weights = ZoneConfig.GetBase(zone, "TreeLevelWeights") or cfg.Weights
+	local base = weights[level] or 0
 	local boost = cfg.Boost[level] or 0
 	return base * (1 + growth * boost) * (template:GetAttribute("SpawnWeight") or 1)
 end
 
-local function ownerGrowth(plot: Model): number
+local function ownerOf(plot: Model): Player?
 	local userId = plot:GetAttribute("OwnerUserId")
-	local owner = userId and Players:GetPlayerByUserId(userId)
-	return (owner and owner:GetAttribute("TreeGrowth")) or 0
+	return if typeof(userId) == "number" then Players:GetPlayerByUserId(userId) else nil
+end
+
+-- The plot owner's skill tree stat for the plot's zone (zone trees only count in their own zone).
+local function ownerStat(plot: Model, stat: string): number
+	local owner = ownerOf(plot)
+	if owner then
+		return SkillTreeConfig.PlayerStat(owner, stat, plot:GetAttribute("Zone") or 1)
+	end
+	-- No owner: the zone's base value.
+	return SkillTreeConfig.StatIn(stat, plot:GetAttribute("Zone") or 1, function(): number
+		return 0
+	end)
+end
+
+local function ownerGrowth(plot: Model): number
+	return ownerStat(plot, "TreeGrowth")
+end
+
+-- How many trees this plot keeps standing (zone MaxTrees + the owner's skills).
+local function maxTrees(plot: Model): number
+	return math.floor(ownerStat(plot, "MaxTrees"))
+end
+
+-- OldTreeChance: the picked tree may grow one level older, if its family has that level here.
+local function maybeOlder(plot: Model, list: { Model }, picked: Model): Model
+	local chance = ownerStat(plot, "OldTreeChance")
+	if chance <= 0 or rng:NextNumber() >= chance then
+		return picked
+	end
+	local zone = plot:GetAttribute("Zone")
+	local want = ZoneDrops.GetLevel(zone, picked.Name) + 1
+	for _, t in list do
+		if ZoneDrops.GetLevel(zone, t.Name) == want then
+			return t
+		end
+	end
+	return picked
 end
 
 -- Picks a tree family (all equally likely), then one of its levels by weight.
@@ -107,16 +149,16 @@ local function pickTemplate(plot: Model): Model?
 		total += levelWeight(plot, t, growth)
 	end
 	if total <= 0 then
-		return list[rng:NextInteger(1, #list)]
+		return maybeOlder(plot, list, list[rng:NextInteger(1, #list)])
 	end
 	local roll = rng:NextNumber(0, total)
 	for _, t in list do
 		roll -= levelWeight(plot, t, growth)
 		if roll <= 0 then
-			return t
+			return maybeOlder(plot, list, t)
 		end
 	end
-	return list[#list]
+	return maybeOlder(plot, list, list[#list])
 end
 
 -- Distance from the template's pivot down to the bottom of its bounding box,
@@ -202,7 +244,7 @@ local function onTreeGone(state: PlotState, tree: Model)
 	state.alive[tree] = nil
 	state.count -= 1
 	if state.active then
-		task.delay(CONFIG.RespawnDelay, function()
+		task.delay(ZoneConfig.GetBase(state.plot:GetAttribute("Zone"), "RespawnTime") or 4, function()
 			if state.active then
 				fill(state)
 			end
@@ -233,6 +275,9 @@ local function spawnTree(state: PlotState): boolean
 	-- HP from TreeConfig.TreeHP, by the tree's level and the plot's zone.
 	local zone = state.plot:GetAttribute("Zone")
 	local maxHp = TreeConfig.MaxHP(zone, ZoneDrops.GetLevel(zone, template.Name))
+	-- Owner's zone skill tree: TreeHP multiplies (Hardwood / Ironwood), HPCut takes a share off.
+	local hpMult = ownerStat(state.plot, "TreeHP") * math.max(0.05, 1 - ownerStat(state.plot, "HPCut"))
+	maxHp = math.max(1, math.floor(maxHp * hpMult))
 	tree:SetAttribute("MaxHP", maxHp)
 	tree:SetAttribute("HP", maxHp)
 	tree:SetAttribute("TreeType", template.Name)
@@ -267,7 +312,7 @@ fill = function(state: PlotState)
 	if state.plot:GetAttribute("ZoneBusy") then
 		return
 	end
-	while state.active and state.count < CONFIG.MaxTrees do
+	while state.active and state.count < maxTrees(state.plot) do
 		if not spawnTree(state) then
 			break -- no room right now; the next felled tree triggers another try
 		end
@@ -316,6 +361,19 @@ function TreeService.StartPlot(plot: Model)
 			end
 		end)
 	)
+
+	-- Buying Seedling / Thick Forest grows the extra trees right away.
+	local owner = ownerOf(plot)
+	if owner then
+		table.insert(
+			state.connections,
+			owner:GetAttributeChangedSignal("MaxTrees"):Connect(function()
+				if state.active then
+					fill(state)
+				end
+			end)
+		)
+	end
 
 	fill(state)
 end

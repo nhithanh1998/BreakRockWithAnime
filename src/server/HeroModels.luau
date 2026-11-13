@@ -122,6 +122,64 @@ local function drawSizeBadge(root: BasePart, size: string)
 	HeroConfig.PaintSizeBadge(bar, stack * containerStuds / 2, size, font)
 end
 
+-- Top of the body (head) relative to the root, in studs (accessories / tools ignored).
+local function headTopAbove(model: Model, root: BasePart): number
+	local top = -math.huge
+	for _, d in model:GetDescendants() do
+		if
+			d:IsA("BasePart")
+			and d ~= root
+			and not d:FindFirstAncestorOfClass("Accessory")
+			and not d:FindFirstAncestorOfClass("Tool")
+		then
+			top = math.max(top, d.Position.Y + d.Size.Y / 2)
+		end
+	end
+	return if top > -math.huge then top - root.Position.Y else 2
+end
+
+-- A template that has the bar (HumanoidRootPart.InfoAttachment.HeroBar), to copy onto heroes
+-- whose model was imported without one. Cached: { attachment, height above the head }.
+local barSource: { attachment: Attachment, aboveHead: number }? = nil
+
+local function findBarSource(): { attachment: Attachment, aboveHead: number }?
+	if barSource and barSource.attachment.Parent then
+		return barSource
+	end
+	local folder = ReplicatedStorage:FindFirstChild(HeroConfig.TemplateFolder)
+	for _, template in if folder then folder:GetChildren() else {} do
+		local root = template:FindFirstChild("HumanoidRootPart")
+		local attachment = root and root:FindFirstChild("InfoAttachment")
+		if template:IsA("Model") and attachment and attachment:IsA("Attachment") and attachment:FindFirstChild("HeroBar") then
+			barSource = {
+				attachment = attachment,
+				aboveHead = attachment.Position.Y - headTopAbove(template, root :: BasePart),
+			}
+			return barSource
+		end
+	end
+	return nil
+end
+
+-- Gives a hero model the bar above its head when its template has none (e.g. TaijutsuNinja).
+local function ensureBar(model: Model, root: BasePart)
+	local attachment = root:FindFirstChild("InfoAttachment")
+	if attachment and attachment:FindFirstChild("HeroBar") then
+		return
+	end
+	local source = findBarSource()
+	if not source then
+		warn(("[HeroModels] %s has no HeroBar and no template to copy one from"):format(model.Name))
+		return
+	end
+	if attachment then
+		attachment:Destroy()
+	end
+	local copy = source.attachment:Clone()
+	copy.Position = Vector3.new(0, headTopAbove(model, root) + source.aboveHead, 0)
+	copy.Parent = root
+end
+
 function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 	local template = templateFor(heroName)
 	if not template then
@@ -149,6 +207,8 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 	model:SetAttribute("Hero", heroName)
 
 	-- The bar above the hero (HumanoidRootPart.InfoAttachment.HeroBar): name, rarity, power.
+	-- Templates imported without one get a copy (ensureBar).
+	ensureBar(model, root)
 	local def = HeroConfig.Get(heroName)
 	local container = def and root:FindFirstChild("InfoAttachment")
 	container = container and container:FindFirstChild("HeroBar")

@@ -18,6 +18,7 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
+local SkillTreeConfig = require(Shared:WaitForChild("SkillTreeConfig"))
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
@@ -530,7 +531,7 @@ local function sellEntries(): { SellEntry }
 		local def = v:IsA("IntValue") and TreeConfig.Materials[v.Name]
 		if def and (v :: IntValue).Value > 0 then
 			local amount = (v :: IntValue).Value
-			table.insert(list, { stack = v.Name, isHero = false, amount = amount, total = def.Value * amount, rarity = def.Rarity })
+			table.insert(list, { stack = v.Name, isHero = false, amount = amount, total = SkillTreeConfig.MaterialValue(player, v.Name) * amount, rarity = def.Rarity })
 		end
 	end
 	local heroes = folder("Heroes")
@@ -723,7 +724,27 @@ local function axeViewport(model: string): ViewportFrame?
 	if cached then
 		cached.ImageColor3 = Color3.new(1, 1, 1)
 		cached.ImageTransparency = 0
+		local picture = cached:FindFirstChild("Picture") :: ImageLabel?
+		if picture then
+			picture.ImageColor3 = Color3.new(1, 1, 1)
+			picture.ImageTransparency = 0
+		end
 		return cached
+	end
+	-- Uploaded icon (ShopConfig AxeImage): no model to clone.
+	local axe = ShopConfig.GetAxe(model)
+	if axe and axe.AxeImage then
+		local view = new("ViewportFrame", {
+			Name = "View",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.fromScale(0.5, 0.2),
+			Size = UDim2.fromScale(0.95, 0.5),
+			ZIndex = 2,
+		})
+		ItemDisplay.ShowAxeImage(view, model)
+		axeViews[model] = view
+		return view
 	end
 	local axes = ReplicatedStorage:FindFirstChild("Axes")
 	local source = axes and axes:FindFirstChild(model)
@@ -965,6 +986,11 @@ renderAxes = function()
 		if view and locked then
 			view.ImageColor3 = Color3.new(0, 0, 0)
 			view.ImageTransparency = 0.35
+			local picture = view:FindFirstChild("Picture") :: ImageLabel?
+			if picture then
+				picture.ImageColor3 = Color3.new(0, 0, 0)
+				picture.ImageTransparency = 0.35
+			end
 		end
 		if soldOut then
 			outOfStockOverlay(card)

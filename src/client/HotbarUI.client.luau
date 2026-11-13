@@ -8,7 +8,8 @@
 -- slot shows a tooltip.
 --
 -- Popups: ChestService fires Remotes.ItemsAdded({ {Stack, Amount, New} }) after Take All. Up to
--- MAX_POPUPS frames pop in (a "+N More" frame covers the rest) and hide again after POPUP_TIME.
+-- MAX_POPUPS cards rise in one by one (a "+N More" card covers the rest) once the chest window has
+-- closed, and sink away again after POPUP_TIME.
 --
 -- The layout lives in StarterGui.HotbarGui so it can be tweaked in Studio; this script only fills it.
 
@@ -43,7 +44,7 @@ local moreTemplate = templates:WaitForChild("More") :: Frame
 local SLOT_COUNT = 10
 local MAX_POPUPS = 7
 local POPUP_TIME = 6 -- seconds the popups stay before hiding
-local POPUP_STAGGER = 0.05
+local POPUP_STAGGER = 0.07
 local EMPTY_COLOR = Color3.fromRGB(30, 32, 42)
 local SELECTED_BORDER = Color3.fromRGB(255, 255, 255)
 local TAG_ADDED = Color3.fromRGB(235, 120, 25)
@@ -404,51 +405,93 @@ end)
 render()
 
 -- "Added!" / "New!" popups ------------------------------------------------------------------------
+-- Each popup is a transparent "slot" frame in Popups' UIListLayout with the card inside it. The
+-- slots never move or resize while cards animate, so the row never jumps: a card rises into its
+-- slot (slide up + grow) and later sinks out of it, and the slots are removed together at the end.
+-- Cards are built one at a time on their turn (each has a 3D view), so a big Take All doesn't
+-- stall a single frame.
 
 type Received = { Stack: string, Amount: number, New: boolean }
 
-local popupGeneration = 0
-local shownPopups: { GuiObject } = {}
+local POP_IN = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local POP_OUT = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local POP_RISE = 0.45 -- cards start this far below their slot (fraction of the card height)
+local POP_FROM_SCALE = 0.7
+local POP_OUT_SCALE = 0.85
+local CHEST_CLOSE_WAIT = 0.5 -- max seconds to wait for the chest panel to finish closing
 
-local function popIn(frame: GuiObject, delay: number)
-	local scale = frame:FindFirstChild("PopScale") :: UIScale
-	scale.Scale = 0
-	task.delay(delay, function()
-		if frame.Parent then
-			TweenService:Create(scale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-		end
-	end)
+local popupGeneration = 0
+local shownSlots: { Frame } = {}
+
+-- A transparent frame with the template's size / aspect ratio that holds one card in the layout.
+local function makeSlot(template: Frame, order: number): Frame
+	local slot = Instance.new("Frame")
+	slot.Name = "PopupSlot"
+	slot.BackgroundTransparency = 1
+	slot.BorderSizePixel = 0
+	slot.Size = template.Size
+	slot.LayoutOrder = order
+	local aspect = template:FindFirstChildOfClass("UIAspectRatioConstraint")
+	if aspect then
+		aspect:Clone().Parent = slot
+	end
+	slot.Parent = popupsFrame
+	return slot
 end
 
-local function popOut(frame: GuiObject, delay: number)
-	local scale = frame:FindFirstChild("PopScale") :: UIScale
+-- Puts a built card into its slot and plays it in.
+local function popIn(slot: Frame, card: Frame)
+	card.AnchorPoint = Vector2.zero
+	card.Size = UDim2.fromScale(1, 1)
+	card.Position = UDim2.fromScale(0, POP_RISE)
+	card.LayoutOrder = 0
+	local aspect = card:FindFirstChildOfClass("UIAspectRatioConstraint")
+	if aspect then
+		aspect:Destroy() -- the slot keeps the shape
+	end
+	local scale = card:FindFirstChild("PopScale") :: UIScale
+	scale.Scale = POP_FROM_SCALE
+	card.Parent = slot
+	TweenService:Create(card, POP_IN, { Position = UDim2.fromScale(0, 0) }):Play()
+	TweenService:Create(scale, POP_IN, { Scale = 1 }):Play()
+end
+
+local function popOut(slot: Frame, delay: number, onDone: (() -> ())?)
 	task.delay(delay, function()
-		if not frame.Parent then
+		local card = slot:FindFirstChildOfClass("Frame")
+		if not slot.Parent or not card then
+			if onDone then
+				onDone()
+			end
 			return
 		end
-		local tween = TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Scale = 0 })
+		local scale = card:FindFirstChild("PopScale") :: UIScale
+		TweenService:Create(scale, POP_OUT, { Scale = POP_OUT_SCALE }):Play()
+		local tween = TweenService:Create(card, POP_OUT, { Position = UDim2.fromScale(0, POP_RISE * 1.6) })
 		tween.Completed:Once(function()
-			frame:Destroy()
+			card.Visible = false
+			if onDone then
+				onDone()
+			end
 		end)
 		tween:Play()
 	end)
 end
 
--- Also removes frames that are still shrinking away from the previous batch.
+-- Removes every popup right away (a new Take All replaces the old row).
 local function clearPopups()
 	for _, child in popupsFrame:GetChildren() do
 		if child:IsA("GuiObject") then
 			child:Destroy()
 		end
 	end
-	table.clear(shownPopups)
+	table.clear(shownSlots)
 end
 
-local function makePopup(entry: Received, order: number): Frame
+local function makePopup(entry: Received): Frame
 	local info = ItemDisplay.Info(entry.Stack)
 	local frame = popupTemplate:Clone()
 	frame.Name = entry.Stack
-	frame.LayoutOrder = order
 	local bg = ItemDisplay.SlotColor(info.rarity)
 	frame.BackgroundColor3 = bg;
 	(frame:FindFirstChild("Border") :: UIStroke).Color = bg:Lerp(Color3.new(1, 1, 1), 0.4);
@@ -486,27 +529,52 @@ local function popupOrder(a: Received, b: Received): boolean
 	return ia.name < ib.name
 end
 
+-- Waits (a little) for the chest window to finish its close animation after Take All.
+local function waitForChestClosed()
+	local chestGui = player.PlayerGui:FindFirstChild("ChestGui")
+	local panel = chestGui and chestGui:FindFirstChild("Panel")
+	if not panel or not panel:IsA("GuiObject") then
+		return
+	end
+	local start = os.clock()
+	while panel.Visible and os.clock() - start < CHEST_CLOSE_WAIT do
+		task.wait()
+	end
+end
+
 local function showReceived(received: { Received })
 	if typeof(received) ~= "table" or #received == 0 then
 		return
 	end
 	popupGeneration += 1
-	clearPopups()
+	local generation = popupGeneration
 	table.sort(received, popupOrder)
-
-	local count = math.min(#received, MAX_POPUPS)
-	for i = 1, count do
-		local frame = makePopup(received[i], i)
-		frame.Parent = popupsFrame
-		table.insert(shownPopups, frame)
-		popIn(frame, (i - 1) * POPUP_STAGGER)
+	waitForChestClosed()
+	if generation ~= popupGeneration then
+		return -- a newer Take All arrived meanwhile
 	end
-	if #received > MAX_POPUPS then
-		local frame = moreTemplate:Clone();
-		(frame:FindFirstChild("Label") :: TextLabel).Text = ("+%d More"):format(#received - MAX_POPUPS)
-		frame.Parent = popupsFrame
-		table.insert(shownPopups, frame)
-		popIn(frame, count * POPUP_STAGGER)
+	clearPopups()
+
+	-- All slots first (the row's final layout), then the cards one by one.
+	local count = math.min(#received, MAX_POPUPS)
+	local more = #received > MAX_POPUPS
+	for i = 1, count + (if more then 1 else 0) do
+		table.insert(shownSlots, makeSlot(if i <= count then popupTemplate else moreTemplate, i))
+	end
+	for i, slot in shownSlots do
+		task.delay((i - 1) * POPUP_STAGGER, function()
+			if generation ~= popupGeneration or not slot.Parent then
+				return
+			end
+			local card
+			if i <= count then
+				card = makePopup(received[i])
+			else
+				card = moreTemplate:Clone();
+				(card:FindFirstChild("Label") :: TextLabel).Text = ("+%d More"):format(#received - MAX_POPUPS)
+			end
+			popIn(slot, card)
+		end)
 	end
 
 	-- Bump the hotbar slots of heroes that just arrived (after the Heroes values replicate).
@@ -523,15 +591,24 @@ local function showReceived(received: { Received })
 		end
 	end)
 
-	local generation = popupGeneration
 	task.delay(POPUP_TIME, function()
 		if generation ~= popupGeneration then
 			return -- newer popups replaced these
 		end
-		for i, frame in shownPopups do
-			popOut(frame, (i - 1) * POPUP_STAGGER * 0.5)
+		local slotsOut = table.clone(shownSlots)
+		table.clear(shownSlots)
+		local left = #slotsOut
+		-- Right to left, then the empty slots go all at once so the row never shifts.
+		for i = #slotsOut, 1, -1 do
+			popOut(slotsOut[i], (#slotsOut - i) * POPUP_STAGGER * 0.6, function()
+				left -= 1
+				if left == 0 then
+					for _, s in slotsOut do
+						s:Destroy()
+					end
+				end
+			end)
 		end
-		table.clear(shownPopups)
 	end)
 end
 

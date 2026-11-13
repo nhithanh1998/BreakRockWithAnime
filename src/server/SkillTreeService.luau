@@ -7,8 +7,9 @@
 --   ("Upgrade", treeId, nodeId) -> { ok = true } | { ok = false, message = "..." }
 --     Checks max level, requirements and money (ChestService.SpendMoney) on the server.
 --
--- Stats: after any change every SkillTreeConfig.Stats entry is written as a player attribute
--- (Base + bonuses), e.g. player:GetAttribute("HeroLuck").
+-- Stats: after any change (and when "CurrentZone" changes) every SkillTreeConfig.Stats entry is
+-- written as a player attribute for the zone the player is in, e.g. player:GetAttribute("HeroLuck").
+-- Zone trees (SkillTreeConfig tree Zone) only count in their own zone.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -48,20 +49,14 @@ local function setLevel(player: Player, treeId: string, nodeId: string, level: n
 	(value :: IntValue).Value = level
 end
 
--- Sum of every node's bonus per stat.
-function SkillTreeService.GetStat(player: Player, stat: string): number
-	local def = SkillTreeConfig.Stats[stat]
-	local total = if def then def.Base else 0
-	for _, tree in SkillTreeConfig.Trees do
-		for _, node in tree.Nodes do
-			if node.Stat == stat and node.PerLevel then
-				total += node.PerLevel * SkillTreeService.GetLevel(player, tree.Id, node.Id)
-			end
-		end
-	end
-	return total
+-- A stat in `zone` (default: the player's current zone). Zone trees only count in their own zone.
+function SkillTreeService.GetStat(player: Player, stat: string, zone: number?): number
+	return SkillTreeConfig.StatIn(stat, zone or SkillTreeConfig.CurrentZone(player), function(t: string, n: string): number
+		return SkillTreeService.GetLevel(player, t, n)
+	end)
 end
 
+-- Attributes always hold the stats of the zone the player is in now.
 local function applyStats(player: Player)
 	for stat in SkillTreeConfig.Stats do
 		player:SetAttribute(stat, SkillTreeService.GetStat(player, stat))
@@ -121,6 +116,10 @@ end
 local function onPlayer(player: Player)
 	folderOf(player)
 	applyStats(player)
+	-- Changing zone swaps which zone tree is active.
+	player:GetAttributeChangedSignal("CurrentZone"):Connect(function()
+		applyStats(player)
+	end)
 end
 
 function SkillTreeService.Start()

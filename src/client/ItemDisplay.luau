@@ -12,9 +12,14 @@
 --                                             (ViewportFrame for the hero model; "View" is used when
 --                                             missing) and "Image" (ImageLabel, HeroConfig Image)
 --
--- Hero picture order: model -> HeroConfig Image -> ★.
--- Material picture order: TreeConfig Materials[x].Image (optional rbxassetid) -> the voxel model in
+--   ItemDisplay.ShowImage(view, image)    -> an uploaded icon in a ViewportFrame (ImageLabel "Picture")
+--   ItemDisplay.ShowAxeImage(view, model)  -> ShowImage with the axe's AxeImage; false when it has none
+--
+-- Uploaded icons win over 3D models (a model in a ViewportFrame is much heavier to draw):
+-- Hero picture order: HeroConfig AnimeImage -> model -> ★.
+-- Material picture order: TreeConfig Materials[x].MaterialImage -> the voxel model in
 -- ReplicatedStorage.DropModels.<key> (same as the drop in the world) -> 3D render of Visual.
+-- Axe picture order: ShopConfig.Axes[x].AxeImage -> the model in ReplicatedStorage.Axes.
 -- Materials use the full-size "HeroView" when the slot has one, so the icon fills the card.
 --
 -- A "stack" is "<Material key>" or "Anime:<Hero name>", the same names ChestService uses.
@@ -23,6 +28,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
+local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
+local FruitConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitConfig"))
+local FruitModels = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitModels"))
 
 local ItemDisplay = {}
 
@@ -63,7 +71,7 @@ function ItemDisplay.Info(stack: string): ItemInfo
 			rarity = if hero then hero.Rarity else "Rare",
 			isHero = true,
 			value = if hero then hero.MinePower else 0,
-			image = hero and hero.Image,
+			image = hero and hero.AnimeImage,
 		}
 	end
 	local def = TreeConfig.Materials[stack]
@@ -73,13 +81,70 @@ function ItemDisplay.Info(stack: string): ItemInfo
 		isHero = false,
 		value = if def then def.Value else 0,
 		visual = def and def.Visual,
-		image = def and (def :: any).Image,
+		image = def and def.MaterialImage,
 		key = stack,
 	}
 end
 
 function ItemDisplay.SlotColor(rarity: string): Color3
 	return TreeConfig.RaritySlotColors[rarity] or Color3.fromRGB(120, 120, 120)
+end
+
+-- Uploaded icons ------------------------------------------------------------------------------------
+
+-- Shows `image` filling `view` (instead of a 3D model). Tint it through the "Picture" child: a
+-- ViewportFrame's ImageColor3 / ImageTransparency don't reach GUI children.
+function ItemDisplay.ShowImage(view: ViewportFrame, image: string)
+	view:ClearAllChildren()
+	view.CurrentCamera = nil
+	local label = Instance.new("ImageLabel")
+	label.Name = "Picture"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.ScaleType = Enum.ScaleType.Fit
+	label.Image = image
+	label.ZIndex = view.ZIndex
+	label.Parent = view
+end
+
+-- The axe's uploaded icon in `view`. False when ShopConfig has no AxeImage for it (draw the model).
+function ItemDisplay.ShowAxeImage(view: ViewportFrame, model: string): boolean
+	local axe = ShopConfig.GetAxe(model)
+	local image = axe and axe.AxeImage
+	if not image then
+		return false
+	end
+	ItemDisplay.ShowImage(view, image)
+	return true
+end
+
+-- Devil Fruit picture: its FruitImage, or the 3D fruit (FruitModels) turned a little. Skips the work
+-- when `view` already shows this fruit.
+function ItemDisplay.FillFruitViewport(view: ViewportFrame, fruitId: string)
+	if view:GetAttribute("Fruit") == fruitId and #view:GetChildren() > 0 then
+		return
+	end
+	view:ClearAllChildren()
+	view:SetAttribute("Fruit", fruitId)
+	local def = FruitConfig.Get(fruitId)
+	if not def then
+		return
+	end
+	if def.FruitImage then
+		ItemDisplay.ShowImage(view, def.FruitImage)
+		return
+	end
+	view.Ambient = Color3.fromRGB(200, 200, 200)
+	view.LightColor = Color3.new(1, 1, 1)
+	view.LightDirection = Vector3.new(-0.5, -1, -0.7)
+	local model = FruitModels.Fruit(def, 2)
+	model:PivotTo(CFrame.Angles(math.rad(10), math.rad(-20), 0))
+	model.Parent = view
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 30
+	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0.3, 5.6), Vector3.new(0, 0.1, 0))
+	camera.Parent = view
+	view.CurrentCamera = camera
 end
 
 -- Material picture: a 3D icon of the drop, shaped by Visual.Shape, filling ICON_FILL of the view.
@@ -217,6 +282,11 @@ function ItemDisplay.FillViewport(view: ViewportFrame, visual: TreeConfig.Visual
 	view:ClearAllChildren()
 	view:SetAttribute("Hero", nil)
 	lightView(view)
+	local def = key and TreeConfig.Materials[key]
+	if def and def.MaterialImage then
+		ItemDisplay.ShowImage(view, def.MaterialImage)
+		return
+	end
 	if key and fillModelViewport(view, key) then
 		return
 	end
@@ -318,12 +388,19 @@ end
 -- ReplicatedStorage.Heros. The model is drawn in child ViewportFrames ("Main" on top of the
 -- "Stroke" copies); `view` itself stays empty.
 function ItemDisplay.FillHeroViewport(view: ViewportFrame, heroName: string): boolean
-	if view:GetAttribute("Hero") == heroName and view:FindFirstChild("Main") then
+	if view:GetAttribute("Hero") == heroName and (view:FindFirstChild("Main") or view:FindFirstChild("Picture")) then
 		return true
 	end
 	view:ClearAllChildren()
 	view.CurrentCamera = nil
 	view:SetAttribute("Hero", nil)
+	-- Uploaded portrait (outline baked in) instead of the model.
+	local hero = HeroConfig.Get(heroName)
+	if hero and hero.AnimeImage then
+		ItemDisplay.ShowImage(view, hero.AnimeImage)
+		view:SetAttribute("Hero", heroName)
+		return true
+	end
 	local template = HeroConfig.GetTemplate(heroName)
 	if not template then
 		return false
@@ -409,6 +486,10 @@ function ItemDisplay.SetPicture(slot: Instance, info: ItemInfo)
 		elseif icon then
 			icon.Visible = true
 		end
+	elseif info.image and heroView then
+		-- The full-size view, so the icon is as big as a hero portrait.
+		ItemDisplay.ShowImage(heroView, info.image)
+		heroView.Visible = true
 	elseif info.image and image then
 		image.Image = info.image
 		image.Visible = true

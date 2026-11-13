@@ -18,10 +18,8 @@
 -- there is no zone-wide drop list any more. Zones without an entry use zone 1.
 --
 -- Heroes (optional, per zone):
---   HeroChance = 0..1, chance that a felled tree drops ONE hero (any tree type). The player's
---                "HeroLuck" attribute multiplies it (default 1; for the skill tree / boosts).
---   Heroes     = which hero it is, picked by Weight (bigger = more common). The chance shown on a
---                dropped hero is HeroChance * luck * its weight share.
+--   Heroes     = which hero it is, picked by Weight (bigger = more common). How often a felled
+--                tree drops one is the zone's HeroChance in ZoneConfig Base (+ skill tree, x luck).
 --
 -- New item? Add it to TreeConfig.Materials (or HeroConfig.Heroes) first, then list it here.
 
@@ -44,7 +42,6 @@ export type TreeDef = {
 export type ZoneDef = {
 	Name: string,
 	Trees: { [string]: TreeDef },
-	HeroChance: number?,
 	Heroes: { HeroEntry }?,
 }
 
@@ -70,7 +67,7 @@ end
 
 -- Weights are the % share of the hero drops (they add up to 100).
 local GREEN_WOOD_HEROES: { HeroEntry } = {
-	{ Item = "Sling Scout", Weight = 45 }, -- Common
+	{ Item = "Kabuto Boy", Weight = 45 }, -- Common
 	{ Item = "Taijutsu Ninja", Weight = 25 }, -- Common
 	{ Item = "Dragon Kid", Weight = 18 }, -- Uncommon
 	{ Item = "Copy Sensei", Weight = 9 }, -- Rare
@@ -144,9 +141,8 @@ ZoneDrops.Zones = {
 				},
 			},
 		},
-		-- 20% of felled trees drop a hero. Shares: 45% / 25% / 18% / 9% / 3% of those,
+		-- Shares of the hero drops (HeroChance 20% in ZoneConfig): 45% / 25% / 18% / 9% / 3%,
 		-- i.e. 9% / 5% / 3.6% / 1.8% / 0.6% per tree.
-		HeroChance = 0.2,
 		Heroes = GREEN_WOOD_HEROES,
 	},
 
@@ -185,7 +181,6 @@ ZoneDrops.Zones = {
 				},
 			},
 		},
-		HeroChance = 0.2,
 		Heroes = ORCHARD_VALLEY_HEROES,
 	},
 } :: { [number]: ZoneDef }
@@ -250,6 +245,26 @@ function ZoneDrops.GetDrops(zone: number?, modelName: string?): { DropEntry }
 		byMult[mult] = list
 	end
 	return list
+end
+
+local materialZone: { [string]: number }? = nil
+
+-- The (lowest) zone whose trees drop material `item`, or nil. Used for zone sell bonuses.
+function ZoneDrops.MaterialZone(item: string): number?
+	if not materialZone then
+		local map: { [string]: number } = {}
+		for zone, def in ZoneDrops.Zones do
+			for _, tree in def.Trees do
+				for _, entry in tree.Drops do
+					if not map[entry.Item] or zone < map[entry.Item] then
+						map[entry.Item] = zone
+					end
+				end
+			end
+		end
+		materialZone = map
+	end
+	return (materialZone :: { [string]: number })[item]
 end
 
 -- Warns about items that are not defined in TreeConfig (typos etc.). Called once by the server.

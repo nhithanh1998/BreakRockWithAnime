@@ -8,9 +8,8 @@
 --     Window.ZoneList                one ZoneTab per tree: Core first, then the zones
 --     Window.TreeTitle               name of the open tree
 --     Window.TreeArea                the tree view: drag (anywhere on the window's background, not
---                                    on ZoneList / Preview) to pan, wheel / pinch / ZoomControls to zoom
+--                                    on ZoneList / Preview) to pan, wheel / pinch to zoom. No frame or buttons.
 --       Canvas (UIScale) . Lines / Nodes   connector lines + node buttons of the open tree
---       ZoomControls . ZoomIn / ZoomOut / Reset, Hint
 --     Window.Preview                 details of the hovered (else selected) node + Upgrade button
 --     Window.ExitButton, Window.Money
 --   ReplicatedStorage.SkillTreeTemplates (src/gui/SkillTreeTemplates.model.json)
@@ -30,6 +29,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local SkillTreeConfig = require(Shared:WaitForChild("SkillTreeConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
+local ZoneConfig = require(Shared:WaitForChild("ZoneConfig"))
 local SkillAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SkillAction") :: RemoteFunction
 local Templates = ReplicatedStorage:WaitForChild("SkillTreeTemplates")
 
@@ -52,10 +52,6 @@ local canvas = treeArea:WaitForChild("Canvas") :: Frame
 local canvasScale = canvas:WaitForChild("UIScale") :: UIScale
 local linesFrame = canvas:WaitForChild("Lines") :: Frame
 local nodesFrame = canvas:WaitForChild("Nodes") :: Frame
-local zoomControls = treeArea:WaitForChild("ZoomControls") :: GuiObject
-local zoomInButton = zoomControls:WaitForChild("ZoomIn") :: GuiButton
-local zoomOutButton = zoomControls:WaitForChild("ZoomOut") :: GuiButton
-local resetButton = zoomControls:WaitForChild("Reset") :: GuiButton
 local preview = window:WaitForChild("Preview") :: Frame
 local exitButton = window:WaitForChild("ExitButton") :: GuiButton
 local moneyLabel = window:WaitForChild("Money") :: TextLabel
@@ -175,7 +171,7 @@ local function buildTabs()
 		tab.LayoutOrder = i
 		;(tab:FindFirstChild("Title") :: TextLabel).Text = tree.Name
 		local icon = tab:FindFirstChild("Icon") :: ImageLabel
-		setIcon(icon, icon:FindFirstChild("IconText") :: TextLabel, tree.Icon)
+		setIcon(icon, icon:FindFirstChild("IconText") :: TextLabel, SkillTreeConfig.IconOf(tree))
 		tab.Activated:Connect(function()
 			if currentTree.Id ~= tree.Id then
 				buildTree(tree)
@@ -189,10 +185,9 @@ end
 -- Pan / zoom ---------------------------------------------------------------------------------------
 -- Canvas (Lines + Nodes) is centred in TreeArea; `pan` moves it (pixels) and its UIScale zooms it
 -- (UIScale scales around the AnchorPoint = the canvas centre). Mouse: drag + wheel. Touch: one finger
--- drags, two fingers pinch. ZoomControls: + / - / Fit for both.
+-- drags, two fingers pinch.
 
 local MIN_ZOOM, MAX_ZOOM = 0.6, 2.5
-local BUTTON_ZOOM_STEP = 1.25
 local WHEEL_ZOOM_STEP = 1.12
 local DRAG_THRESHOLD = 8 -- pixels a press must move before it pans instead of clicking a node
 local VIEW_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -249,16 +244,6 @@ resetView = function(animate: boolean)
 	applyView(animate)
 end
 
-zoomInButton.Activated:Connect(function()
-	zoomAt(zoom * BUTTON_ZOOM_STEP, nil, true)
-end)
-zoomOutButton.Activated:Connect(function()
-	zoomAt(zoom / BUTTON_ZOOM_STEP, nil, true)
-end)
-resetButton.Activated:Connect(function()
-	resetView(true)
-end)
-
 -- Presses that started inside the tree view: the mouse, and each finger (touch InputObject -> pos).
 local mouseDown: Vector2? = nil
 local mouseLast: Vector2? = nil
@@ -282,7 +267,7 @@ end
 
 -- The window's own panels and buttons keep their input (the zone list scrolls, the preview has the
 -- Upgrade button); a press anywhere else on the window, background included, drags the tree.
-local ownInput: { GuiObject } = { zoneList, preview, exitButton, zoomControls }
+local ownInput: { GuiObject } = { zoneList, preview, exitButton }
 
 local function onTreeBackground(p: Vector2): boolean
 	if not window.Visible or not inside(window, p) then
@@ -457,22 +442,34 @@ local function refreshNodes()
 	end
 end
 
+-- "Only works in Green Wood" for zone trees, nil for trees that work everywhere.
+local function zoneNote(tree: TreeDef): string?
+	if not tree.Zone then
+		return nil
+	end
+	local info = ZoneConfig.Get(tree.Zone)
+	return ("Only works in %s"):format(if info then info.Name else ("Zone " .. tree.Zone))
+end
+
 local function refreshPreview()
 	local id = hoveredId or selectedId
 	local node = id and SkillTreeConfig.GetNode(currentTree.Id, id)
 	upgradeButton.Visible = node ~= nil
 	pBar.Visible = node ~= nil
 	if not node then
-		setIcon(pIcon, pIconText, currentTree.Icon)
+		setIcon(pIcon, pIconText, SkillTreeConfig.IconOf(currentTree))
 		pTitle.Text = currentTree.Name
 		pEffect.Text = ""
-		pReqs.Text = "Hover or click a skill"
+		local note = zoneNote(currentTree)
+		pReqs.Text = if note
+			then ('Hover or click a skill\n<font color="%s">%s</font>'):format(GREY, note)
+			else "Hover or click a skill"
 		return
 	end
 
 	local level = getLevel(currentTree.Id, node.Id)
 	local cost = SkillTreeConfig.Cost(node, level)
-	setIcon(pIcon, pIconText, node.Icon)
+	setIcon(pIcon, pIconText, SkillTreeConfig.IconOf(node))
 	pTitle.Text = node.Name
 	pBarText.Text = ("%d/%d"):format(level, node.MaxLevel)
 	pFill.Size = UDim2.fromScale(level / node.MaxLevel, 1)
@@ -494,7 +491,14 @@ local function refreshPreview()
 		table.insert(reqLines, ('<font color="%s">%s %s %d/%d</font>'):format(
 			if ok then GREEN else RED, if ok then "✓" else "✗", req.Node.Name, math.min(have, req.Level), req.Level))
 	end
-	pReqs.Text = if #reqLines > 0 then "Requires:\n" .. table.concat(reqLines, "\n") else ""
+	local lines = {}
+	if node.Info then
+		table.insert(lines, ('<font color="%s">%s</font>'):format(GREY, node.Info))
+	end
+	if #reqLines > 0 then
+		table.insert(lines, "Requires:\n" .. table.concat(reqLines, "\n"))
+	end
+	pReqs.Text = table.concat(lines, "\n")
 
 	local reqsMet = SkillTreeConfig.RequirementsMet(currentTree.Id, node, getLevel)
 	if not cost then
@@ -545,7 +549,7 @@ buildTree = function(tree: TreeDef)
 		local x, y = cellCenter(tree, node)
 		button.Position = UDim2.fromScale(x, y)
 		local icon = button:FindFirstChild("Icon") :: ImageLabel
-		setIcon(icon, icon:FindFirstChild("IconText") :: TextLabel, node.Icon)
+		setIcon(icon, icon:FindFirstChild("IconText") :: TextLabel, SkillTreeConfig.IconOf(node))
 		button.MouseEnter:Connect(function()
 			hoveredId = node.Id
 			refreshNodes()

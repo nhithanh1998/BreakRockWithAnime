@@ -11,8 +11,8 @@ local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
--- Prompts drawn by this script (all Style = Custom): hero pads and the shops.
-local PROMPT_NAMES = { HeroSlotPrompt = true, ShopPrompt = true }
+-- Prompts drawn by this script (all Style = Custom): hero pads, the shops and the Devil Tree (FruitService).
+local PROMPT_NAMES = { HeroSlotPrompt = true, ShopPrompt = true, FruitPrompt = true }
 
 local PANEL_COLOR = Color3.fromRGB(22, 24, 30)
 local PANEL_STROKE = Color3.fromRGB(70, 72, 82)

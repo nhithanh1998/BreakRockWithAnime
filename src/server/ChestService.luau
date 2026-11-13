@@ -16,6 +16,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
+local SkillTreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SkillTreeConfig"))
 
 type Drop = TreeConfig.Drop
 
@@ -241,7 +242,7 @@ function ChestService.SellMaterials(player: Player, drops: { Drop }): { Drop }
 	for _, drop in drops do
 		local def = drop.Kind ~= "Anime" and TreeConfig.Materials[drop.Kind]
 		if def then
-			earned += def.Value * drop.Amount
+			earned += SkillTreeConfig.MaterialValue(player, drop.Kind) * drop.Amount
 		else
 			table.insert(kept, drop)
 		end
@@ -305,7 +306,7 @@ local function sellChestMaterials(player: Player, chest: Model)
 	for _, v in contents(chest):GetChildren() do
 		local def = v:IsA("IntValue") and TreeConfig.Materials[v.Name]
 		if def then
-			earned += def.Value * (v :: IntValue).Value
+			earned += SkillTreeConfig.MaterialValue(player, v.Name) * (v :: IntValue).Value
 			v:Destroy()
 		end
 	end

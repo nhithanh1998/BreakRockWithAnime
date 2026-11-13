@@ -15,6 +15,9 @@
 --   Hero Axe      your owned axes (ShopService copies): pick one for this pad's hero
 --                 (HeroUpgrade(slot, "EquipAxe", model)); each copy can only be on one pad. The hero
 --                 holds it and deals ShopConfig HeroBoost x Chop Damage. "Unequip" takes it off.
+--   Hero Fruit    your Devil Fruits (player.Fruits, grown at the Devil Tree): pick one for this pad's
+--                 hero (HeroUpgrade(slot, "EquipFruit", id)); one pad per copy. Boost x Chop Damage
+--                 plus its passive skill (FruitConfig). "Unequip" takes it off.
 --
 -- Values come from the slot's attributes ("LevelDamage", "GradeDamage", "HeroAxe" ...), so the
 -- windows update by themselves. X on a sub window goes back to Upgrade Hero; everything closes when
@@ -30,6 +33,7 @@ local TweenService = game:GetService("TweenService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
+local FruitConfig = require(Shared:WaitForChild("FruitConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
 local HeroUpgrade = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HeroUpgrade") :: RemoteFunction
 
@@ -47,6 +51,7 @@ local GREEN_BUTTON = Color3.fromRGB(36, 132, 66)
 local GREY_BUTTON = Color3.fromRGB(80, 82, 92)
 local GOLD_BUTTON = Color3.fromRGB(190, 140, 30)
 local AXE_BUTTON = Color3.fromRGB(200, 110, 30)
+local FRUIT_BUTTON = Color3.fromRGB(150, 70, 220)
 local OK_COLOR = Color3.fromRGB(90, 255, 90)
 local BAD_COLOR = Color3.fromRGB(255, 90, 90)
 local NEXT_COLOR = Color3.fromRGB(90, 255, 60)
@@ -339,13 +344,30 @@ local function axeOf(slot: Model): string?
 	return if typeof(axe) == "string" and ShopConfig.GetAxe(axe) then axe else nil
 end
 
--- The stat as the hero gets it (level x grade, and the axe for damage).
+local function fruitOf(slot: Model): string?
+	local fruit = slot:GetAttribute("HeroFruit")
+	return if typeof(fruit) == "string" and FruitConfig.Get(fruit) then fruit else nil
+end
+
+-- The stat as the hero gets it (level x grade, the axe and fruit for damage, the fruit's skill for
+-- speed / walk). Same as HeroWorkerService.
 local function statValue(slot: Model, stat: string, level: number, hero: string): number
 	local value = HeroConfig.StatValue(stat, level, gradeOf(slot, stat), hero)
-	local axe = stat == "Damage" and axeOf(slot)
-	local def = axe and ShopConfig.GetAxe(axe)
-	if def then
-		value = math.max(1, math.floor(value * def.HeroBoost))
+	local fruitId = fruitOf(slot)
+	local fruit = fruitId and FruitConfig.Get(fruitId)
+	if stat == "Damage" then
+		local axe = axeOf(slot)
+		local def = axe and ShopConfig.GetAxe(axe)
+		if def then
+			value = math.max(1, math.floor(value * def.HeroBoost))
+		end
+		if fruit then
+			value = math.max(1, math.floor(value * fruit.Boost))
+		end
+	elseif fruit and stat == "Speed" and fruit.Skill.Speed then
+		value *= fruit.Skill.Speed
+	elseif fruit and stat == "Walk" and fruit.Skill.Walk then
+		value *= fruit.Skill.Walk
 	end
 	return value
 end
@@ -374,8 +396,10 @@ local upgradeWin = makeWindow("Upgrade", "Upgrade Hero!", ColorSequence.new(Colo
 local close = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = upgradeWin.root })
 
 local upgradeCard, fillUpgradeCard = heroCard(upgradeWin.root, 0.44)
-local axeButton = button({ Text = "", Color = AXE_BUTTON, Position = UDim2.fromScale(0.07, 0.67), Size = UDim2.fromScale(0.86, 0.14), Parent = upgradeCard })
+local axeButton = button({ Text = "", Color = AXE_BUTTON, Position = UDim2.fromScale(0.07, 0.67), Size = UDim2.fromScale(0.42, 0.14), Parent = upgradeCard })
 axeButton.Name = "Axe"
+local fruitButton = button({ Text = "FRUIT", Color = FRUIT_BUTTON, Position = UDim2.fromScale(0.51, 0.67), Size = UDim2.fromScale(0.42, 0.14), Parent = upgradeCard })
+fruitButton.Name = "Fruit"
 local rerollOpen = button({ Text = "REROLL STATS", Color = REROLL_COLOR, Position = UDim2.fromScale(0.07, 0.83), Size = UDim2.fromScale(0.86, 0.14), Parent = upgradeCard })
 rerollOpen.Name = "RerollStats"
 
@@ -484,6 +508,68 @@ text({
 	Parent = axeWin.root,
 })
 
+-- ===================== Hero Fruit =====================
+
+local fruitWin = makeWindow("HeroFruit", "Hero Fruit", ColorSequence.new(Color3.fromRGB(230, 170, 255), Color3.fromRGB(150, 70, 230)))
+local fruitBack = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = fruitWin.root })
+local fruitInfo = text({
+	Name = "Info",
+	Text = "",
+	RichText = true,
+	TextColor3 = INFO_COLOR,
+	Position = UDim2.fromScale(0.04, 0.05),
+	Size = UDim2.fromScale(0.82, 0.1),
+	TextXAlignment = Enum.TextXAlignment.Left,
+	StrokeThickness = 1.5,
+	Parent = fruitWin.root,
+})
+local fruitGrid = new("Frame", {
+	Name = "Grid",
+	Position = UDim2.fromScale(0.03, 0.18),
+	Size = UDim2.fromScale(0.94, 0.62),
+	BackgroundTransparency = 1,
+	Parent = fruitWin.root,
+}, {
+	new("UIGridLayout", { CellSize = UDim2.fromScale(0.235, 0.48), CellPadding = UDim2.fromScale(0.02, 0.04), SortOrder = Enum.SortOrder.LayoutOrder }),
+})
+local fruitUnequip = button({ Text = "UNEQUIP", Color = GREY_BUTTON, Position = UDim2.fromScale(0.03, 0.83), Size = UDim2.fromScale(0.28, 0.13), Parent = fruitWin.root })
+fruitUnequip.Name = "Unequip"
+local fruitSkill = text({
+	Name = "Hint",
+	Text = "Grow Devil Fruits at the Devil Tree on your plot",
+	RichText = true,
+	TextColor3 = INFO_COLOR,
+	Position = UDim2.fromScale(0.34, 0.83),
+	Size = UDim2.fromScale(0.62, 0.13),
+	StrokeThickness = 1.5,
+	Parent = fruitWin.root,
+})
+
+local function ownedFruits(): { [string]: number }
+	local out = {}
+	local folder = player:FindFirstChild("Fruits")
+	for _, v in if folder then folder:GetChildren() else {} do
+		if v:IsA("IntValue") and v.Value > 0 and FruitConfig.Get(v.Name) then
+			out[v.Name] = v.Value
+		end
+	end
+	return out
+end
+
+local function fruitsUsedElsewhere(slot: Model): { [string]: number }
+	local used = {}
+	local slots = slot.Parent
+	for _, other in if slots then slots:GetChildren() else {} do
+		if other ~= slot and other:IsA("Model") then
+			local f = other:GetAttribute("HeroFruit")
+			if typeof(f) == "string" and f ~= "" then
+				used[f] = (used[f] or 0) + 1
+			end
+		end
+	end
+	return used
+end
+
 -- Axes: owned copies, and how many other pads use each ------------------------------------------
 
 local function ownedAxes(): { [string]: number }
@@ -518,6 +604,9 @@ local function axeViewport(view: ViewportFrame, model: string)
 	end
 	view:ClearAllChildren()
 	view:SetAttribute("Axe", model)
+	if ItemDisplay.ShowAxeImage(view, model) then
+		return
+	end
 	local axes = ReplicatedStorage:FindFirstChild("Axes")
 	local source = axes and axes:FindFirstChild(model)
 	if not source or not source:IsA("Model") then
@@ -544,7 +633,10 @@ end
 local function redrawUpgrade(slot: Model, hero: string, money: number)
 	local axe = axeOf(slot)
 	local axeDef = axe and ShopConfig.GetAxe(axe)
-	axeButton.Text = if axeDef then ("%s x%s"):format(axeDef.Name, tostring(axeDef.HeroBoost)) else "EQUIP AXE"
+	axeButton.Text = if axeDef then ("%s x%s"):format(axeDef.Name, tostring(axeDef.HeroBoost)) else "AXE"
+	local fruitId = fruitOf(slot)
+	local fruitDef = fruitId and FruitConfig.Get(fruitId)
+	fruitButton.Text = if fruitDef then fruitDef.Name else "FRUIT"
 	for _, row in rows do
 		local up = HeroConfig.Upgrades[row.stat]
 		local level = levelOf(slot, row.stat)
@@ -682,6 +774,102 @@ local function redrawAxes(slot: Model, hero: string)
 	end
 end
 
+-- Fruit cards: one per fruit (unowned ones dark), rebuilt only when something they show changed.
+local fruitSignature = ""
+local function redrawFruits(slot: Model, hero: string)
+	local equipped = fruitOf(slot)
+	local owned = ownedFruits()
+	local used = fruitsUsedElsewhere(slot)
+	local def = equipped and FruitConfig.Get(equipped)
+	local damage = statValue(slot, "Damage", levelOf(slot, "Damage"), hero)
+	fruitInfo.Text = if def
+		then ('%s ate <font color="#C88CFF">%s</font> (%s) - Chop Damage <font color="#5AFF3C">%s</font>'):format(hero, def.Name, FruitConfig.BoostText(def), abbreviate(damage))
+		else ('%s has no Devil Fruit - Chop Damage <font color="#5AFF3C">%s</font>'):format(hero, abbreviate(damage))
+	fruitUnequip.Visible = def ~= nil
+	if def then
+		fruitSkill.Text = ("<b>%s:</b> %s"):format(def.Skill.Name, def.Skill.Desc)
+	end
+
+	local parts = { equipped or "-" }
+	for _, f in FruitConfig.Fruits do
+		table.insert(parts, ("%s:%d:%d"):format(f.Id, owned[f.Id] or 0, used[f.Id] or 0))
+	end
+	local signature = table.concat(parts, "|")
+	if signature == fruitSignature then
+		return
+	end
+	fruitSignature = signature
+
+	for _, c in fruitGrid:GetChildren() do
+		if c:IsA("GuiObject") then
+			c:Destroy()
+		end
+	end
+	for order, f in FruitConfig.Fruits do
+		local copies = owned[f.Id] or 0
+		local free = copies - (used[f.Id] or 0)
+		local isOn = f.Id == equipped
+		local color = ItemDisplay.SlotColor(f.Rarity)
+		local card = new("TextButton", {
+			Name = f.Id,
+			Text = "",
+			AutoButtonColor = true,
+			LayoutOrder = order,
+			BackgroundColor3 = color,
+			Parent = fruitGrid,
+		}, { corner(5) })
+		stroke(if isOn then NEXT_COLOR else color:Lerp(Color3.new(1, 1, 1), 0.35), if isOn then 3.5 else 2, true).Parent = card
+		local view = new("ViewportFrame", { Name = "View", BackgroundTransparency = 1, Position = UDim2.fromScale(0.15, 0.16), Size = UDim2.fromScale(0.7, 0.46), Parent = card })
+		ItemDisplay.FillFruitViewport(view, f.Id)
+		if copies <= 0 then
+			view.ImageColor3 = Color3.new(0, 0, 0)
+			view.ImageTransparency = 0.25
+		end
+		text({ Name = "NameLabel", Text = f.Name, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.03), Size = UDim2.fromScale(0.92, 0.15), ZIndex = 3, Parent = card })
+		text({ Name = "Boost", Text = FruitConfig.BoostText(f), TextColor3 = NEXT_COLOR, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.63), Size = UDim2.fromScale(0.9, 0.15), ZIndex = 3, Parent = card })
+		text({
+			Name = "Free",
+			Text = if isOn then "Equipped" elseif copies <= 0 then "Not owned" else ("Free %d/%d"):format(math.max(free, 0), copies),
+			TextColor3 = if isOn then Color3.new(1, 1, 1) elseif free > 0 then Color3.fromRGB(255, 220, 90) else MINUS_COLOR,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.fromScale(0.5, 0.8),
+			Size = UDim2.fromScale(0.8, 0.15),
+			ZIndex = 3,
+			Parent = card,
+		})
+		if isOn then
+			new("Frame", { Name = "Tint", BackgroundColor3 = NEXT_COLOR, BackgroundTransparency = 0.78, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(5) })
+		elseif free <= 0 then
+			new("Frame", { Name = "Shade", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(5) })
+		end
+		card.MouseEnter:Connect(function()
+			fruitSkill.Text = ("<b>%s:</b> %s"):format(f.Skill.Name, f.Skill.Desc)
+		end)
+		card.Activated:Connect(function()
+			fruitSkill.Text = ("<b>%s:</b> %s"):format(f.Skill.Name, f.Skill.Desc)
+			local showing = current
+			if busy or not showing or isOn then
+				return
+			end
+			if copies <= 0 then
+				showToast(fruitWin, "Grow this fruit at the Devil Tree first!", BAD_COLOR)
+				return
+			end
+			if free <= 0 then
+				showToast(fruitWin, "All copies are on other heroes!", BAD_COLOR)
+				return
+			end
+			busy = true
+			pop(card, 0.9)
+			local ok, msg = HeroUpgrade:InvokeServer(showing.index, "EquipFruit", f.Id)
+			busy = false
+			if current == showing then
+				showToast(fruitWin, message(msg), if ok then OK_COLOR else BAD_COLOR)
+			end
+		end)
+	end
+end
+
 local function redraw()
 	if not current then
 		return
@@ -690,6 +878,7 @@ local function redraw()
 	redrawUpgrade(current.slot, current.hero, money)
 	redrawReroll(current.slot, money)
 	redrawAxes(current.slot, current.hero)
+	redrawFruits(current.slot, current.hero)
 end
 
 -- Upgrade rows -------------------------------------------------------------------------------------
@@ -900,6 +1089,19 @@ unequip.Activated:Connect(function()
 	end
 end)
 
+fruitUnequip.Activated:Connect(function()
+	local showing = current
+	if busy or not showing then
+		return
+	end
+	busy = true
+	local ok, msg = HeroUpgrade:InvokeServer(showing.index, "EquipFruit", "")
+	busy = false
+	if current == showing then
+		showToast(fruitWin, message(msg), if ok then OK_COLOR else BAD_COLOR)
+	end
+end)
+
 -- Opening / closing -------------------------------------------------------------------------------
 
 local function closeWindow()
@@ -919,6 +1121,16 @@ rerollBack.Activated:Connect(function()
 end)
 axeBack.Activated:Connect(function()
 	show(upgradeWin)
+end)
+fruitBack.Activated:Connect(function()
+	show(upgradeWin)
+end)
+fruitButton.Activated:Connect(function()
+	if current then
+		fruitSignature = ""
+		redraw()
+		show(fruitWin)
+	end
 end)
 rerollOpen.Activated:Connect(function()
 	if current then
@@ -962,6 +1174,7 @@ local function open(slot: Model)
 	fillUpgradeCard(def)
 	fillRerollCard(def)
 	axeSignature = ""
+	fruitSignature = ""
 
 	table.insert(connections, slot.AttributeChanged:Connect(function(name)
 		if name == "HeroId" and slot:GetAttribute("HeroId") ~= def.Name then
@@ -980,6 +1193,16 @@ local function open(slot: Model)
 	for _, other in if slots then slots:GetChildren() else {} do
 		if other ~= slot and other:IsA("Model") then
 			table.insert(connections, other:GetAttributeChangedSignal("HeroAxe"):Connect(redraw))
+			table.insert(connections, other:GetAttributeChangedSignal("HeroFruit"):Connect(redraw))
+		end
+	end
+	local fruits = player:FindFirstChild("Fruits")
+	if fruits then
+		table.insert(connections, fruits.ChildAdded:Connect(redraw))
+		for _, v in fruits:GetChildren() do
+			if v:IsA("IntValue") then
+				table.insert(connections, v.Changed:Connect(redraw))
+			end
 		end
 	end
 	local axes = player:FindFirstChild("Axes")

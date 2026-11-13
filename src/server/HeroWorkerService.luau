@@ -17,6 +17,9 @@
 -- Stats come from the pad's upgrade levels (slot attributes "LevelDamage" / "LevelSpeed" / "LevelWalk",
 -- HeroConfig.Upgrades) times their grades ("GradeDamage" ..., HeroConfig.StatValue): damage and swing speed are read every swing, walk speed and the "Level N"
 -- on the HeroBar are set on spawn and by HeroWorkerService.ApplyLevels(plot, slotIndex).
+-- Devil Fruits: the pad's "HeroFruit" (FruitConfig) multiplies damage by its Boost, swing / walk speed
+-- by its Skill Speed / Walk, and its Skill triggers on swings (extra hits, splash, burn, crits). Effects
+-- are drawn by the clients (Remotes.FruitFX -> FruitFX).
 -- Zone swaps: while the plot's "HeroesHold" is set (ZoneService), heroes drop what they are doing, run
 -- back into the HeroGate and hide (ServerStorage.HiddenHeroes). Once it clears they walk out again.
 -- The plot's "HeroesOutside" = how many heroes are not hidden yet; ZoneService waits for it to reach 0.
@@ -30,6 +33,9 @@ local TreeHitService = require(script.Parent:WaitForChild("TreeHitService"))
 local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
 local Movement = require(script.Parent:WaitForChild("Movement"))
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
+local FruitConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitConfig"))
+local WeatherConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeatherConfig"))
+local FruitService = require(script.Parent:WaitForChild("FruitService"))
 
 local ATTACK_RANGE = HeroConfig.Worker.AttackRange or 2.5 -- studs from the trunk's center at which a hero stops and chops
 local MIN_SURFACE_GAP = 0.5 -- never stand closer than this to the trunk's surface (thick trunks)
@@ -70,6 +76,7 @@ type Worker = {
 	exitOffset: Vector3, -- offset from HeroExit
 	hidden: boolean, -- inside the gate during a zone swap
 	movement: any,
+	swings: number, -- swings so far (fruit skills that trigger "Every" N swings)
 }
 
 local HeroWorkerService = {}
@@ -102,16 +109,42 @@ local function axeOf(plot: Model, slot: number): string?
 	return if typeof(axe) == "string" and ShopConfig.GetAxe(axe) then axe else nil
 end
 
-local function statOf(w: Worker, stat: string): number
-	local value = HeroConfig.StatValue(stat, levelOf(w.plot, w.slot, stat), gradeOf(w.plot, w.slot, stat), w.hero)
+-- The Devil Fruit the pad gives its hero (slot "HeroFruit"), or nil.
+local function fruitOf(plot: Model, slot: number): FruitConfig.FruitDef?
+	local slots = plot:FindFirstChild("HeroSlots")
+	local model = slots and slots:FindFirstChild("Slot" .. slot)
+	local id = model and model:GetAttribute("HeroFruit")
+	return if typeof(id) == "string" and id ~= "" then FruitConfig.Get(id) else nil
+end
+
+-- A pad stat with the fruit's multipliers on top (damage Boost, Skill Speed / Walk).
+local function padStat(plot: Model, slot: number, hero: string, stat: string): number
+	local value = HeroConfig.StatValue(stat, levelOf(plot, slot, stat), gradeOf(plot, slot, stat), hero)
+	local fruit = fruitOf(plot, slot)
 	if stat == "Damage" then
-		local axe = axeOf(w.plot, w.slot)
+		local axe = axeOf(plot, slot)
 		local def = axe and ShopConfig.GetAxe(axe)
 		if def then
 			value = math.max(1, math.floor(value * def.HeroBoost))
 		end
+		if fruit then
+			value = math.max(1, math.floor(value * fruit.Boost))
+		end
+	elseif fruit and stat == "Speed" and fruit.Skill.Speed then
+		value *= fruit.Skill.Speed
+	elseif fruit and stat == "Walk" and fruit.Skill.Walk then
+		value *= fruit.Skill.Walk
+	end
+	-- Weather buffs (WeatherConfig): HeroDamage / HeroSpeed / HeroWalk.
+	local weather = WeatherConfig.Mult("Hero" .. stat)
+	if weather ~= 1 then
+		value = if stat == "Damage" then math.max(1, math.floor(value * weather)) else value * weather
 	end
 	return value
+end
+
+local function statOf(w: Worker, stat: string): number
+	return padStat(w.plot, w.slot, w.hero, stat)
 end
 
 -- HeroBar above the hero: "Level N" = the pad's Damage level, Power = the damage it really deals.
@@ -326,6 +359,58 @@ local function flatDist(a: Vector3, b: Vector3): number
 	return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
 end
 
+-- Devil Fruit skills -------------------------------------------------------------------------------
+
+local burning: { [Model]: number } = {} -- tree -> time its burn ends (a new burn refreshes it)
+
+local function fx(kind: string, pos: Vector3, radius: number?, tree: Model?, hero: Model?)
+	FruitService.FXRemote:FireAllClients(kind, pos, radius, tree, hero)
+end
+
+-- Does the fruit's skill trigger on this swing?
+local function skillTriggers(w: Worker, skill: FruitConfig.Skill): boolean
+	if skill.Every then
+		return w.swings % skill.Every == 0
+	end
+	if skill.Chance then
+		return rng:NextNumber() < skill.Chance
+	end
+	return false
+end
+
+-- Every other living tree of the plot within `radius` studs of `center` takes `damage`.
+local function splash(w: Worker, target: Model, center: Vector3, radius: number, damage: number)
+	for _, other in TreeService.GetTrees(w.plot) do
+		if other ~= target and treeAlive(other) then
+			local pos = other:GetPivot().Position
+			if flatDist(pos, center) <= radius then
+				TreeHitService.HeroHit(w.owner, w.root, other, damage, pos + Vector3.new(0, 2, 0))
+			end
+		end
+	end
+end
+
+-- The tree burns: `damage` every second until `duration` runs out (refreshed by new burns).
+local function burn(w: Worker, tree: Model, damage: number, duration: number, kind: string)
+	local refreshing = burning[tree] ~= nil
+	burning[tree] = os.clock() + duration
+	if refreshing then
+		return
+	end
+	task.spawn(function()
+		while burning[tree] and os.clock() < burning[tree] and treeAlive(tree) and w.owner.Parent do
+			task.wait(1)
+			if not treeAlive(tree) then
+				break
+			end
+			local pos = tree:GetPivot().Position + Vector3.new(0, 2, 0)
+			fx(kind .. "Tick", pos, nil, tree)
+			TreeHitService.HeroHit(w.owner, w.root, tree, damage, pos)
+		end
+		burning[tree] = nil
+	end)
+end
+
 -- One swing. Returns true when this swing felled the tree.
 local function swing(w: Worker, tree: Model, center: Vector3, radius: number): boolean
 	-- A random swing, never the same one twice in a row (so it doesn't look repetitive).
@@ -370,7 +455,35 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 	if damageMult ~= 1 then
 		damage = math.floor(damage * damageMult + 0.5)
 	end
+	-- Devil Fruit skill.
+	w.swings += 1
+	local fruit = fruitOf(w.plot, w.slot)
+	local skill = fruit and fruit.Skill
+	local triggered = skill ~= nil and skillTriggers(w, skill)
+	local baseDamage = damage
+	if triggered and skill and skill.Mult then
+		damage = math.floor(damage * skill.Mult + 0.5)
+	end
 	local felled = TreeHitService.HeroHit(w.owner, w.root, tree, damage, hitPos)
+	-- Always-on skills (only Speed / Walk, e.g. Smoke) still show off now and then.
+	if skill and not skill.Chance and not skill.Every and w.swings % 8 == 0 then
+		fx(skill.FX, hitPos, nil, tree, w.model)
+	end
+	if triggered and skill then
+		fx(skill.FX, hitPos, skill.Radius, tree, w.model)
+		for _ = 1, skill.Hits or 0 do
+			if felled or not treeAlive(tree) then
+				break
+			end
+			felled = TreeHitService.HeroHit(w.owner, w.root, tree, baseDamage, hitPos)
+		end
+		if skill.Radius and skill.Share then
+			splash(w, tree, center, skill.Radius, math.max(1, math.floor(damage * skill.Share)))
+		end
+		if skill.BurnShare and skill.BurnTime and not felled then
+			burn(w, tree, math.max(1, math.floor(baseDamage * skill.BurnShare)), skill.BurnTime, skill.FX)
+		end
+	end
 
 	local rest = length - (os.clock() - start)
 	if rest > 0 then
@@ -602,6 +715,15 @@ function HeroWorkerService.ApplyLevels(plot: Model, slot: number)
 	end
 end
 
+-- Every working hero picks up new numbers now (weather started / ended: walk speed, HeroBar power).
+function HeroWorkerService.ApplyAll()
+	for plot, list in workersByPlot do
+		for slot in list do
+			HeroWorkerService.ApplyLevels(plot, slot)
+		end
+	end
+end
+
 function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, owner: Player): Model?
 	HeroWorkerService.Despawn(plot, slot)
 
@@ -634,7 +756,7 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 
 	-- Anchors the root and moves the model by CFrame every Heartbeat; snaps it onto the ground now.
 	local movement = Movement.new(model, {
-		Speed = HeroConfig.StatValue("Walk", levelOf(plot, slot, "Walk"), gradeOf(plot, slot, "Walk"), heroName),
+		Speed = padStat(plot, slot, heroName, "Walk"),
 		GroundInstances = groundOf(plot),
 		GroundRayOffset = GROUND_RAY_OFFSET,
 		GroundRayDistance = 60,
@@ -658,6 +780,7 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 		exitOffset = Vector3.new(rng:NextNumber(-3, 3), 0, rng:NextNumber(-1, 3)),
 		hidden = false,
 		movement = movement,
+		swings = 0,
 	}
 	setupAnimations(w)
 	drawBarLevel(w)

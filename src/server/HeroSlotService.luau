@@ -23,6 +23,10 @@
 -- Axes: HeroUpgrade(slotIndex, "EquipAxe", model | "") gives the pad's hero a copy of an owned axe
 -- (ShopService.Copies; each copy goes to one pad) or takes it off. Slot attribute "HeroAxe";
 -- the hero holds it and deals ShopConfig HeroBoost x damage (HeroWorkerService). Saved per pad.
+-- Fruits: HeroUpgrade(slotIndex, "EquipFruit", id | "") gives the pad's hero a copy of an owned Devil
+-- Fruit (FruitService.Copies; one pad per copy) or takes it off. Slot attribute "HeroFruit"; the hero
+-- deals FruitConfig Boost x damage and uses the fruit's Skill (HeroWorkerService). Saved per pad.
+-- HeroSlotService.EquipFruitOnBest(player, id) (EQUIP on the Devil Tree reveal) picks the pad for you.
 -- Equip Best: HeroUpgrade(0, "EquipBest") (Inventory window button) puts the strongest owned heroes on the
 -- open pads (strongest on the best-upgraded pad) and the best axe copies on the strongest heroes.
 
@@ -36,6 +40,8 @@ local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local HeldHeroService = require(script.Parent:WaitForChild("HeldHeroService"))
 local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
+local FruitConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitConfig"))
+local FruitService = require(script.Parent:WaitForChild("FruitService"))
 
 -- ShopService requires this module, so it is looked up lazily (when an axe is equipped).
 local function axeCopies(player: Player, model: string): number
@@ -71,6 +77,7 @@ type PlotState = {
 	placed: { [number]: string }, -- slot index -> hero name
 	levels: { [number]: { [string]: number } }, -- slot index -> stat -> level (missing = 1), and "Grade<stat>" -> grade position
 	axes: { [number]: string }, -- slot index -> axe model its hero holds
+	fruits: { [number]: string }, -- slot index -> Devil Fruit id its hero has
 	connections: { RBXScriptConnection },
 }
 
@@ -191,6 +198,11 @@ local function padDamage(slot: Model, hero: string): number
 	local def = typeof(axe) == "string" and axe ~= "" and ShopConfig.GetAxe(axe)
 	if def then
 		value = math.max(1, math.floor(value * def.HeroBoost))
+	end
+	local fruit = slot:GetAttribute("HeroFruit")
+	local fruitDef = typeof(fruit) == "string" and fruit ~= "" and FruitConfig.Get(fruit)
+	if fruitDef then
+		value = math.max(1, math.floor(value * fruitDef.Boost))
 	end
 	return value
 end
@@ -344,6 +356,7 @@ local function refresh(state: PlotState)
 		local locked = i > unlocked
 		writeLevels(slot, state.levels[i])
 		slot:SetAttribute("HeroAxe", state.axes[i] or "")
+		slot:SetAttribute("HeroFruit", state.fruits[i] or "")
 		drawPad(slot, locked)
 		if locked then
 			-- Pads can get locked again (e.g. an upgrade is reset): send its hero home.
@@ -590,6 +603,51 @@ local function equipAxe(state: PlotState, index: number, model: string): (boolea
 	return true, if def then ("%s equipped!"):format(def.Name) else "Axe removed"
 end
 
+-- Devil Fruits -----------------------------------------------------------------------------------
+
+-- Copies of fruit `id` this plot's pads hold, not counting pad `except`.
+local function fruitsInUse(state: PlotState, id: string, except: number?): number
+	local n = 0
+	for i, f in state.fruits do
+		if f == id and i ~= except then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- Gives the pad's hero a copy of fruit `id` ("" = take it off).
+local function equipFruit(state: PlotState, index: number, id: string): (boolean, string)
+	local slot = slotsOf(state.plot)[index]
+	if not slot or index > unlockedCount(state.owner) then
+		return false, "Locked pad"
+	end
+	if id == "" then
+		state.fruits[index] = nil
+	else
+		local def = FruitConfig.Get(id)
+		if not def then
+			return false, "Unknown fruit"
+		end
+		if not state.placed[index] then
+			return false, "No hero on this pad"
+		end
+		local copies = FruitService.Copies(state.owner, id)
+		if copies <= 0 then
+			return false, "You don't own that fruit"
+		end
+		if fruitsInUse(state, id, index) >= copies then
+			return false, "No free copy! Grow more at the Devil Tree"
+		end
+		state.fruits[index] = id
+	end
+	slot:SetAttribute("HeroFruit", state.fruits[index] or "")
+	drawGui(slot, state.placed[index])
+	HeroWorkerService.ApplyLevels(state.plot, index)
+	local def = state.fruits[index] and FruitConfig.Get(state.fruits[index])
+	return true, if def then ("%s equipped!"):format(def.Name) else "Fruit removed"
+end
+
 -- Equip Best -------------------------------------------------------------------------------------
 
 -- How much a pad multiplies its hero's output (Damage x Speed from its levels and grades), measured
@@ -736,6 +794,7 @@ end
 local pendingPlaced: { [Player]: { [number]: string } } = {}
 local pendingLevels: { [Player]: { [number]: { [string]: number } } } = {}
 local pendingAxes: { [Player]: { [number]: string } } = {}
+local pendingFruits: { [Player]: { [number]: string } } = {}
 
 -- Puts saved heroes back on their pads (only pads that are open and heroes the player still owns).
 local function restorePlaced(state: PlotState, placed: { [number]: string })
@@ -753,7 +812,7 @@ end
 
 function HeroSlotService.SetupPlot(plot: Model, owner: Player)
 	HeroSlotService.ResetPlot(plot)
-	local state: PlotState = { plot = plot, owner = owner, placed = {}, levels = {}, axes = {}, connections = {} }
+	local state: PlotState = { plot = plot, owner = owner, placed = {}, levels = {}, axes = {}, fruits = {}, connections = {} }
 	states[plot] = state
 	for i, slot in slotsOf(plot) do
 		table.insert(state.connections, getPrompt(slot).Triggered:Connect(function(player)
@@ -802,6 +861,15 @@ function HeroSlotService.SetupPlot(plot: Model, owner: Player)
 			end
 		end
 	end
+	local fruits = pendingFruits[owner]
+	if fruits then
+		pendingFruits[owner] = nil
+		for index, id in fruits do
+			if FruitConfig.Get(id) and fruitsInUse(state, id, index) < FruitService.Copies(owner, id) then
+				state.fruits[index] = id
+			end
+		end
+	end
 	refresh(state)
 	local pending = pendingPlaced[owner]
 	if pending then
@@ -827,6 +895,7 @@ function HeroSlotService.ResetPlot(plot: Model)
 		drawPadHero(slot, nil)
 		writeLevels(slot, nil)
 		slot:SetAttribute("HeroAxe", "")
+		slot:SetAttribute("HeroFruit", "")
 		local prompt = slot.Pad:FindFirstChild(PROMPT_NAME)
 		if prompt then
 			prompt:Destroy()
@@ -925,6 +994,69 @@ function HeroSlotService.RestoreAxes(player: Player, axes: { [number]: string })
 	end
 end
 
+-- Fruits on the pads of the plot this player owns (slot index -> fruit id), or nil without a plot.
+function HeroSlotService.GetFruitsFor(player: Player): { [number]: string }?
+	local state = stateOf(player)
+	return if state then table.clone(state.fruits) else nil
+end
+
+-- Saved pad fruits, from DataService (after the owned fruits are applied).
+function HeroSlotService.RestoreFruits(player: Player, fruits: { [number]: string })
+	local state = stateOf(player)
+	if not state then
+		pendingFruits[player] = fruits
+		return
+	end
+	for index, id in fruits do
+		if FruitConfig.Get(id) and fruitsInUse(state, id, index) < FruitService.Copies(player, id) then
+			state.fruits[index] = id
+		end
+	end
+	refresh(state)
+	for index in fruits do
+		HeroWorkerService.ApplyLevels(state.plot, index)
+	end
+end
+
+-- Puts a free copy of fruit `id` on the best pad: the strongest hero without a fruit, otherwise the
+-- strongest hero whose fruit is weaker than this one.
+function HeroSlotService.EquipFruitOnBest(player: Player, id: string): (boolean, string)
+	local state = stateOf(player)
+	local def = FruitConfig.Get(id)
+	if not state or not def then
+		return false, "No plot"
+	end
+	if fruitsInUse(state, id) >= FruitService.Copies(player, id) then
+		return false, "Every copy is already on a pad"
+	end
+	local slots = slotsOf(state.plot)
+	local best: number? = nil
+	local bestKey = -math.huge
+	for i, slot in slots do
+		local hero = state.placed[i]
+		if not hero then
+			continue
+		end
+		local current = state.fruits[i] and FruitConfig.Get(state.fruits[i])
+		if current and current.Boost >= def.Boost then
+			continue
+		end
+		-- Pads without a fruit first, then the strongest pad.
+		local key = (if current then 0 else 1e12) + padDamage(slot, hero)
+		if key > bestKey then
+			best, bestKey = i, key
+		end
+	end
+	if not best then
+		return false, "Place a hero on a pad first (or it already has a better fruit)"
+	end
+	local ok, message = equipFruit(state, best, id)
+	if ok then
+		message = ("%s -> %s"):format(def.Name, state.placed[best] or "")
+	end
+	return ok, message
+end
+
 function HeroSlotService.Start()
 	HeldHeroService.Start()
 	-- Free plots show the locked pads too, not only claimed ones.
@@ -963,10 +1095,13 @@ function HeroSlotService.Start()
 		if typeof(index) ~= "number" or typeof(action) ~= "string" then
 			return false, "Bad request"
 		end
-		if action == "RerollStat" or action == "EquipAxe" then
+		if action == "RerollStat" or action == "EquipAxe" or action == "EquipFruit" then
 			local state = stateOf(player)
 			if not state then
 				return false, "No plot"
+			end
+			if action == "EquipFruit" then
+				return equipFruit(state, math.floor(index), if typeof(lockList) == "string" then lockList else "")
 			end
 			if action == "EquipAxe" then
 				return equipAxe(state, math.floor(index), if typeof(lockList) == "string" then lockList else "")
@@ -1002,6 +1137,7 @@ function HeroSlotService.Start()
 		pendingPlaced[player] = nil
 		pendingLevels[player] = nil
 		pendingAxes[player] = nil
+		pendingFruits[player] = nil
 	end)
 end
 

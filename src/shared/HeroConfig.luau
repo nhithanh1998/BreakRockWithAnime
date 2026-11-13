@@ -9,7 +9,7 @@
 --    hero's chop damage: one axe swing on a tree deals Power (before pad upgrades / grade / axe).
 --    Shown on the hotbar / chest / popups / InfoBars, and the hotbar puts the highest Power first.
 --    Code reads it as hero.MinePower.)
---   Image     = optional "rbxassetid://..." picture for the UI (a ★ is shown when missing)
+--   AnimeImage = uploaded hero icon ("rbxassetid://123" or just "123"); empty = draw the 3D model
 --   ChopSpeed  = optional swing speed multiplier (default by rarity, see Worker.RaritySpeed)
 --
 -- Which zone/tree drops which hero is set in ZoneDrops.luau.
@@ -24,7 +24,7 @@ export type HeroDef = {
 	Template: string,
 	MinePower: number,
 	SellValue: number, -- Money per copy at the Sell shop (x ShopConfig.HeroSellMultiplier)
-	Image: string?,
+	AnimeImage: string?, -- normalized "rbxassetid://..." (nil when empty)
 	ChopSpeed: number?,
 	-- Set on mutated / sized heroes only (see MUTATIONS & SIZES below):
 	Base: string?, -- the plain hero's name (e.g. "Sling Scout" for "Diamond Huge Sling Scout")
@@ -41,7 +41,7 @@ type HeroEntry = {
 	Rarity: Rarity,
 	Template: string,
 	Sell: (number | string)?, -- sell price; "1.2K" style works. Without it: its Power.
-	Image: string?,
+	AnimeImage: string?,
 	ChopSpeed: number?,
 }
 
@@ -343,6 +343,22 @@ end
 -- The other way round: "1.3K" -> 1300, "15.3M" -> 15300000, "1.9T", 250 -> 250. Accepts any unit
 -- Abbreviate writes (K M B T Qd Qi Sx Sp Oc No Dc, any case; "Qa" = Qd too), commas and spaces.
 -- Returns nil for text it can't read.
+-- An uploaded image id from a config ("rbxassetid://123", "123" or 123) as "rbxassetid://123";
+-- nil when empty, so the UI falls back to drawing the 3D model.
+function HeroConfig.AssetId(value: (string | number)?): string?
+	if value == nil then
+		return nil
+	end
+	local text = tostring(value):gsub("^%s+", ""):gsub("%s+$", "")
+	if text == "" then
+		return nil
+	end
+	if text:match("^%d+$") then
+		return "rbxassetid://" .. text
+	end
+	return text
+end
+
 local UNIT_VALUES: { [string]: number } = { qa = 1e15 }
 for _, unit in UNITS do
 	UNIT_VALUES[unit[2]:lower()] = unit[1]
@@ -432,20 +448,20 @@ HeroConfig.Power = {
 -- ~40% of what its materials do (zone 1 ~15 / tree, zone 2 ~150 / tree). Rarer = bigger payout.
 local HERO_LIST: { HeroEntry } = {
 	-- Zone 1 (Green Wood)                                                         drop share
-	{ Name = "Sling Scout", Rarity = "Common", Template = "SlingScout", Sell = 35 }, -- 45%
-	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja", Sell = 60 }, -- 25%
-	{ Name = "Dragon Kid", Rarity = "Uncommon", Template = "DragonKid", Sell = 85 }, -- 18%
-	{ Name = "Copy Sensei", Rarity = "Rare", Template = "CopySensei", Sell = 170 }, -- 9%
-	{ Name = "Green Beetle", Rarity = "Epic", Template = "GreenBeetle", Sell = 500 }, -- 3%
+	{ Name = "Kabuto Boy", Rarity = "Common", Template = "KabutoBoy", Sell = 35, AnimeImage = "rbxassetid://76748798917325" }, -- 45%
+	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja", Sell = 60, AnimeImage = "rbxassetid://86879870146891" }, -- 25%
+	{ Name = "Dragon Kid", Rarity = "Uncommon", Template = "DragonKid", Sell = 85, AnimeImage = "rbxassetid://140552811606478" }, -- 18%
+	{ Name = "Copy Sensei", Rarity = "Rare", Template = "CopySensei", Sell = 170, AnimeImage = "rbxassetid://72876779059670" }, -- 9%
+	{ Name = "Green Beetle", Rarity = "Epic", Template = "GreenBeetle", Sell = 500, AnimeImage = "rbxassetid://114514644383243" }, -- 3%
 	-- Zone 2 (Orchard Valley)
-	{ Name = "Mystic Servant", Rarity = "Common", Template = "MysticServant", Sell = 200 }, -- 45.02%
-	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid", Sell = 350 }, -- 26%
-	{ Name = "Flame Fist", Rarity = "Rare", Template = "FlameFist", Sell = 600 }, -- 15%
-	{ Name = "Sin Captain", Rarity = "Rare", Template = "SinCaptain", Sell = "1.2K" }, -- 7.6%
-	{ Name = "Whale Island Kid", Rarity = "Epic", Template = "WhaleIslandKid", Sell = "2.5K" }, -- 3.7%
-	{ Name = "Water Swordman", Rarity = "Epic", Template = "WaterSwordsman", Sell = "5.5K" }, -- 1.7%
-	{ Name = "Star Brawler", Rarity = "Legendary", Template = "StarBrawler", Sell = "13K" }, -- 0.7%
-	{ Name = "Marine Grandpa", Rarity = "Mythic", Template = "MarineGrandpa", Sell = "33K" }, -- 0.28%
+	{ Name = "Mystic Servant", Rarity = "Common", Template = "MysticServant", Sell = 200, AnimeImage = "rbxassetid://91988318238562" }, -- 45.02%
+	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid", Sell = 350, AnimeImage = "rbxassetid://129376399913384" }, -- 26%
+	{ Name = "Flame Fist", Rarity = "Rare", Template = "FlameFist", Sell = 600, AnimeImage = "rbxassetid://84800553799012" }, -- 15%
+	{ Name = "Sin Captain", Rarity = "Rare", Template = "SinCaptain", Sell = "1.2K", AnimeImage = "rbxassetid://73841309208420" }, -- 7.6%
+	{ Name = "Whale Island Kid", Rarity = "Epic", Template = "WhaleIslandKid", Sell = "2.5K", AnimeImage = "rbxassetid://110713314490351" }, -- 3.7%
+	{ Name = "Water Swordman", Rarity = "Epic", Template = "WaterSwordsman", Sell = "5.5K", AnimeImage = "rbxassetid://72971443145371" }, -- 1.7%
+	{ Name = "Star Brawler", Rarity = "Legendary", Template = "StarBrawler", Sell = "13K", AnimeImage = "rbxassetid://80282275912995" }, -- 0.7%
+	{ Name = "Marine Grandpa", Rarity = "Mythic", Template = "MarineGrandpa", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" }, -- 0.28%
 	-- Zone 3 (Orchard Valley)
 }
 
@@ -459,7 +475,7 @@ for index, entry in HERO_LIST do
 		Template = entry.Template,
 		MinePower = power,
 		SellValue = if entry.Sell ~= nil then HeroConfig.ParseNumber(entry.Sell) or power else power,
-		Image = entry.Image,
+		AnimeImage = HeroConfig.AssetId(entry.AnimeImage),
 		ChopSpeed = entry.ChopSpeed,
 	}
 	table.insert(HeroConfig.Heroes, hero)
@@ -640,13 +656,13 @@ end
 
 -- Weighted roll over `order` with each Chance x luck; nil = the plain result. Also returns the
 -- chance (0..1) of what was picked, plain result included.
-local function rollTier(rng: Random, order: { string }, defs: { [string]: { Chance: number } }, luck: number): (string?, number)
+local function rollTier(rng: Random, order: { string }, defs: { [string]: { Chance: number } }, luck: number, boost: { [string]: number }?): (string?, number)
 	luck = math.max(0, luck)
 	local pick = rng:NextNumber() * 100
 	local used = 0
 	for i = #order, 1, -1 do -- rarest first, so they still fit when luck pushes the total past 100%
 		local id = order[i]
-		local chance = math.min(defs[id].Chance * luck, 100 - used)
+		local chance = math.min(defs[id].Chance * luck * (if boost then boost[id] or 1 else 1), 100 - used)
 		if chance > 0 and pick < used + chance then
 			return id, chance / 100
 		end
@@ -678,8 +694,9 @@ function HeroConfig.SizeChances(luck: number?): { [string]: number }
 end
 
 -- Rolls a mutation and a size. Returns (mutation?, size?, chance of that exact combination 0..1).
-function HeroConfig.RollVariant(rng: Random, mutationLuck: number?, sizeLuck: number?): (string?, string?, number)
-	local mutation, mChance = rollTier(rng, HeroConfig.MutationOrder, HeroConfig.Mutations, mutationLuck or 1)
+-- mutationBoost = extra chance multiplier for single mutations (weather, e.g. { Diamond = 3 }).
+function HeroConfig.RollVariant(rng: Random, mutationLuck: number?, sizeLuck: number?, mutationBoost: { [string]: number }?): (string?, string?, number)
+	local mutation, mChance = rollTier(rng, HeroConfig.MutationOrder, HeroConfig.Mutations, mutationLuck or 1, mutationBoost)
 	local size, sChance = rollTier(rng, HeroConfig.SizeOrder, HeroConfig.Sizes, sizeLuck or 1)
 	return mutation, size, mChance * sChance
 end
@@ -750,7 +767,7 @@ function HeroConfig.Get(name: string): HeroDef?
 		Template = def.Template,
 		MinePower = def.MinePower * mult("Damage"),
 		SellValue = math.floor(def.SellValue * mult("Sell")),
-		Image = def.Image,
+		AnimeImage = def.AnimeImage,
 		ChopSpeed = baseSpeed * mult("ChopSpeed"),
 		Base = base,
 		Mutation = mutation,

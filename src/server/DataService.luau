@@ -6,6 +6,8 @@
 --         upgrade levels (PadLevels, HeroSlotService), and skill
 --         tree levels (player.Skills, SkillTreeService), UnlockedZones + CurrentZone (Zones board).
 --         The plot's TreasureChest contents (Chest; the shared fallback chest is not saved).
+--         Devil Fruits: Fertilizer bags, owned fruits (Fruits) and the fruit on each pad (PadFruits).
+--         7 Day Login Rewards streak (Daily, DailyRewardService).
 -- Not saved: trees.
 --
 -- Load: when the player joins (3 tries). Saved amounts are ADDED to whatever the player already
@@ -23,6 +25,8 @@ local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local ShopService = require(script.Parent:WaitForChild("ShopService"))
 local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
 local SkillTreeService = require(script.Parent:WaitForChild("SkillTreeService"))
+local FruitService = require(script.Parent:WaitForChild("FruitService"))
+local DailyRewardService = require(script.Parent:WaitForChild("DailyRewardService"))
 
 local STORE_NAME = "PlayerData"
 local DATA_VERSION = 1
@@ -47,6 +51,10 @@ export type SaveData = {
 	UnlockedZones: number?, -- highest zone bought on the Zones board (ZoneBoardService)
 	CurrentZone: number?, -- zone the plot is set to
 	Chest: { [string]: number }?, -- plot chest stack name -> amount (ChestService)
+	Fertilizer: number?, -- Devil Fruit fertilizer bags (FruitService)
+	Fruits: { [string]: number }?, -- fruit id -> copies owned
+	PadFruits: { [string]: string }?, -- slot index (as text) -> fruit id on that pad
+	Daily: { Unlocked: number, Claimed: number, LastAt: number? }?, -- 7 Day Login Rewards (DailyRewardService)
 }
 
 local DataService = {}
@@ -57,6 +65,7 @@ local saving: { [Player]: boolean } = {}
 local placedCache: { [Player]: { [string]: string } } = {}
 local levelsCache: { [Player]: { [string]: { [string]: number } } } = {}
 local padAxesCache: { [Player]: { [string]: string } } = {}
+local padFruitsCache: { [Player]: { [string]: string } } = {}
 local chestCache: { [Player]: { [string]: number } } = {}
 
 local function keyFor(player: Player): string
@@ -132,6 +141,18 @@ local function padAxesNow(player: Player): { [string]: string }?
 	return out
 end
 
+local function padFruitsNow(player: Player): { [string]: string }?
+	local fruits = HeroSlotService.GetFruitsFor(player)
+	if not fruits then
+		return nil
+	end
+	local out = {}
+	for index, id in fruits do
+		out[tostring(index)] = id
+	end
+	return out
+end
+
 local function collect(player: Player): SaveData
 	local axes = {}
 	local axeCopies = {}
@@ -149,6 +170,7 @@ local function collect(player: Player): SaveData
 	local equipped = player:GetAttribute("EquippedAxe")
 	local unlockedZones = player:GetAttribute("UnlockedZones")
 	local currentZone = player:GetAttribute("CurrentZone")
+	local fertilizer, fruits = FruitService.GetSaveData(player)
 	return {
 		Version = DATA_VERSION,
 		SavedAt = os.time(),
@@ -168,6 +190,10 @@ local function collect(player: Player): SaveData
 		CurrentZone = if typeof(currentZone) == "number" then currentZone else nil,
 		-- Cache first: once the plot is released its chest is already emptied.
 		Chest = chestCache[player] or ChestService.GetContentsFor(player),
+		Fertilizer = fertilizer,
+		Fruits = fruits,
+		PadFruits = padFruitsNow(player) or padFruitsCache[player],
+		Daily = DailyRewardService.GetSaveData(player),
 	}
 end
 
@@ -242,6 +268,18 @@ local function apply(player: Player, data: SaveData)
 			end
 		end
 		HeroSlotService.RestoreAxes(player, padAxes)
+	end
+	FruitService.ApplySaved(player, data.Fertilizer, data.Fruits)
+	DailyRewardService.ApplySaved(player, data.Daily)
+	if typeof(data.PadFruits) == "table" then
+		local padFruits: { [number]: string } = {}
+		for index, id in data.PadFruits do
+			local i = tonumber(index)
+			if i and typeof(id) == "string" then
+				padFruits[i] = id
+			end
+		end
+		HeroSlotService.RestoreFruits(player, padFruits)
 	end
 	if data.Placed then
 		local placed: { [number]: string } = {}
@@ -318,6 +356,10 @@ function DataService.RememberPlaced(player: Player)
 	if padAxes then
 		padAxesCache[player] = padAxes
 	end
+	local padFruits = padFruitsNow(player)
+	if padFruits then
+		padFruitsCache[player] = padFruits
+	end
 	-- Keep the first snapshot: a later call (after PlotReleased) would only see the emptied chest.
 	local chest = ChestService.GetContentsFor(player)
 	if chest and not chestCache[player] then
@@ -333,7 +375,9 @@ local function onLeave(player: Player)
 	placedCache[player] = nil
 	levelsCache[player] = nil
 	padAxesCache[player] = nil
+	padFruitsCache[player] = nil
 	chestCache[player] = nil
+	DailyRewardService.Forget(player)
 end
 
 function DataService.Start()

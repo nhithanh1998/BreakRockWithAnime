@@ -287,6 +287,11 @@ local function axeIcon(model: string)
 	viewport:ClearAllChildren()
 	iconImage.Image = ""
 	iconText.Text = ""
+	local def = ShopConfig.GetAxe(model)
+	if def and def.AxeImage then
+		iconImage.Image = def.AxeImage
+		return
+	end
 	local axes = ReplicatedStorage:FindFirstChild("Axes")
 	local source = axes and axes:FindFirstChild(model)
 	if not source or not source:IsA("Model") then
@@ -602,7 +607,7 @@ local function checkSkills()
 		price = "$" .. abbreviate(b.cost),
 		extra = SkillTreeConfig.EffectText(b.node, b.level + 1),
 		button = "UPGRADE",
-		icon = b.node.Icon,
+		icon = SkillTreeConfig.IconOf(b.node),
 		onAction = function()
 			local g = player.PlayerGui:FindFirstChild("SkillTreeGui")
 			local open = g and g:FindFirstChild("OpenSkill")

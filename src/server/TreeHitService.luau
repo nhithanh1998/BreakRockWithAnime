@@ -18,6 +18,9 @@ local TreeService = require(script.Parent:WaitForChild("TreeService"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local ZoneDrops = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneDrops"))
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
+local SkillTreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SkillTreeConfig"))
+local ZoneConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneConfig"))
+local WeatherConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeatherConfig"))
 
 type Drop = TreeConfig.Drop
 
@@ -41,9 +44,18 @@ end
 
 -- Drops ----------------------------------------------------------------------------------------
 
+-- A skill tree stat for the zone the tree is in (zone trees only count in their own zone).
+local function statIn(player: Player?, stat: string, zone: number?, default: number): number
+	if not player then
+		return default
+	end
+	return SkillTreeConfig.PlayerStat(player, stat, zone or 1)
+end
+
+-- A player luck attribute (skill trees) times the weather's buff for it (WeatherConfig).
 local function luckOf(player: Player?, stat: string): number
 	local value = player and player:GetAttribute(stat)
-	return if typeof(value) == "number" then value else 1
+	return (if typeof(value) == "number" then value else 1) * WeatherConfig.Mult(stat)
 end
 
 -- A hero drop of `heroName`: rolls its mutation and size (HeroConfig.RollVariant, boosted by the
@@ -53,7 +65,7 @@ local function heroDrop(heroName: string, amount: number, chance: number, player
 	if not base then
 		return nil
 	end
-	local mutation, size, variantChance = HeroConfig.RollVariant(rng, luckOf(player, "MutationLuck"), luckOf(player, "SizeLuck"))
+	local mutation, size, variantChance = HeroConfig.RollVariant(rng, luckOf(player, "MutationLuck"), luckOf(player, "SizeLuck"), WeatherConfig.MutationBoost())
 	return {
 		Kind = "Anime",
 		Name = HeroConfig.VariantName(base.Name, mutation, size),
@@ -65,16 +77,18 @@ local function heroDrop(heroName: string, amount: number, chance: number, player
 	}
 end
 
--- One roll for the zone's hero drop (ZoneDrops HeroChance / Heroes), boosted by the player's
+-- One roll for the zone's hero drop (ZoneConfig Base HeroChance + skills, ZoneDrops Heroes), boosted by the player's
 -- "HeroLuck" attribute (multiplier, default 1). The hero then rolls its mutation and size.
 local function rollHero(zone: number?, player: Player?): Drop?
 	local def = ZoneDrops.GetZone(zone)
 	local heroes = def.Heroes
-	if not def.HeroChance or not heroes or #heroes == 0 then
+	if not heroes or #heroes == 0 then
 		return nil
 	end
-	local luck = player and player:GetAttribute("HeroLuck")
-	local chance = math.clamp(def.HeroChance * (if typeof(luck) == "number" then luck else 1), 0, 1)
+	local luck = luckOf(player, "HeroLuck") -- skills x weather
+	-- Zone base HeroChance + Hero Sprout, then multiplied by Luck.
+	local base = statIn(player, "HeroChance", zone, ZoneConfig.GetBase(zone, "HeroChance") or 0)
+	local chance = math.clamp(base * luck * statIn(player, "Luck", zone, 1), 0, 1)
 	if rng:NextNumber() >= chance then
 		return nil
 	end
@@ -101,11 +115,19 @@ local function rollDrops(zone: number?, treeType: string?, player: Player?): { D
 	if hero then
 		table.insert(drops, hero)
 	end
+	-- Zone skill tree: Luck boosts the non-guaranteed drops, ChopYield adds to the guaranteed wood.
+	local luck = statIn(player, "Luck", zone, 1) * WeatherConfig.Mult("DropLuck")
+	local yield = math.floor(statIn(player, "ChopYield", zone, 0))
 	for _, entry in ZoneDrops.GetDrops(zone, treeType) do
-		if rng:NextNumber() < entry.Chance then
+		local guaranteed = entry.Chance >= 1
+		local chance = if guaranteed then 1 else math.min(1, entry.Chance * luck)
+		if rng:NextNumber() < chance then
 			local min = entry.Min or 1
 			local amount = rng:NextInteger(min, math.max(min, entry.Max or min))
 			local def = TreeConfig.Materials[entry.Item]
+			if def and guaranteed then
+				amount += yield
+			end
 			local hero = not def and TreeConfig.GetHero(entry.Item)
 			if def then
 				table.insert(drops, {
@@ -113,12 +135,12 @@ local function rollDrops(zone: number?, treeType: string?, player: Player?): { D
 					Name = def.Name,
 					Amount = amount,
 					Rarity = def.Rarity,
-					Chance = entry.Chance,
+					Chance = chance,
 				})
 			elseif hero then
 				-- Each copy rolls its own mutation / size.
 				for _ = 1, amount do
-					local drop = heroDrop(hero.Name, 1, entry.Chance, player)
+					local drop = heroDrop(hero.Name, 1, chance, player)
 					if drop then
 						table.insert(drops, drop)
 					end
@@ -232,7 +254,7 @@ local function onHit(player: Player, tree: any, hitPos: any)
 	end
 	lastHit[player] = now
 
-	local damage = player:GetAttribute("ClickDamage") or TreeConfig.ClickDamage
+	local damage = math.floor((player:GetAttribute("ClickDamage") or TreeConfig.ClickDamage) * WeatherConfig.Mult("ClickDamage"))
 	applyHit(player, tree :: Model, damage, hitPos, player, nil)
 end
 

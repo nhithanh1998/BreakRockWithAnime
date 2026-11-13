@@ -246,10 +246,34 @@ local function close()
 	end
 end
 
-local function open(chest: Model, prompt: ProximityPrompt?)
-	if openChest == chest then
+-- Shrinks the panel away, then closes it (after Take All; HotbarUI waits for the panel to be gone
+-- before it shows the "Added!" list).
+local CLOSE_TWEEN = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local closingChest: Model? = nil
+
+local function closeAnimated()
+	local chest = openChest
+	if not chest or closingChest == chest then
 		return
 	end
+	closingChest = chest
+	local tween = TweenService:Create(openScale, CLOSE_TWEEN, { Scale = 0.8 })
+	tween.Completed:Once(function()
+		if closingChest == chest then
+			closingChest = nil
+			if openChest == chest then
+				close()
+			end
+		end
+	end)
+	tween:Play()
+end
+
+local function open(chest: Model, prompt: ProximityPrompt?)
+	if openChest == chest and closingChest ~= chest then
+		return
+	end
+	closingChest = nil
 	close()
 	openChest = chest
 	watchContents(chest)
@@ -363,8 +387,9 @@ closeButton.Activated:Connect(close)
 
 takeAllButton.Activated:Connect(function()
 	press(takeAllButton)
-	if openChest then
+	if openChest and closingChest ~= openChest then
 		ChestAction:FireServer("TakeAll", openChest)
+		closeAnimated()
 	end
 end)
 
