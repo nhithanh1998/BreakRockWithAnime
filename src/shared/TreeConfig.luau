@@ -76,7 +76,11 @@ TreeConfig.TreeLevels = {
 -- Tuned so each zone's weakest hero (its first HeroConfig.Power value) needs about 8 / 30 / 60
 -- swings at pad level 1, and its strongest one-shots saplings and trees:
 --   zone 1  Power 5 .. 195           40 / 150 / 300        (5 dmg: 8 / 30 / 60 swings)
---   zone 2  Power 1.3K .. 307K       10K / 40K / 80K       (1.3K: 8 / 31 / 62)
+--   zone 2  Power 1.3K .. 307K       3K / 12K / 24K        (1.3K: 3 / 10 / 19 swings)
+--           Softer than the other zones so zone 1 gear still works on arrival: a Golden Axe click
+--           (65 dmg, ~540 dps) takes 6 / 22 / 44 s, a ~100 dmg upgraded zone 1 hero 30 / 120 / 240
+--           swings. The first zone 2 heroes drop within a few trees (9% per tree for the Common)
+--           and from then on the zone speeds up. Average tree ~7.8K HP for ~370 Money + heroes.
 --   zone 3  Power 325K .. 77.3M      2.5M / 10M / 20M      (325K: 8 / 31 / 62)
 --   zone 4  Power 78.1M .. 48.8B     625M / 2.5B / 5B      (78.1M: 8 / 32 / 64)
 --   zone 5  Power 49.5B .. 11.9T     400B / 1.5T / 3T      (49.5B: 8 / 30 / 61)
@@ -84,7 +88,7 @@ TreeConfig.TreeLevels = {
 TreeConfig.TreeHP = {
 	Zones = {
 		[1] = { 40, 150, 300 },
-		[2] = { "10K", "40K", "80K" },
+		[2] = { "3K", "12K", "24K" },
 		[3] = { "2.5M", "10M", "20M" },
 		[4] = { "625M", "2.5B", "5B" },
 		[5] = { "400B", "1.5T", "3T" },
@@ -275,30 +279,32 @@ TreeConfig.Materials = {
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(255, 170, 30), Material = Enum.Material.Plastic },
 	},
+	-- Zone 2 (Orchard Valley). Values by rarity: Common ~50, Uncommon ~150, Rare 350-450, Epic 1.3K-1.5K,
+	-- Legendary 10K. Per normal-size tree: Berry ~265, Orange ~510, Apple ~730 (avg ~500; zone 1 ~50).
 	-- Zone 2 (Orchard Valley) - Berry Tree
 	-- Keys get an "Orchard" prefix where Zone 1 already uses the plain key ("Apple", "Orange").
 	BerryLog = {
 		Name = "Berry Log",
-		Value = 15,
+		Value = 50,
 		Rarity = "Common",
 		Visual = { Shape = "Block", Size = Vector3.new(1.2, 1.2, 1.2), Color = Color3.fromRGB(105, 62, 70), Material = Enum.Material.Plastic },
 	},
 	BerryCluster = {
 		Name = "Berry Cluster",
-		Value = 60,
+		Value = 150,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(1, 1, 1), Color = Color3.fromRGB(125, 50, 170), Material = Enum.Material.Plastic },
 	},
 	BerryJam = {
 		Name = "Berry Jam",
-		Value = 350,
+		Value = 450,
 		Rarity = "Rare",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(170, 40, 120), Material = Enum.Material.Plastic },
 	},
 	-- Zone 2 (Orchard Valley) - Orange Tree
 	OrangeSeed = {
 		Name = "Orange Seed",
-		Value = 70,
+		Value = 150,
 		Rarity = "Uncommon",
 		Visual = { Shape = "Block", Size = Vector3.new(0.8, 0.8, 0.8), Color = Color3.fromRGB(240, 215, 150), Material = Enum.Material.Plastic },
 	},
@@ -317,19 +323,19 @@ TreeConfig.Materials = {
 	-- Zone 2 (Orchard Valley) - Apple Tree
 	OrchardApple = {
 		Name = "Apple",
-		Value = 450,
+		Value = 350,
 		Rarity = "Rare",
 		Visual = { Shape = "Block", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(220, 40, 45), Material = Enum.Material.Plastic },
 	},
 	AppleJam = {
 		Name = "Apple Jam",
-		Value = 1800,
+		Value = 1300,
 		Rarity = "Epic",
 		Visual = { Shape = "Gem", Size = Vector3.new(0.9, 0.9, 0.9), Color = Color3.fromRGB(200, 25, 40), Material = Enum.Material.Plastic },
 	},
 	HeartOfTheOrchard = {
 		Name = "Heart of the Orchard",
-		Value = 8000,
+		Value = 10000,
 		Rarity = "Legendary",
 		Visual = { Shape = "Gem", Size = Vector3.new(1.1, 1.1, 1.1), Color = Color3.fromRGB(255, 205, 60), Material = Enum.Material.Plastic },
 	},

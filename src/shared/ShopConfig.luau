@@ -30,7 +30,7 @@ ShopConfig.Feedback = {
 	MaxPerSession = 5, -- messages a player can send per server visit
 }
 
--- Heroes sold in the Sell window are worth MinePower * this, each. Heroes standing on a pad
+-- Heroes sold in the Sell window are worth their HeroConfig Sell price * this, each. Heroes standing on a pad
 -- can't be sold (take them back first).
 ShopConfig.HeroSellMultiplier = 1
 
@@ -55,9 +55,9 @@ ShopConfig.Axes = {
 	{ Model = "CopperAxe", Name = "Copper Axe", Rarity = "Uncommon", Price = 3000, Damage = 25, HeroBoost = 1.25, Zone = 1, Stock = { 3, 6 } },
 	{ Model = "IronAxe", Name = "Iron Axe", Rarity = "Uncommon", Price = 12000, Damage = 40, HeroBoost = 1.45, Zone = 1, Stock = { 2, 4 } },
 	{ Model = "GoldenAxe", Name = "Golden Axe", Rarity = "Rare", Price = 50000, Damage = 65, HeroBoost = 1.7, Zone = 1, Stock = { 1, 3 } },
-	{ Model = "EmeraldAxe", Name = "Emerald Axe", Rarity = "Rare", Price = 200000, Damage = 100, HeroBoost = 2, Zone = 2, Stock = { 1, 3 } },
-	{ Model = "InfernoAxe", Name = "Inferno Axe", Rarity = "Epic", Price = 1000000, Damage = 160, HeroBoost = 2.5, Zone = 2, Stock = { 0, 2 } },
-	{ Model = "FrostbiteAxe", Name = "Frostbite Axe", Rarity = "Epic", Price = 5000000, Damage = 250, HeroBoost = 3.1, Zone = 2, Stock = { 0, 2 } },
+	{ Model = "EmeraldAxe", Name = "Emerald Axe", Rarity = "Rare", Price = 80000, Damage = 100, HeroBoost = 2, Zone = 2, Stock = { 1, 3 } },
+	{ Model = "InfernoAxe", Name = "Inferno Axe", Rarity = "Epic", Price = 350000, Damage = 160, HeroBoost = 2.5, Zone = 2, Stock = { 0, 2 } },
+	{ Model = "FrostbiteAxe", Name = "Frostbite Axe", Rarity = "Epic", Price = 1200000, Damage = 250, HeroBoost = 3.1, Zone = 2, Stock = { 0, 2 } },
 	{ Model = "VoidReaperAxe", Name = "Void Reaper Axe", Rarity = "Legendary", Price = 25000000, Damage = 400, HeroBoost = 4, Zone = 3, Stock = { 0, 1 } },
 	{ Model = "CelestialAxe", Name = "Celestial Axe", Rarity = "Mythic", Price = 100000000, Damage = 650, HeroBoost = 5.5, Zone = 3, Stock = { 0, 1 } },
 } :: { AxeDef }

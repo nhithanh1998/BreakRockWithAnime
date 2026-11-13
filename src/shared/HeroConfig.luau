@@ -23,6 +23,7 @@ export type HeroDef = {
 	Rarity: Rarity,
 	Template: string,
 	MinePower: number,
+	SellValue: number, -- Money per copy at the Sell shop (x ShopConfig.HeroSellMultiplier)
 	Image: string?,
 	ChopSpeed: number?,
 }
@@ -32,6 +33,7 @@ type HeroEntry = {
 	Name: string,
 	Rarity: Rarity,
 	Template: string,
+	Sell: (number | string)?, -- sell price; "1.2K" style works. Without it: its Power.
 	Image: string?,
 	ChopSpeed: number?,
 }
@@ -355,7 +357,7 @@ end
 -- To re-order heroes, just move their lines in HERO_LIST; these numbers stay where they are.
 -- Write plain numbers (195) or text tiers ("1.3K", "15.3M", "1.9T"; see HeroConfig.ParseNumber).
 -- Power is the hero's chop damage per swing (HeroConfig.ChopDamage). The hotbar sorts by Power
--- (highest first), and sell value is Power * ShopConfig.HeroSellMultiplier.
+-- (highest first). Sell price is each hero's own `Sell` in HERO_LIST below (not its Power).
 HeroConfig.Power = {
 	--zone1
 	5,
@@ -410,23 +412,38 @@ HeroConfig.Power = {
 } :: { number | string }
 
 -- Hero list. Order matters: a hero's Power is HeroConfig.Power[its position].
+-- Sell prices: each hero is worth about (Money a tree gives) / (its chance per tree) x 0.4 / heroes
+-- in the zone, so every hero adds the same small share and selling all heroes from a zone earns
+-- ~40% of what its materials do (zone 1 ~15 / tree, zone 2 ~150 / tree). Rarer = bigger payout.
 local HERO_LIST: { HeroEntry } = {
-	-- Zone 1 (Green Wood)
-	{ Name = "Kabuto Boy", Rarity = "Common", Template = "KabutoBoy" },
-	{ Name = "Taijutsu Shounen", Rarity = "Common", Template = "TaijutsuShounen" },
-	{ Name = "Uzumaki Shounen", Rarity = "Uncommon", Template = "UzumakiShounen" },
-	{ Name = "Copy Sensei", Rarity = "Rare", Template = "CopySensei" },
-	{ Name = "Green Beetle", Rarity = "Epic", Template = "GreenBettle" },
+	-- Zone 1 (Green Wood)                                                         drop share
+	{ Name = "Sling Scout", Rarity = "Common", Template = "SlingScout", Sell = 35 }, -- 45%
+	{ Name = "Taijutsu Shounen", Rarity = "Common", Template = "TaijutsuShounen", Sell = 60 }, -- 25%
+	{ Name = "Dragon Kid", Rarity = "Uncommon", Template = "DragonKid", Sell = 85 }, -- 18%
+	{ Name = "Copy Sensei", Rarity = "Rare", Template = "CopySensei", Sell = 170 }, -- 9%
+	{ Name = "Green Beetle", Rarity = "Epic", Template = "GreenBeetle", Sell = 500 }, -- 3%
+	-- Zone 2 (Orchard Valley)
+	{ Name = "Mystic Servant", Rarity = "Common", Template = "MysticServant", Sell = 200 }, -- 45.02%
+	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid", Sell = 350 }, -- 26%
+	{ Name = "Flame Fist", Rarity = "Rare", Template = "FlameFist", Sell = 600 }, -- 15%
+	{ Name = "Sin Captain", Rarity = "Rare", Template = "SinCaptain", Sell = "1.2K" }, -- 7.6%
+	{ Name = "Whale Island Kid", Rarity = "Epic", Template = "WhaleIslandKid", Sell = "2.5K" }, -- 3.7%
+	{ Name = "Water Swordman", Rarity = "Epic", Template = "WaterSwordman", Sell = "5.5K" }, -- 1.7%
+	{ Name = "Star Brawler", Rarity = "Legendary", Template = "StarBrawler", Sell = "13K" }, -- 0.7%
+	{ Name = "Marine Grandpa", Rarity = "Mythic", Template = "MarineGrandpa", Sell = "33K" }, -- 0.28%
+	-- Zone 3 (Orchard Valley)
 }
 
 HeroConfig.Heroes = {} :: { HeroDef }
 local byName: { [string]: HeroDef } = {}
 for index, entry in HERO_LIST do
+	local power = HeroConfig.ParseNumber(HeroConfig.Power[index] or 0) or 0
 	local hero: HeroDef = {
 		Name = entry.Name,
 		Rarity = entry.Rarity,
 		Template = entry.Template,
-		MinePower = HeroConfig.ParseNumber(HeroConfig.Power[index] or 0) or 0,
+		MinePower = power,
+		SellValue = if entry.Sell ~= nil then HeroConfig.ParseNumber(entry.Sell) or power else power,
 		Image = entry.Image,
 		ChopSpeed = entry.ChopSpeed,
 	}

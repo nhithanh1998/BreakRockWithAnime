@@ -68,13 +68,25 @@ local function levels(family: string): { [string]: number }
 	}
 end
 
--- Green Wood heroes, reused by Orchard Valley for now.
+-- Weights are the % share of the hero drops (they add up to 100).
 local GREEN_WOOD_HEROES: { HeroEntry } = {
-	{ Item = "Kabuto Boy", Weight = 40 }, -- Common
-	{ Item = "Taijutsu Shounen", Weight = 40 }, -- Common
-	{ Item = "Uzumaki Shounen", Weight = 15 }, -- Uncommon
-	{ Item = "Copy Sensei", Weight = 4 }, -- Rare
-	{ Item = "Green Beetle", Weight = 1 }, -- Epic
+	{ Item = "Sling Scout", Weight = 45 }, -- Common
+	{ Item = "Taijutsu Shounen", Weight = 25 }, -- Common
+	{ Item = "Dragon Kid", Weight = 18 }, -- Uncommon
+	{ Item = "Copy Sensei", Weight = 9 }, -- Rare
+	{ Item = "Green Beetle", Weight = 3 }, -- Epic
+}
+
+-- 45 / 26 / 15 / 7.6 / 3.7 / 1.7 / 0.7 / 0.28 only add up to 99.98, so the first gets the 0.02.
+local ORCHARD_VALLEY_HEROES: { HeroEntry } = {
+	{ Item = "Mystic Servant", Weight = 45.02 }, -- Common
+	{ Item = "Uzumaki Kid", Weight = 26 }, -- Uncommon
+	{ Item = "Flame Fist", Weight = 15 }, -- Rare
+	{ Item = "Sin Captain", Weight = 7.6 }, -- Rare
+	{ Item = "Whale Island Kid", Weight = 3.7 }, -- Epic
+	{ Item = "Water Swordman", Weight = 1.7 }, -- Epic
+	{ Item = "Star Brawler", Weight = 0.7 }, -- Legendary
+	{ Item = "Marine Grandpa", Weight = 0.28 }, -- Mythic
 }
 
 ZoneDrops.Zones = {
@@ -132,8 +144,8 @@ ZoneDrops.Zones = {
 				},
 			},
 		},
-		-- 20% of felled trees drop a hero. Shares: 40% / 40% / 15% / 4% / 1% of those,
-		-- i.e. 8% / 8% / 3% / 0.8% / 0.2% per tree.
+		-- 20% of felled trees drop a hero. Shares: 45% / 25% / 18% / 9% / 3% of those,
+		-- i.e. 9% / 5% / 3.6% / 1.8% / 0.6% per tree.
 		HeroChance = 0.2,
 		Heroes = GREEN_WOOD_HEROES,
 	},
@@ -174,7 +186,7 @@ ZoneDrops.Zones = {
 			},
 		},
 		HeroChance = 0.2,
-		Heroes = GREEN_WOOD_HEROES,
+		Heroes = ORCHARD_VALLEY_HEROES,
 	},
 } :: { [number]: ZoneDef }
 

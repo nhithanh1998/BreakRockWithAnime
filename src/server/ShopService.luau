@@ -129,7 +129,7 @@ local function sell(player: Player, stacks: any): Result
 			local value = heroes:FindFirstChild(name) :: IntValue?
 			if def and value then
 				local amount = math.max(0, value.Value - placedCount(player, name))
-				earned += def.MinePower * ShopConfig.HeroSellMultiplier * amount
+				earned += def.SellValue * ShopConfig.HeroSellMultiplier * amount
 				value.Value -= amount
 				if value.Value <= 0 then
 					value:Destroy()

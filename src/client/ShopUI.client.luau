@@ -544,7 +544,7 @@ local function sellEntries(): { SellEntry }
 				stack = HERO_PREFIX .. v.Name,
 				isHero = true,
 				amount = amount,
-				total = hero.MinePower * ShopConfig.HeroSellMultiplier * amount,
+				total = hero.SellValue * ShopConfig.HeroSellMultiplier * amount,
 				rarity = hero.Rarity,
 			})
 		end
