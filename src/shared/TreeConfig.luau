@@ -66,6 +66,47 @@ TreeConfig.TreeLevels = {
 	--      TreeGrowth 1.6 -> 60 / 78 / 42 = 33% / 43% / 23%
 }
 
+-- Tree HP -------------------------------------------------------------------------------------
+-- A tree's MaxHP comes from here (the "MaxHP" attribute on the templates is ignored), by the plot's
+-- zone and the tree's level (1 Sapling / 2 Tree / 3 Old tree, see ZoneDrops). Values are plain
+-- numbers or text tiers like HeroConfig.Power ("10K", "2.5M", "1.5T"; HeroConfig.ParseNumber).
+-- A zone missing here uses the last zone listed, times ZoneMultiplier per zone past it.
+--
+-- Tuned so each zone's weakest hero (its first HeroConfig.Power value) needs about 8 / 30 / 60
+-- swings at pad level 1, and its strongest one-shots saplings and trees:
+--   zone 1  Power 5 .. 195           40 / 150 / 300        (5 dmg: 8 / 30 / 60 swings)
+--   zone 2  Power 1.3K .. 307K       10K / 40K / 80K       (1.3K: 8 / 31 / 62)
+--   zone 3  Power 325K .. 77.3M      2.5M / 10M / 20M      (325K: 8 / 31 / 62)
+--   zone 4  Power 78.1M .. 48.8B     625M / 2.5B / 5B      (78.1M: 8 / 32 / 64)
+--   zone 5  Power 49.5B .. 11.9T     400B / 1.5T / 3T      (49.5B: 8 / 30 / 61)
+-- Player clicks (ShopConfig axe Damage 10 .. 650) are sized for zone 1 only.
+TreeConfig.TreeHP = {
+	Zones = {
+		[1] = { 40, 150, 300 },
+		[2] = { "10K", "40K", "80K" },
+		[3] = { "2.5M", "10M", "20M" },
+		[4] = { "625M", "2.5B", "5B" },
+		[5] = { "400B", "1.5T", "3T" },
+	} :: { [number]: { number | string } },
+	ZoneMultiplier = 250, -- zones after the last one listed
+}
+
+-- MaxHP of a level 1..3 tree in `zone`.
+function TreeConfig.MaxHP(zone: number?, level: number): number
+	local cfg = TreeConfig.TreeHP
+	local z = math.max(1, math.floor(zone or 1))
+	local last = 1
+	for listed in cfg.Zones do
+		last = math.max(last, listed)
+	end
+	local row = cfg.Zones[math.min(z, last)] or cfg.Zones[1]
+	local value = HeroConfig.ParseNumber(row[level] or row[#row] or 1) or 1
+	if z > last then
+		value *= cfg.ZoneMultiplier ^ (z - last)
+	end
+	return math.max(1, math.floor(value))
+end
+
 -- Effects -------------------------------------------------------------------------------------
 TreeConfig.ShakeTime = 0.28
 TreeConfig.ShakeAngle = 4 -- degrees

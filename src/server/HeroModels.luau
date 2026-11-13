@@ -140,6 +140,49 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 	return model, humanoid, root
 end
 
+-- Writes "Level N" and the Power (its chop damage, upgrades / grade / axe included) on the bar above
+-- the hero (HumanoidRootPart.InfoAttachment.HeroBar.Container).
+function HeroModels.DrawBar(model: Model, level: number, power: number)
+	local root = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+	local attachment = root and root:FindFirstChild("InfoAttachment")
+	local bar = attachment and attachment:FindFirstChild("HeroBar")
+	local container = bar and bar:FindFirstChild("Container")
+	if not container then
+		return
+	end
+	local levelLabel = container:FindFirstChild("Level")
+	if levelLabel and levelLabel:IsA("TextLabel") then
+		levelLabel.Text = "Level " .. tostring(level)
+	end
+	local frame = container:FindFirstChild("Power")
+	local powerLabel = frame and frame:FindFirstChildOfClass("TextLabel")
+	if powerLabel then
+		powerLabel.Text = HeroConfig.Abbreviate(power)
+	end
+end
+
+-- Height of a character's body: its parts from the top of the head to the feet, without hats, hair,
+-- tools or the HumanoidRootPart (0 when it has no such parts).
+function HeroModels.BodyHeight(model: Model): number
+	local top, bottom = -math.huge, math.huge
+	for _, d in model:GetDescendants() do
+		if
+			d:IsA("BasePart")
+			and d.Name ~= "HumanoidRootPart"
+			and not d:FindFirstAncestorOfClass("Accessory")
+			and not d:FindFirstAncestorOfClass("Tool")
+		then
+			local half = d.Size / 2
+			local cf = d.CFrame
+			-- Vertical half-extent of the (possibly rotated) part.
+			local h = math.abs(cf.RightVector.Y) * half.X + math.abs(cf.UpVector.Y) * half.Y + math.abs(cf.LookVector.Y) * half.Z
+			top = math.max(top, cf.Position.Y + h)
+			bottom = math.min(bottom, cf.Position.Y - h)
+		end
+	end
+	return if top > bottom then top - bottom else 0
+end
+
 -- Hides the bar above the hero (for copies that already have a label nearby, e.g. on a pad).
 function HeroModels.HideBar(model: Model)
 	local root = model.PrimaryPart

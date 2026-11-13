@@ -167,6 +167,25 @@ local function billboard(pad: Instance, attachment: string): BillboardGui?
 	return gui
 end
 
+-- The damage the pad's hero deals per swing (its Power x the pad's Damage level and grade, x the axe's
+-- HeroBoost), read from the slot attributes writeLevels / "HeroAxe" keep up to date.
+local function padDamage(slot: Model, hero: string): number
+	local level = slot:GetAttribute(HeroConfig.LevelAttribute("Damage"))
+	local grade = slot:GetAttribute(HeroConfig.GradeAttribute("Damage"))
+	local value = HeroConfig.StatValue(
+		"Damage",
+		if typeof(level) == "number" then level else 1,
+		if typeof(grade) == "string" then grade else nil,
+		hero
+	)
+	local axe = slot:GetAttribute("HeroAxe")
+	local def = typeof(axe) == "string" and axe ~= "" and ShopConfig.GetAxe(axe)
+	if def then
+		value = math.max(1, math.floor(value * def.HeroBoost))
+	end
+	return value
+end
+
 local function drawGui(slot: Model, hero: string?, locked: boolean?)
 	-- Clients read this (e.g. the Sell window keeps heroes that stand on a pad).
 	slot:SetAttribute("HeroId", if hero and not locked then hero else "")
@@ -221,7 +240,7 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 			end
 			local powerLabel = info:FindFirstChild("Power") :: TextLabel?
 			if powerLabel then
-				powerLabel.Text = HeroConfig.Abbreviate(def.MinePower)
+				powerLabel.Text = HeroConfig.Abbreviate(padDamage(slot, def.Name))
 			end
 		end
 	end
@@ -229,7 +248,14 @@ end
 
 -- A copy of the placed hero standing idle on top of the pad with its axe (the working copy is out
 -- chopping trees). Rebuilt only when the pad's hero changes.
-local function drawPadHero(slot: Model, hero: string?)
+-- Body height of the plot owner's character (HeroConfig.Slots.PadHeroHeight without one).
+local function ownerHeight(owner: Player?): number
+	local character = owner and owner.Character
+	local height = if character then HeroModels.BodyHeight(character) else 0
+	return if height > 1 then height else HeroConfig.Slots.PadHeroHeight
+end
+
+local function drawPadHero(slot: Model, hero: string?, owner: Player?)
 	local current = slot:FindFirstChild(PAD_HERO_NAME)
 	local axe = slot:GetAttribute("HeroAxe")
 	axe = if typeof(axe) == "string" and axe ~= "" then axe else nil
@@ -252,12 +278,12 @@ local function drawPadHero(slot: Model, hero: string?)
 	humanoid.EvaluateStateMachine = false
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
 
-	-- As tall as a player (the axe gets the same factor so it stays in proportion).
+	-- Body as tall as the owner's body (the axe gets the same factor so it stays in proportion).
 	local factor = 1
-	local height = model:GetExtentsSize().Y
+	local height = HeroModels.BodyHeight(model)
 	if height > 0 then
 		local before = model:GetScale()
-		if pcall(model.ScaleTo, model, before * HeroConfig.Slots.PadHeroHeight / height) then
+		if pcall(model.ScaleTo, model, before * ownerHeight(owner) / height) then
 			factor = model:GetScale() / before
 		end
 	end
@@ -319,7 +345,7 @@ local function refresh(state: PlotState)
 				HeroWorkerService.Despawn(state.plot, i)
 			end
 			drawGui(slot, nil, true)
-			drawPadHero(slot, nil)
+			drawPadHero(slot, nil, state.owner)
 			local price = HeroConfig.Slots.UnlockPrices[i]
 			if price then
 				prompt.ActionText = ("Unlock Slot For %s Cash!"):format(HeroConfig.Abbreviate(price))
@@ -331,7 +357,7 @@ local function refresh(state: PlotState)
 			continue
 		end
 		local hero = state.placed[i]
-		drawPadHero(slot, hero)
+		drawPadHero(slot, hero, state.owner)
 		drawGui(slot, hero)
 		if hero then
 			prompt.ActionText = "Take Back " .. hero
@@ -484,6 +510,7 @@ local function reroll(state: PlotState, index: number, locked: { [string]: boole
 		table.insert(rolled, grade)
 	end
 	writeLevels(slot, levels)
+	drawGui(slot, state.placed[index])
 	HeroWorkerService.ApplyLevels(state.plot, index)
 	return true, "Rerolled: " .. table.concat(rolled, " / ")
 end
@@ -507,6 +534,7 @@ local function rerollStat(state: PlotState, index: number, stat: string): (boole
 	local grade = HeroConfig.RollGrade(rerollRng)
 	levels[HeroConfig.GradeAttribute(stat)] = table.find(HeroConfig.GradeOrder, grade)
 	writeLevels(slot, levels)
+	drawGui(slot, state.placed[index])
 	HeroWorkerService.ApplyLevels(state.plot, index)
 	return true, ("%s: %s"):format(HeroConfig.Upgrades[stat].Name, grade)
 end
@@ -548,7 +576,8 @@ local function equipAxe(state: PlotState, index: number, model: string): (boolea
 		state.axes[index] = model
 	end
 	slot:SetAttribute("HeroAxe", state.axes[index] or "")
-	drawPadHero(slot, state.placed[index])
+	drawPadHero(slot, state.placed[index], state.owner)
+	drawGui(slot, state.placed[index])
 	HeroWorkerService.ApplyLevels(state.plot, index)
 	local def = state.axes[index] and ShopConfig.GetAxe(state.axes[index])
 	return true, if def then ("%s equipped!"):format(def.Name) else "Axe removed"

@@ -27,6 +27,17 @@ local grid = panel:WaitForChild("Grid") :: ScrollingFrame
 local emptyLabel = panel:WaitForChild("Empty") :: TextLabel
 local slotTemplate = (gui:WaitForChild("Templates") :: Folder):WaitForChild("ItemSlot") :: TextButton
 
+-- Hero portraits fill the whole card (under the name / count), not just the smaller "View" box.
+if not slotTemplate:FindFirstChild("HeroView") then
+	local heroView = Instance.new("ViewportFrame")
+	heroView.Name = "HeroView"
+	heroView.BackgroundTransparency = 1
+	heroView.Size = UDim2.fromScale(1, 1)
+	heroView.ZIndex = 1
+	heroView.Visible = false
+	heroView.Parent = slotTemplate
+end
+
 local TAB_ON_BG = Color3.fromRGB(45, 180, 60)
 local TAB_ON_STROKE = Color3.fromRGB(25, 110, 35)
 local TAB_OFF_BG = Color3.fromRGB(70, 75, 88)
@@ -80,9 +91,12 @@ local function entries(): { Entry }
 		local placed = placedCounts()
 		for _, v in if heroes then heroes:GetChildren() else {} do
 			if v:IsA("IntValue") and v.Value > 0 then
-				local onPad = math.min(v.Value, placed[v.Name] or 0)
-				local stack = ItemDisplay.HeroStack(v.Name)
-				table.insert(list, { stack = stack, info = ItemDisplay.Info(stack), amount = v.Value - onPad, onPad = onPad })
+				-- Only copies not standing on a pad are listed; fully placed heroes are hidden.
+				local available = v.Value - math.min(v.Value, placed[v.Name] or 0)
+				if available > 0 then
+					local stack = ItemDisplay.HeroStack(v.Name)
+					table.insert(list, { stack = stack, info = ItemDisplay.Info(stack), amount = available, onPad = 0 })
+				end
 			end
 		end
 	end
@@ -137,11 +151,11 @@ local function drawCard(card: TextButton, e: Entry)
 	(card:FindFirstChild("ItemName") :: TextLabel).Text = info.name
 	local count = card:FindFirstChild("Count") :: TextLabel
 	count.Text = "x" .. commas(e.amount)
-	count.Visible = e.amount > 0 or not info.isHero
-	-- "E" = at least one copy of this hero is working on a pad.
+	count.Visible = true
+	-- No "E" badge in the inventory: placed heroes are simply not listed.
 	local equipped = card:FindFirstChild("Equipped") :: TextLabel?
 	if equipped then
-		equipped.Visible = e.onPad > 0
+		equipped.Visible = false
 	end
 	ItemDisplay.SetPicture(card, info)
 end
@@ -311,6 +325,48 @@ player.ChildAdded:Connect(maybeWatch)
 for _, c in player:GetChildren() do
 	maybeWatch(c)
 end
+
+-- Re-render when a hero is placed on / removed from a pad (slot "HeroId" attribute changes).
+local function watchSlot(slot: Instance)
+	slot:GetAttributeChangedSignal("HeroId"):Connect(queueRender)
+end
+local function watchSlots(pads: Instance)
+	for _, slot in pads:GetChildren() do
+		watchSlot(slot)
+	end
+	pads.ChildAdded:Connect(function(slot)
+		watchSlot(slot)
+		queueRender()
+	end)
+	pads.ChildRemoved:Connect(queueRender)
+end
+local function watchPlot(plot: Instance)
+	local hooked = false
+	local function tryHook()
+		if hooked then
+			return
+		end
+		local pads = plot:FindFirstChild("HeroSlots")
+		if pads then
+			hooked = true
+			watchSlots(pads)
+		end
+	end
+	tryHook()
+	plot.ChildAdded:Connect(function(c)
+		if c.Name == "HeroSlots" then
+			tryHook()
+		end
+	end)
+	plot:GetAttributeChangedSignal("OwnerUserId"):Connect(queueRender)
+end
+task.spawn(function()
+	local plots = workspace:WaitForChild("Plots")
+	for _, plot in plots:GetChildren() do
+		watchPlot(plot)
+	end
+	plots.ChildAdded:Connect(watchPlot)
+end)
 
 panel.Visible = false
 gui:SetAttribute("Open", false)

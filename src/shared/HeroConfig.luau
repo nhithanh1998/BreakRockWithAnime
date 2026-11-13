@@ -5,11 +5,11 @@
 --   Name      = shown in the UI, and the name used in ZoneDrops (e.g. { Item = "Uzumaki Kid", Chance = 0.03 })
 --   Rarity    = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" (slot colour, sorting)
 --   Template  = name of the hero's model inside ReplicatedStorage.HeroTemplates
---   (Power is NOT set here: it lives in HeroConfig.Power, by position in the list. It is how strong
---    the hero mines, shown in red on the hotbar / chest / popups, and the hotbar puts the
---    highest Power first. Code reads it as hero.MinePower.)
+--   (Power is NOT set here: it lives in HeroConfig.Power, by position in the list. Power IS the
+--    hero's chop damage: one axe swing on a tree deals Power (before pad upgrades / grade / axe).
+--    Shown on the hotbar / chest / popups / InfoBars, and the hotbar puts the highest Power first.
+--    Code reads it as hero.MinePower.)
 --   Image     = optional "rbxassetid://..." picture for the UI (a ★ is shown when missing)
---   ChopDamage = optional damage per axe swing when the hero works a HeroSlot (default MinePower / 100)
 --   ChopSpeed  = optional swing speed multiplier (default by rarity, see Worker.RaritySpeed)
 --
 -- Which zone/tree drops which hero is set in ZoneDrops.luau.
@@ -24,7 +24,6 @@ export type HeroDef = {
 	Template: string,
 	MinePower: number,
 	Image: string?,
-	ChopDamage: number?,
 	ChopSpeed: number?,
 }
 
@@ -34,7 +33,6 @@ type HeroEntry = {
 	Rarity: Rarity,
 	Template: string,
 	Image: string?,
-	ChopDamage: number?,
 	ChopSpeed: number?,
 }
 
@@ -145,7 +143,9 @@ end
 HeroConfig.Slots = {
 	StartUnlocked = 4,
 	UnlockPrices = { [5] = 5000, [6] = 25000, [7] = 100000, [8] = 500000, [9] = 2500000 } :: { [number]: number },
-	PadHeroHeight = 6.4, -- studs, hair included: height of the hero standing on a pad (a player is ~5.6)
+	-- The hero standing on a pad is scaled so its body (hats / hair not counted) is as tall as the
+	-- plot owner's body; PadHeroHeight is used when the owner has no character yet (R6 player = 5).
+	PadHeroHeight = 5,
 	HoldDuration = 1, -- seconds E must be held on a pad (place / take back / unlock)
 	LockedText = "Locked",
 	LockedPadColor = Color3.fromRGB(105, 105, 110),
@@ -309,27 +309,100 @@ function HeroConfig.Abbreviate(n: number): string
 	return tostring(math.floor(n))
 end
 
+-- The other way round: "1.3K" -> 1300, "15.3M" -> 15300000, "1.9T", 250 -> 250. Accepts any unit
+-- Abbreviate writes (K M B T Qd Qi Sx Sp Oc No Dc, any case; "Qa" = Qd too), commas and spaces.
+-- Returns nil for text it can't read.
+local UNIT_VALUES: { [string]: number } = { qa = 1e15 }
+for _, unit in UNITS do
+	UNIT_VALUES[unit[2]:lower()] = unit[1]
+end
+function HeroConfig.ParseNumber(value: number | string): number?
+	if typeof(value) == "number" then
+		return value
+	end
+	if typeof(value) ~= "string" then
+		return nil
+	end
+	local text = value:gsub("[,%s]", "")
+	local num, unit = text:match("^([%d%.]+)(%a*)$")
+	local n = num and tonumber(num)
+	if not n then
+		return nil
+	end
+	if unit == "" then
+		return n
+	end
+	local mult = UNIT_VALUES[unit:lower()]
+	return if mult then n * mult else nil
+end
+
 -- ===================== POWER =====================
 -- Mine Power by POSITION in the hero list below: the 1st hero gets Power[1], the 2nd Power[2], ...
 -- To re-order heroes, just move their lines in HERO_LIST; these numbers stay where they are.
--- The hotbar sorts by Power (highest first), ChopDamage defaults to Power / 100, and sell value
--- is Power * ShopConfig.HeroSellMultiplier.
+-- Write plain numbers (195) or text tiers ("1.3K", "15.3M", "1.9T"; see HeroConfig.ParseNumber).
+-- Power is the hero's chop damage per swing (HeroConfig.ChopDamage). The hotbar sorts by Power
+-- (highest first), and sell value is Power * ShopConfig.HeroSellMultiplier.
 HeroConfig.Power = {
-	250, -- position 1
-	350, -- position 2
-	700, -- position 3
-	1500, -- position 4
-	3500, -- position 5
-} :: { number }
+	--zone1
+	5,
+	6,
+	13,
+	31,
+	195,
+	--zone2
+	"1.3K",
+	"3.5K",
+	"7.8K",
+	"20K",
+	"48K",
+	"61K",
+	"125K",
+	"307K",
+	--zone3
+	"325K",
+	"785K",
+	"2M",
+	"5M",
+	"12M",
+	"15.3M",
+	"30.5M",
+	"38.2M",
+	"77.3M",
+	--zone4
+	"78.1M",
+	"195.5M",
+	"488.2M",
+	"1.2B",
+	"1.5B",
+	"3.1B",
+	"7.8B",
+	"9.5B",
+	"19.5B",
+	"48.8B",
+	--zone5
+	"49.5B",
+	"65B",
+	"122.1B",
+	"305.2B",
+	"381.5B",
+	"762.9B",
+	"953.7B",
+	"1.9T",
+	"2.4T",
+	"4.8T",
+	"11.9T"
+
+
+} :: { number | string }
 
 -- Hero list. Order matters: a hero's Power is HeroConfig.Power[its position].
 local HERO_LIST: { HeroEntry } = {
 	-- Zone 1 (Green Wood)
-	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate", ChopDamage = 5 },
-	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja", ChopDamage = 6 },
-	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid", ChopDamage = 13 },
-	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja", ChopDamage = 31 },
-	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform", ChopDamage = 195 },
+	{ Name = "Sling Pirate", Rarity = "Common", Template = "SlingPirate" },
+	{ Name = "Taijutsu Ninja", Rarity = "Common", Template = "TaijutsuNinja" },
+	{ Name = "Uzumaki Kid", Rarity = "Uncommon", Template = "UzumakiKid" },
+	{ Name = "Copy Ninja", Rarity = "Rare", Template = "CopyNinja" },
+	{ Name = "Perfect Bioform", Rarity = "Epic", Template = "PerfectBioform" },
 }
 
 HeroConfig.Heroes = {} :: { HeroDef }
@@ -339,9 +412,8 @@ for index, entry in HERO_LIST do
 		Name = entry.Name,
 		Rarity = entry.Rarity,
 		Template = entry.Template,
-		MinePower = HeroConfig.Power[index] or 0,
+		MinePower = HeroConfig.ParseNumber(HeroConfig.Power[index] or 0) or 0,
 		Image = entry.Image,
-		ChopDamage = entry.ChopDamage,
 		ChopSpeed = entry.ChopSpeed,
 	}
 	table.insert(HeroConfig.Heroes, hero)
@@ -360,13 +432,13 @@ function HeroConfig.GetTemplate(name: string): Model?
 	return if model and model:IsA("Model") then model else nil
 end
 
--- Damage one axe swing of this hero deals to a tree.
+-- Damage one axe swing of this hero deals to a tree (before pad upgrades): its Power.
 function HeroConfig.ChopDamage(name: string): number
 	local hero = byName[name]
 	if not hero then
 		return 1
 	end
-	return hero.ChopDamage or math.max(1, math.floor(hero.MinePower / 100))
+	return math.max(1, math.floor(hero.MinePower))
 end
 
 -- Swing animation speed multiplier for this hero.
@@ -386,6 +458,11 @@ function HeroConfig.Validate()
 			warn(("[HeroConfig] hero %q is listed twice"):format(hero.Name))
 		end
 		seen[hero.Name] = true
+	end
+	for index, value in HeroConfig.Power do
+		if not HeroConfig.ParseNumber(value) then
+			warn(("[HeroConfig] Power[%d] = %q is not a number or text tier like \"1.3K\" (used as 0)"):format(index, tostring(value)))
+		end
 	end
 	if #HeroConfig.Power < #HeroConfig.Heroes then
 		warn(("[HeroConfig] %d heroes but only %d Power values; heroes after position %d get Power 0"):format(#HeroConfig.Heroes, #HeroConfig.Power, #HeroConfig.Power))

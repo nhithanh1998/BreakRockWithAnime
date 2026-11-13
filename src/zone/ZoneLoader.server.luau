@@ -1,4 +1,4 @@
--- Builds every plot's layout at server start and rebuilds it whenever the plot's "Zone" attribute changes.
+-- Builds every plot's layout at server start and plays a transition whenever the plot's "Zone" attribute changes.
 -- Test in Play (server side):  workspace.Plots.Plot1:SetAttribute("Zone", 2)
 local ZoneService = require(script.Parent:WaitForChild("ZoneService"))
 local Plots = workspace:WaitForChild("Plots")
@@ -6,7 +6,7 @@ local Plots = workspace:WaitForChild("Plots")
 local function hook(plot)
 	ZoneService.Apply(plot)
 	plot:GetAttributeChangedSignal("Zone"):Connect(function()
-		ZoneService.Apply(plot)
+		task.spawn(ZoneService.Transition, plot)
 	end)
 end
 

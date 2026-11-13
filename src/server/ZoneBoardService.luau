@@ -13,6 +13,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ZoneConfig = require(Shared:WaitForChild("ZoneConfig"))
@@ -20,7 +21,9 @@ local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local PlotService = require(script.Parent:WaitForChild("PlotService"))
 
-local SWAP_COOLDOWN = 1.5 -- seconds between zone changes (rebuilding a plot is not free)
+local SWAP_COOLDOWN = 3 -- seconds between zone changes (about one ZoneService transition)
+-- Dev: in Studio only, every player starts with zones up to this one unlocked (0 = off).
+local DEV_UNLOCK_ZONES = 2
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local remote = Remotes:FindFirstChild("ZoneAction") :: RemoteFunction?
@@ -130,6 +133,13 @@ function ZoneBoardService.SetupPlot(_plot: Model, player: Player)
 			sync(player)
 		end),
 	}
+	if DEV_UNLOCK_ZONES > 0 and RunService:IsStudio() then
+		local n = player:GetAttribute("UnlockedZones")
+		local have = if typeof(n) == "number" then n else 1
+		if have < DEV_UNLOCK_ZONES then
+			player:SetAttribute("UnlockedZones", math.min(DEV_UNLOCK_ZONES, ZoneConfig.Count())) -- signal runs sync()
+		end
+	end
 	sync(player)
 end
 

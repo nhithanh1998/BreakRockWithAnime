@@ -1,7 +1,7 @@
 -- TreeService: keeps an owned plot's floor stocked with choppable trees.
 --
 -- Templates: ReplicatedStorage.Trees.Map<Zone> (falls back to Map1). Each template is a Model with
---   "HP"/"MaxHP" attributes and an HP bar (InfoAttachment.TreeBar ... HPFill); the bar is drawn by
+--   an HP bar (its "HP"/"MaxHP" are set on spawn from TreeConfig.TreeHP, by level and zone) (InfoAttachment.TreeBar ... HPFill); the bar is drawn by
 --   the client (TreeClient). An old-style "Info" BillboardGui (HPBar.Fill/TextLabel) still works.
 --   Optional template attribute "SpawnWeight" (default 1) makes a tree more or less common.
 --   Only templates listed in the zone's ZoneDrops Trees are spawned.
@@ -9,13 +9,15 @@
 -- When a tree's HP reaches 0 (TreeService.Damage, or any script setting the "HP" attribute)
 --   it gets the "Dead" attribute, is removed TreeConfig.FellTime later (clients play the fall
 --   animation meanwhile), and a new one grows back after CONFIG.RespawnDelay seconds.
--- When the plot's "Zone" attribute changes, all trees are replaced with the new zone's trees.
+-- Zone changes: ZoneService sets the plot's "ZoneBusy", removes the old trees, and clears "ZoneBusy" once the
+--   new floor is in place; the new zone's trees grow then.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ZoneDrops = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneDrops"))
+local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 
 local CONFIG = {
 	TemplateFolder = "Trees",
@@ -186,7 +188,7 @@ local function updateInfo(tree: Model)
 		end
 		local text = bar:FindFirstChild("TextLabel")
 		if text then
-			text.Text = ("%d/%d"):format(hp, maxHp)
+			text.Text = ("%s/%s"):format(HeroConfig.Abbreviate(hp), HeroConfig.Abbreviate(maxHp))
 		end
 	end
 end
@@ -228,7 +230,11 @@ local function spawnTree(state: PlotState): boolean
 			d.Anchored = true
 		end
 	end
-	tree:SetAttribute("HP", tree:GetAttribute("MaxHP") or tree:GetAttribute("HP") or 1)
+	-- HP from TreeConfig.TreeHP, by the tree's level and the plot's zone.
+	local zone = state.plot:GetAttribute("Zone")
+	local maxHp = TreeConfig.MaxHP(zone, ZoneDrops.GetLevel(zone, template.Name))
+	tree:SetAttribute("MaxHP", maxHp)
+	tree:SetAttribute("HP", maxHp)
 	tree:SetAttribute("TreeType", template.Name)
 	tree:PivotTo(CFrame.new(pos + Vector3.new(0, bottomOffset(template), 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
 
@@ -257,6 +263,10 @@ local function spawnTree(state: PlotState): boolean
 end
 
 fill = function(state: PlotState)
+	-- ZoneService is swapping the zone: it removes the old trees and clears ZoneBusy when the new floor is ready.
+	if state.plot:GetAttribute("ZoneBusy") then
+		return
+	end
 	while state.active and state.count < CONFIG.MaxTrees do
 		if not spawnTree(state) then
 			break -- no room right now; the next felled tree triggers another try
@@ -300,9 +310,10 @@ function TreeService.StartPlot(plot: Model)
 
 	table.insert(
 		state.connections,
-		plot:GetAttributeChangedSignal("Zone"):Connect(function()
-			clear(state)
-			fill(state)
+		plot:GetAttributeChangedSignal("ZoneBusy"):Connect(function()
+			if not plot:GetAttribute("ZoneBusy") and state.active then
+				fill(state)
+			end
 		end)
 	)
 

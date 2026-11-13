@@ -142,7 +142,11 @@ end
 -- Hero portrait ---------------------------------------------------------------------------------------
 
 local PORTRAIT_FOV = 30
-local PORTRAIT_YAW = math.rad(18) -- turn the camera a little to the side so the face isn't flat
+local PORTRAIT_YAW = 0 -- radians the camera turns to the side (0 = hero looks straight at you)
+local PORTRAIT_HEADS = 2.8 -- the card is this many heads tall (smaller = bigger hero)
+-- Heads the view's center sits above the head's center (bigger = hero lower). -0.3 puts the hero
+-- 0.42 heads = 15% of the card higher than 0.12 did.
+local PORTRAIT_LIFT = -0.3
 
 local function prepareModel(model: Model)
 	for _, d in model:GetDescendants() do
@@ -162,13 +166,70 @@ local function prepareModel(model: Model)
 	end
 end
 
--- Draws the hero's model in `view`, framed on the head and shoulders. Skips the work when `view`
--- already shows this hero. Returns false when the hero has no model in ReplicatedStorage.Heros.
+-- Outline around the hero: flat STROKE_COLOR copies of the model behind it, each nudged
+-- STROKE_SCALE of the card's size in one of these directions (so it grows with the card).
+local STROKE_SCALE = 0.018 -- 0.018 = about 2.3px on a 130px card
+local STROKE_COLOR = Color3.fromRGB(38, 24, 66) -- deep purple
+local STROKE_DIRS = {
+	Vector2.new(1, 0),
+	Vector2.new(-1, 0),
+	Vector2.new(0, 1),
+	Vector2.new(0, -1),
+	Vector2.new(0.7071, 0.7071),
+	Vector2.new(-0.7071, 0.7071),
+	Vector2.new(0.7071, -0.7071),
+	Vector2.new(-0.7071, -0.7071),
+}
+
+-- Turns a model copy into a flat white silhouette (colours, textures and clothes removed), so the
+-- stroke layer can tint it any colour with ImageColor3.
+local function whiten(model: Model)
+	for _, d in model:GetDescendants() do
+		if d:IsA("Decal") or d:IsA("Clothing") or d:IsA("ShirtGraphic") or d:IsA("BodyColors") or d:IsA("SurfaceAppearance") then
+			d:Destroy()
+		elseif d:IsA("BasePart") then
+			d.Color = Color3.new(1, 1, 1)
+			d.Material = Enum.Material.SmoothPlastic
+			d.Reflectance = 0
+			if d:IsA("MeshPart") then
+				d.TextureID = ""
+			end
+		elseif d:IsA("SpecialMesh") then
+			d.TextureId = ""
+			d.VertexColor = Vector3.one
+		end
+	end
+end
+
+-- A full-size ViewportFrame inside `view` showing `model` through a copy of `camera`, moved by
+-- `offset` (a share of the view's size).
+local function layer(view: ViewportFrame, name: string, model: Model, camera: Camera, zIndex: number, offset: Vector2): ViewportFrame
+	local frame = Instance.new("ViewportFrame")
+	frame.Name = name
+	frame.BackgroundTransparency = 1
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Position = UDim2.fromScale(offset.X, offset.Y)
+	frame.ZIndex = zIndex
+	local world = Instance.new("WorldModel")
+	model.Parent = world
+	world.Parent = frame
+	local cam = camera:Clone()
+	cam.Parent = frame
+	frame.CurrentCamera = cam
+	frame.Parent = view
+	return frame
+end
+
+-- Draws the hero's model in `view`, framed on the head and shoulders, with an outline.
+-- Skips the work when `view` already shows this hero. Returns false when the hero has no model in
+-- ReplicatedStorage.Heros. The model is drawn in child ViewportFrames ("Main" on top of the
+-- "Stroke" copies); `view` itself stays empty.
 function ItemDisplay.FillHeroViewport(view: ViewportFrame, heroName: string): boolean
-	if view:GetAttribute("Hero") == heroName and view:FindFirstChildOfClass("WorldModel") then
+	if view:GetAttribute("Hero") == heroName and view:FindFirstChild("Main") then
 		return true
 	end
 	view:ClearAllChildren()
+	view.CurrentCamera = nil
 	view:SetAttribute("Hero", nil)
 	local template = HeroConfig.GetTemplate(heroName)
 	if not template then
@@ -177,9 +238,6 @@ function ItemDisplay.FillHeroViewport(view: ViewportFrame, heroName: string): bo
 
 	local model = template:Clone()
 	prepareModel(model)
-	local world = Instance.new("WorldModel")
-	model.Parent = world
-	world.Parent = view
 
 	local head = model:FindFirstChild("Head") :: BasePart?
 	local root = (model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or head) :: BasePart?
@@ -189,19 +247,30 @@ function ItemDisplay.FillHeroViewport(view: ViewportFrame, heroName: string): bo
 		local facing = root.CFrame
 		local up = facing.UpVector
 		local headHeight = head.Size.Y
-		-- Head (with hair / hats) + shoulders: center just below the head, frame about 3 heads tall.
-		local focus = head.Position - up * headHeight * 0.3
-		local frameHeight = headHeight * 3
+		-- Head (with hair / hats) + shoulders, PORTRAIT_HEADS tall, shifted by PORTRAIT_LIFT.
+		local focus = head.Position + up * headHeight * PORTRAIT_LIFT
+		local frameHeight = headHeight * PORTRAIT_HEADS
 		local distance = (frameHeight / 2) / math.tan(math.rad(PORTRAIT_FOV / 2))
 		local dir = (CFrame.fromAxisAngle(up, PORTRAIT_YAW) * facing.LookVector).Unit
-		camera.CFrame = CFrame.lookAt(focus + dir * distance + up * headHeight * 0.2, focus, up)
+		-- Camera level with the focus: straight on, no looking down.
+		camera.CFrame = CFrame.lookAt(focus + dir * distance, focus, up)
 	else
 		local cf, size = model:GetBoundingBox()
 		local distance = (size.Magnitude / 2) / math.tan(math.rad(PORTRAIT_FOV / 2))
 		camera.CFrame = CFrame.lookAt(cf.Position + cf.LookVector * distance, cf.Position)
 	end
-	camera.Parent = view
-	view.CurrentCamera = camera
+
+	for i, d in STROKE_DIRS do
+		local copy = model:Clone()
+		whiten(copy)
+		local stroke = layer(view, "Stroke" .. i, copy, camera, view.ZIndex, d * STROKE_SCALE)
+		-- White ambient and no directional light: the silhouette is flat white, then tinted.
+		stroke.Ambient = Color3.new(1, 1, 1)
+		stroke.LightColor = Color3.new(0, 0, 0)
+		stroke.ImageColor3 = STROKE_COLOR
+	end
+	layer(view, "Main", model, camera, view.ZIndex + 1, Vector2.zero)
+	camera:Destroy()
 	view:SetAttribute("Hero", heroName)
 	return true
 end

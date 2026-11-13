@@ -17,8 +17,12 @@
 -- Stats come from the pad's upgrade levels (slot attributes "LevelDamage" / "LevelSpeed" / "LevelWalk",
 -- HeroConfig.Upgrades) times their grades ("GradeDamage" ..., HeroConfig.StatValue): damage and swing speed are read every swing, walk speed and the "Level N"
 -- on the HeroBar are set on spawn and by HeroWorkerService.ApplyLevels(plot, slotIndex).
+-- Zone swaps: while the plot's "HeroesHold" is set (ZoneService), heroes drop what they are doing, run
+-- back into the HeroGate and hide (ServerStorage.HiddenHeroes). Once it clears they walk out again.
+-- The plot's "HeroesOutside" = how many heroes are not hidden yet; ZoneService waits for it to reach 0.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local TreeService = require(script.Parent:WaitForChild("TreeService"))
@@ -36,6 +40,15 @@ local GROUND_RAY_OFFSET = 2 -- raycast from just above the root so the gate's ar
 local WALK_ANIM_SPEED = 14.5 -- walk speed the walk animation was made for
 local RUN_ANIM_SPEED = HeroConfig.Worker.RunAnimSpeed or 16 -- same for the run animation
 local RETARGET_PAUSE = 0.35
+local RETREAT_SPEED_MULT = 1.6 -- heroes run back to the gate this much faster on a zone swap
+local RETREAT_MAX_TIME = 3 -- seconds; a hero still outside by then just vanishes into the gate
+
+local hiddenFolder = ServerStorage:FindFirstChild("HiddenHeroes")
+if not hiddenFolder then
+	hiddenFolder = Instance.new("Folder")
+	hiddenFolder.Name = "HiddenHeroes"
+	hiddenFolder.Parent = ServerStorage
+end
 
 type Worker = {
 	model: Model,
@@ -51,8 +64,10 @@ type Worker = {
 	chops: { AnimationTrack }, -- swing animations, one picked at random per swing
 	lastChop: number?,
 	running: boolean?, -- tracks.Walk is the run animation (HeroModels.RunAnimationId)
-	spawnCFrame: CFrame,
-	exit: Vector3?,
+	spawnCFrame: CFrame, -- where it spawned (the gate may have moved since; see gateSpawn)
+	spread: number, -- sideways offset from HeroSpawn, so heroes don't stack
+	exitOffset: Vector3, -- offset from HeroExit
+	hidden: boolean, -- inside the gate during a zone swap
 	movement: any,
 }
 
@@ -98,19 +113,36 @@ local function statOf(w: Worker, stat: string): number
 	return value
 end
 
--- "Level N" on the HeroBar above the hero = the pad's Damage level.
+-- HeroBar above the hero: "Level N" = the pad's Damage level, Power = the damage it really deals.
 local function drawBarLevel(w: Worker)
-	local attachment = w.root:FindFirstChild("InfoAttachment")
-	local bar = attachment and attachment:FindFirstChild("HeroBar")
-	local container = bar and bar:FindFirstChild("Container")
-	local label = container and container:FindFirstChild("Level")
-	if label and label:IsA("TextLabel") then
-		label.Text = "Level " .. levelOf(w.plot, w.slot, "Damage")
-	end
+	HeroModels.DrawBar(w.model, levelOf(w.plot, w.slot, "Damage"), statOf(w, "Damage"))
 end
 
 local function isAlive(w: Worker): boolean
 	return w.alive and w.model.Parent ~= nil and w.owner.Parent ~= nil and w.humanoid.Health > 0
+end
+
+local function zoneBusy(w: Worker): boolean
+	return w.plot:GetAttribute("HeroesHold") == true
+end
+
+-- HeroSpawn / HeroExit as they are now (the HeroGate follows the floor's depth).
+local function gateSpawn(w: Worker): CFrame
+	local gate = w.plot:FindFirstChild("HeroGate")
+	local part = gate and gate:FindFirstChild("HeroSpawn")
+	if part and part:IsA("BasePart") then
+		return part.CFrame * CFrame.new(w.spread, 0, 0)
+	end
+	return w.spawnCFrame
+end
+
+local function gateExit(w: Worker): Vector3?
+	local gate = w.plot:FindFirstChild("HeroGate")
+	local part = gate and gate:FindFirstChild("HeroExit")
+	if part and part:IsA("BasePart") then
+		return part.Position + w.exitOffset
+	end
+	return nil
 end
 
 local function treeAlive(tree: Model): boolean
@@ -327,6 +359,86 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 	return felled
 end
 
+-- Zone swaps -------------------------------------------------------------------------------------
+
+local function countOutside(plot: Model)
+	local n = 0
+	for _, w in workersByPlot[plot] or {} do
+		if w.alive and not w.hidden then
+			n += 1
+		end
+	end
+	plot:SetAttribute("HeroesOutside", n)
+end
+
+local function workersFolder(plot: Model): Folder
+	local folder = plot:FindFirstChild("HeroWorkers")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "HeroWorkers"
+		folder.Parent = plot
+	end
+	return folder :: Folder
+end
+
+local retreat: (w: Worker) -> ()
+
+-- Walks from the gate's spawn point out to its exit.
+local function walkOut(w: Worker)
+	local exit = gateExit(w)
+	if exit and isAlive(w) then
+		walkTo(w, exit, 1, function()
+			return zoneBusy(w)
+		end)
+	end
+end
+
+-- Runs back into the gate, hides until the zone swap is over, then walks back out.
+retreat = function(w: Worker)
+	release(w.target)
+	w.target = nil
+	for _, track in w.chops do
+		track:Stop(0.1)
+	end
+
+	if not w.hidden then
+		local speed = w.movement and w.movement:GetSpeed()
+		if w.movement then
+			w.movement:SetSpeed(speed * RETREAT_SPEED_MULT)
+		end
+		local start = os.clock()
+		walkTo(w, gateSpawn(w).Position, 1.5, function()
+			return os.clock() - start > RETREAT_MAX_TIME or not zoneBusy(w)
+		end)
+		if w.movement then
+			w.movement:SetSpeed(speed)
+		end
+		if not isAlive(w) or not zoneBusy(w) then
+			return -- gone, or the swap was over before the hero got home: just carry on
+		end
+		w.hidden = true
+		w.model.Parent = hiddenFolder
+		countOutside(w.plot)
+	end
+
+	while w.alive and w.model.Parent ~= nil and zoneBusy(w) do
+		task.wait(0.1)
+	end
+	if not w.alive or w.model.Parent == nil then
+		return
+	end
+
+	-- Out of the gate again, at its new height.
+	w.model:PivotTo(gateSpawn(w))
+	w.model.Parent = workersFolder(w.plot)
+	w.hidden = false
+	if w.movement then
+		w.movement:SnapToGround()
+	end
+	countOutside(w.plot)
+	walkOut(w)
+end
+
 -- Main loop --------------------------------------------------------------------------------------
 
 local function run(w: Worker)
@@ -344,19 +456,26 @@ local function run(w: Worker)
 		task.wait(0.1)
 	end
 
-	if w.exit then
-		walkTo(w, w.exit, 1)
+	if zoneBusy(w) then
+		retreat(w) -- spawned during a zone swap: wait inside the gate
+	else
+		walkOut(w)
 	end
 
 	while isAlive(w) do
+		if zoneBusy(w) then
+			retreat(w)
+			continue
+		end
+
 		-- Fell off the map somehow: back to the gate.
-		if w.root.Position.Y < w.spawnCFrame.Position.Y - 40 then
-			w.model:PivotTo(w.spawnCFrame)
+		if w.root.Position.Y < gateSpawn(w).Position.Y - 40 then
+			w.model:PivotTo(gateSpawn(w))
 		end
 
 		local tree = pickTree(w)
 		if not tree then
-			task.wait(1)
+			task.wait(0.25)
 			continue
 		end
 		claim(tree)
@@ -365,13 +484,13 @@ local function run(w: Worker)
 		local center, radius = trunkOf(w, tree)
 		local range = attackRange(tree, center, radius, w.root.Position)
 		walkTo(w, center, range, function()
-			return not treeAlive(tree)
+			return not treeAlive(tree) or zoneBusy(w)
 		end)
 
 		center, radius = trunkOf(w, tree)
 		range = attackRange(tree, center, radius, w.root.Position)
-		if isAlive(w) and treeAlive(tree) and flatDist(w.root.Position, center) <= range + RANGE_SLACK then
-			while isAlive(w) and treeAlive(tree) do
+		if isAlive(w) and treeAlive(tree) and not zoneBusy(w) and flatDist(w.root.Position, center) <= range + RANGE_SLACK then
+			while isAlive(w) and treeAlive(tree) and not zoneBusy(w) do
 				w.movement:FaceTowards(center)
 				if swing(w, tree, center, radius) then
 					break
@@ -386,16 +505,6 @@ local function run(w: Worker)
 end
 
 -- Spawning ---------------------------------------------------------------------------------------
-
-local function workersFolder(plot: Model): Folder
-	local folder = plot:FindFirstChild("HeroWorkers")
-	if not folder then
-		folder = Instance.new("Folder")
-		folder.Name = "HeroWorkers"
-		folder.Parent = plot
-	end
-	return folder :: Folder
-end
 
 -- Parts that count as ground for heroes on this plot.
 local function groundOf(plot: Model): { Instance }
@@ -430,6 +539,7 @@ function HeroWorkerService.Despawn(plot: Model, slot: number)
 	if w.model.Parent then
 		w.model:Destroy()
 	end
+	countOutside(plot)
 end
 
 function HeroWorkerService.DespawnPlot(plot: Model)
@@ -485,10 +595,10 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 
 	local gate = plot:FindFirstChild("HeroGate")
 	local spawnPart = gate and gate:FindFirstChild("HeroSpawn") :: BasePart?
-	local exitPart = gate and gate:FindFirstChild("HeroExit") :: BasePart?
 	local spawnCFrame = if spawnPart then spawnPart.CFrame else plot:GetPivot() + Vector3.new(0, 5, 0)
 	-- Spread heroes a little so they don't all pop out of the exact same spot.
-	spawnCFrame *= CFrame.new(rng:NextNumber(-2, 2), 0, 0)
+	local spread = rng:NextNumber(-2, 2)
+	spawnCFrame *= CFrame.new(spread, 0, 0)
 	model:PivotTo(spawnCFrame)
 	model.Parent = workersFolder(plot)
 	pcall(root.SetNetworkOwner, root, nil)
@@ -518,7 +628,9 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 		tracks = {},
 		chops = {},
 		spawnCFrame = spawnCFrame,
-		exit = if exitPart then exitPart.Position + Vector3.new(rng:NextNumber(-3, 3), 0, rng:NextNumber(-1, 3)) else nil,
+		spread = spread,
+		exitOffset = Vector3.new(rng:NextNumber(-3, 3), 0, rng:NextNumber(-1, 3)),
+		hidden = false,
 		movement = movement,
 	}
 	setupAnimations(w)
@@ -526,6 +638,7 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 
 	workersByPlot[plot] = workersByPlot[plot] or {}
 	workersByPlot[plot][slot] = w
+	countOutside(plot)
 
 	model.Destroying:Connect(function()
 		w.alive = false
