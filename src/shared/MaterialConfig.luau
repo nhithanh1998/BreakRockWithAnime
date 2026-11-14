@@ -29,7 +29,12 @@ MaterialConfig.Carry = {
 	-- What the carried stack looks like (CarryService): one box per BoxEvery materials, at most MaxBoxes.
 	BoxEvery = 5,
 	MaxBoxes = 5,
-	BoxSize = Vector3.new(1.5, 0.8, 1),
+	BoxSize = Vector3.new(1.5, 0.55, 1),
+	-- The stack is held out in front with both hands (CarryPose client pose).
+	HoldOut = 0.35, -- studs between the chest and the boxes
+	HoldUp = 0.45, -- studs the bottom box sits above the torso's bottom (on the hands)
+	-- Arm pose while carrying (degrees): shoulders tilt forward, elbows bend up, arms turn in.
+	Pose = { ShoulderPitch = 50, ShoulderYaw = 14, ElbowBend = 45, BlendTime = 0.15 },
 }
 
 export type Material = {

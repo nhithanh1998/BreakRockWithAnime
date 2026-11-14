@@ -2,12 +2,12 @@
 -- LightingPresets: how the world is lit for each weather. Read by LightingController (client), which
 -- tweens Lighting, Atmosphere, colour grading, Bloom, SunRays, DepthOfField and the Sky between them.
 --
--- Rule of thumb for this game: ALWAYS bright, clean and readable. Weather changes the mood (colour
+-- Rule of thumb for this game: soft, warm and readable (never glaring, never dark). Weather changes the mood (colour
 -- temperature, a bit of haze, a bit of contrast) but never makes the map grey or dark.
 --   * Atmosphere.Density stays <= ~0.42 so far things stay visible and near things stay crisp.
 --   * Ambient / OutdoorAmbient stay high (shadows never go black), even at night.
 --   * ExposureCompensation goes UP when the sky goes darker (rain / storm / night) to make up for it.
---   * Grade.Saturation stays >= 0 so colours never look washed out.
+--   * Grade.Saturation stays around -0.1..0.1: muted, never neon, never washed out.
 --   * Bloom Threshold stays > 1 by day: only neon / very bright things glow, nothing burns out.
 --
 -- Weathers pick a preset with Visual.Lighting in WeatherConfig (default: the weather's Id). No weather
@@ -33,25 +33,26 @@ local LightingPresets = {}
 LightingPresets.TweenTime = 3 -- seconds for a weather change (2-4 feels smooth)
 
 LightingPresets.Presets = {
-	-- Sunny: warm, vivid, deep blue sky. Everything else falls back to these values.
+	-- Sunny: a soft, warm autumn afternoon (easy on the eyes: lower sun, muted colours, warm haze, no
+	-- glare). Everything else falls back to these values.
 	Clear = {
 		Lighting = {
-			Brightness = 3.2,
+			Brightness = 2.3,
 			ClockTime = 14.5,
-			Ambient = rgb(150, 145, 135),
-			OutdoorAmbient = rgb(175, 170, 158),
-			ColorShift_Top = rgb(255, 242, 220),
-			ColorShift_Bottom = rgb(35, 40, 55),
-			EnvironmentDiffuseScale = 1,
-			EnvironmentSpecularScale = 0.5,
-			ExposureCompensation = 0.1,
+			Ambient = rgb(138, 132, 124),
+			OutdoorAmbient = rgb(158, 152, 142),
+			ColorShift_Top = rgb(255, 236, 212),
+			ColorShift_Bottom = rgb(40, 40, 50),
+			EnvironmentDiffuseScale = 0.9,
+			EnvironmentSpecularScale = 0.2,
+			ExposureCompensation = -0.05,
 		},
-		Atmosphere = { Density = 0.2, Offset = 0.15, Color = rgb(210, 228, 255), Decay = rgb(140, 180, 230), Glare = 0.1, Haze = 0.3 },
-		Grade = { Brightness = 0.03, Contrast = 0.08, Saturation = 0.18, TintColor = rgb(255, 252, 246) },
-		Bloom = { Intensity = 0.3, Size = 22, Threshold = 1.35 },
-		SunRays = { Intensity = 0.06, Spread = 0.25 },
+		Atmosphere = { Density = 0.24, Offset = 0.12, Color = rgb(232, 222, 204), Decay = rgb(188, 172, 150), Glare = 0, Haze = 1 },
+		Grade = { Brightness = 0, Contrast = 0.04, Saturation = -0.1, TintColor = rgb(255, 246, 232) },
+		Bloom = { Intensity = 0.15, Size = 20, Threshold = 1.8 },
+		SunRays = { Intensity = 0.03, Spread = 0.2 },
 		DepthOfField = { FarIntensity = 0, NearIntensity = 0, FocusDistance = 50, InFocusRadius = 50 },
-		Sky = { StarCount = 0, CelestialBodiesShown = true, SunAngularSize = 14, MoonAngularSize = 11 },
+		Sky = { StarCount = 0, CelestialBodiesShown = true, SunAngularSize = 12, MoonAngularSize = 11 },
 	},
 
 	-- Overcast: soft, even light, mild colours, still clean.

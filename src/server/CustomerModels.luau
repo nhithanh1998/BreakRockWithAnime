@@ -1,97 +1,29 @@
--- CustomerModels: builds the Farm Stand customer looks once, when the server starts, as R15 rigs in
--- ReplicatedStorage.CustomerModels (Customer1..N). Clients clone them for the customer NPCs
--- (CustomerClient); the server never moves a customer.
--- Each look is a default R15 body (Players:CreateHumanoidModelFromDescription) with its own skin,
--- shirt and pants colours and, for some, a simple cap. StandConfig.Customers.Templates looks.
+-- CustomerModels: the "Guest" customers of the Farm Stands: real Roblox players' R15 avatars.
+-- The other customer looks are the hand-made R15 models in ReplicatedStorage.Customers (made in
+-- Studio); clients mix both (StandCustomers, StandConfig.Customers.GuestChance).
+--
+-- Who: the friends of the players in the server (a few per player, FriendsPerPlayer), and when
+-- there are not enough of those, the players themselves (so a fresh server still has guests).
+-- At most MaxGuests avatars; the oldest go first. Built on the server
+-- (Players:CreateHumanoidModelFromDescription) into ReplicatedStorage.GuestCustomers as
+-- "Guest_<userId>" with attributes UserId, Username, DisplayName (the client puts "@Username" over
+-- the head). The server never moves a customer.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local StandConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("StandConfig"))
 
+local CFG = StandConfig.Customers
+local FOLDER = "GuestCustomers"
+
 local CustomerModels = {}
 
-local SKINS = {
-	Color3.fromRGB(255, 220, 185),
-	Color3.fromRGB(234, 184, 146),
-	Color3.fromRGB(204, 142, 105),
-	Color3.fromRGB(160, 105, 75),
-	Color3.fromRGB(110, 72, 50),
-}
-local SHIRTS = {
-	Color3.fromRGB(220, 70, 60),
-	Color3.fromRGB(70, 130, 220),
-	Color3.fromRGB(80, 180, 90),
-	Color3.fromRGB(240, 190, 60),
-	Color3.fromRGB(160, 90, 200),
-	Color3.fromRGB(240, 140, 60),
-	Color3.fromRGB(60, 190, 190),
-	Color3.fromRGB(235, 235, 235),
-}
-local PANTS = {
-	Color3.fromRGB(50, 60, 90),
-	Color3.fromRGB(70, 50, 40),
-	Color3.fromRGB(40, 40, 45),
-	Color3.fromRGB(110, 110, 120),
-}
+local folder: Folder
+local order: { number } = {} -- user ids, oldest first
+local building: { [number]: boolean } = {}
 
-local function addCap(model: Model, color: Color3)
-	local head = model:FindFirstChild("Head") :: BasePart?
-	if not head then
-		return
-	end
-	local cap = Instance.new("Part")
-	cap.Name = "Cap"
-	cap.Size = Vector3.new(1.25, 0.35, 1.25)
-	cap.Color = color
-	cap.Material = Enum.Material.SmoothPlastic
-	cap.CanCollide = false
-	cap.CanQuery = false
-	cap.CanTouch = false
-	cap.Massless = true
-	cap.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2 + 0.1, 0)
-	local brim = cap:Clone()
-	brim.Name = "Brim"
-	brim.Size = Vector3.new(1.1, 0.12, 0.6)
-	brim.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2 - 0.02, -0.75)
-	for _, p in { cap, brim } do
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = head
-		weld.Part1 = p
-		weld.Parent = p
-		p.Parent = model
-	end
-end
-
-local function build(i: number, rng: Random): Model?
-	local desc = Instance.new("HumanoidDescription")
-	local skin = SKINS[rng:NextInteger(1, #SKINS)]
-	local shirt = SHIRTS[(i - 1) % #SHIRTS + 1]
-	local pants = PANTS[rng:NextInteger(1, #PANTS)]
-	desc.HeadColor = skin
-	desc.LeftArmColor = skin
-	desc.RightArmColor = skin
-	desc.TorsoColor = shirt
-	desc.LeftLegColor = pants
-	desc.RightLegColor = pants
-	local ok, model = pcall(function()
-		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
-	end)
-	if not ok or not model then
-		warn("[CustomerModels] could not build a customer: " .. tostring(model))
-		return nil
-	end
-	model.Name = "Customer" .. i
-	-- arms in the shirt colour (upper arms), hands stay skin
-	for _, name in { "LeftUpperArm", "RightUpperArm" } do
-		local part = model:FindFirstChild(name)
-		if part and part:IsA("BasePart") then
-			part.Color = shirt
-		end
-	end
-	if rng:NextNumber() < 0.5 then
-		addCap(model, SHIRTS[rng:NextInteger(1, #SHIRTS)])
-	end
+local function clean(model: Model)
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
@@ -106,26 +38,94 @@ local function build(i: number, rng: Random): Model?
 			d:Destroy()
 		end
 	end
-	return model
+end
+
+local function trim()
+	while #order > CFG.MaxGuests do
+		local id = table.remove(order, 1) :: number
+		local old = folder:FindFirstChild("Guest_" .. id)
+		if old then
+			old:Destroy()
+		end
+	end
+end
+
+local function addGuest(userId: number, username: string, displayName: string)
+	if userId <= 0 or building[userId] or folder:FindFirstChild("Guest_" .. userId) then
+		return
+	end
+	building[userId] = true
+	local ok, model = pcall(function()
+		local desc = Players:GetHumanoidDescriptionFromUserId(userId)
+		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	end)
+	building[userId] = nil
+	if not ok or not model then
+		warn(("[CustomerModels] no avatar for %d: %s"):format(userId, tostring(model)))
+		return
+	end
+	model.Name = "Guest_" .. userId
+	model:SetAttribute("Guest", true)
+	model:SetAttribute("UserId", userId)
+	model:SetAttribute("Username", username)
+	model:SetAttribute("DisplayName", displayName)
+	clean(model)
+	model.Parent = folder
+	table.insert(order, userId)
+	trim()
+end
+
+local function friendsOf(player: Player): { { id: number, name: string, display: string } }
+	local out = {}
+	local ok, pages = pcall(function()
+		return Players:GetFriendsAsync(player.UserId)
+	end)
+	if not ok or not pages then
+		return out
+	end
+	local okPage, page = pcall(function()
+		return pages:GetCurrentPage()
+	end)
+	if okPage and page then
+		for _, f in page do
+			table.insert(out, { id = f.Id, name = f.Username, display = f.DisplayName or f.Username })
+		end
+	end
+	return out
+end
+
+local function onPlayer(player: Player)
+	local friends = friendsOf(player)
+	local rng = Random.new()
+	for i = #friends, 2, -1 do
+		local j = rng:NextInteger(1, i)
+		friends[i], friends[j] = friends[j], friends[i]
+	end
+	for i = 1, math.min(CFG.FriendsPerPlayer, #friends) do
+		local f = friends[i]
+		addGuest(f.id, f.name, f.display)
+	end
+	-- not enough friends around: real players in the server are guests too
+	if #order < CFG.MinGuests then
+		addGuest(player.UserId, player.Name, player.DisplayName)
+	end
 end
 
 function CustomerModels.Start()
-	local folder = ReplicatedStorage:FindFirstChild("CustomerModels")
-	if folder then
-		folder:Destroy()
+	local old = ReplicatedStorage:FindFirstChild(FOLDER)
+	if old then
+		old:Destroy()
 	end
 	local f = Instance.new("Folder")
-	f.Name = "CustomerModels"
-	task.spawn(function()
-		local rng = Random.new(42)
-		for i = 1, StandConfig.Customers.Templates do
-			local model = build(i, rng)
-			if model then
-				model.Parent = f
-			end
-		end
-		f.Parent = ReplicatedStorage
+	f.Name = FOLDER
+	f.Parent = ReplicatedStorage
+	folder = f
+	Players.PlayerAdded:Connect(function(player)
+		task.spawn(onPlayer, player)
 	end)
+	for _, player in Players:GetPlayers() do
+		task.spawn(onPlayer, player)
+	end
 end
 
 return CustomerModels

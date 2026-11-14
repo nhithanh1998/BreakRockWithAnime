@@ -38,10 +38,40 @@ StandConfig.Vip = {
 
 -- Customer NPCs (CustomerClient, client only: the sale is decided on the server).
 StandConfig.Customers = {
-	WalkSpeed = 11, -- studs / s
+	WalkSpeed = 6.5, -- studs / s: a slow, relaxed stroll
+	PaceMin = 0.85, -- each customer walks at WalkSpeed x random(PaceMin, PaceMax)
+	PaceMax = 1.15,
+	WalkAnimSpeed = 8, -- the walk animation plays at 1x at this speed (slower walkers step slower)
+	-- Sidewalk manners (StandCustomers): a walking customer looks Look studs ahead, Width to each side.
+	-- Someone in front going the same way: it follows Gap studs behind. Someone standing or coming the
+	-- other way: it slows to SlowFar (SlowNear closer than Gap) and steps up to MaxSide studs aside
+	-- (head-on, both keep to their right); one walking off waits for one walking in to pass first.
+	-- Smooth / SideIn / SideOut: how fast speed and sidestep change.
+	Avoid = {
+		Look = 4.5,
+		Width = 2.2,
+		Gap = 2.6,
+		SlowFar = 0.7,
+		SlowNear = 0.35,
+		MaxSide = 1.8,
+		Smooth = 5,
+		SideIn = 3,
+		SideOut = 1.5,
+		PastLine = 3.2, -- studs beside the queue a customer walks off from the counter (not through the line)
+	},
 	ServeTime = 1.2, -- seconds at the counter
+	FadeIn = 0.8, -- seconds to fade in after walking out of the spawn
+	FadeOut = 6, -- studs before the exit where a leaving customer starts fading out (gone at the exit)
 	MaxVisible = 20, -- NPCs per stand on one client; above that a sale only shows its "+$"
-	Templates = 8, -- different customer looks (R15, made once on the server)
+	-- Looks: the R15 models in ReplicatedStorage.Customers, mixed with "Guests": real Roblox players'
+	-- avatars with "@username" over the head (CustomerModels builds them on the server).
+	GuestChance = 0.35, -- of each customer, when there are guest avatars
+	MaxGuests = 16, -- guest avatars kept at once (the oldest go first)
+	FriendsPerPlayer = 6, -- friends of each player in the server that become guests
+	MinGuests = 4, -- fewer guests than this: the players in the server are guests too
+	-- Sold out: the customer stays at the counter this long (shakes its head, slumps, says something:
+	-- ChatConfig.Customer.SoldOutLines), then walks off empty handed.
+	UpsetTime = 2.8,
 }
 
 -- Stand Keeper heroes: each hero on a keeper pad adds these flat bonuses, by rarity (the higher the
@@ -72,6 +102,7 @@ StandConfig.Helper = {
 	DropTime = 0.8, -- seconds at the stand
 	ResumeBelow = 0.9, -- a resting helper starts again when stock < this x MaxStock
 	Stagger = 1.5, -- seconds between the helpers' starts (helper N waits (N - 1) x this)
+	SpotSpacing = 2, -- studs between the helpers' spots at the chest and at the stand (side by side)
 	-- By rarity: extra materials per trip and a speed multiplier.
 	RarityBonus = {
 		Common = { Carry = 0, Speed = 1 },

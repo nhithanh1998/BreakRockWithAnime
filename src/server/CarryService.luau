@@ -10,8 +10,10 @@
 --   CarryCount     how many materials they carry
 --   CarryCapacity  how many they can carry (MaterialConfig.Carry.BaseCapacity + "CarryBonus" attribute,
 --                  set by the Carry Capacity upgrade later)
--- On the character: a "CarryStack" of boxes on the back (one per BoxEvery materials, coloured
--- by what is carried), so everyone sees who carries what.
+-- On the character: a "CarryStack" of boxes held out in front (one per BoxEvery materials, coloured
+-- by what is carried), so everyone sees who carries what. The character's "Carrying" attribute makes
+-- every client pose its arms under the stack (CarryPose).
+-- The Loot Pad may be a part or a pad model (its "RestockMat" part is the mat).
 --
 --   CarryService.Count(player) / Capacity(player) / Room(player)
 --   CarryService.Add(player, { [id] = n }) -> { [id] = n } added (trimmed to the room left)
@@ -122,7 +124,8 @@ local function drawStack(player: Player)
 	stack.Name = STACK_NAME
 	stack:SetAttribute("Key", key)
 	local size = CARRY.BoxSize
-	local base = torso.CFrame * CFrame.new(0, -torso.Size.Y / 2 + size.Y / 2, torso.Size.Z / 2 + size.Z / 2 + 0.1)
+	-- held out in front at the hands (CarryPose bends both arms forward under the bottom box)
+	local base = torso.CFrame * CFrame.new(0, -torso.Size.Y / 2 + size.Y / 2 + CARRY.HoldUp, -(torso.Size.Z / 2 + size.Z / 2 + CARRY.HoldOut))
 	for i = 1, boxes do
 		local box = Instance.new("Part")
 		box.Name = "Box"
@@ -215,14 +218,41 @@ local function onPad(player: Player, pad: BasePart): boolean
 		and rel.Y <= CARRY.PadHeight
 end
 
+-- The pad's mat: "LootPad" is a part, or a pad model whose mat is its "RestockMat" part (else its
+-- PrimaryPart / biggest part).
+local function padPart(plot: Instance): BasePart?
+	local pad = plot:FindFirstChild(PAD_NAME)
+	if not pad then
+		return nil
+	end
+	if pad:IsA("BasePart") then
+		return pad
+	end
+	local mat = pad:FindFirstChild("RestockMat", true)
+	if mat and mat:IsA("BasePart") then
+		return mat
+	end
+	if pad:IsA("Model") and pad.PrimaryPart then
+		return pad.PrimaryPart
+	end
+	local best: BasePart? = nil
+	for _, d in pad:GetDescendants() do
+		if d:IsA("BasePart") and (not best or d.Size.X * d.Size.Z > best.Size.X * best.Size.Z) then
+			best = d
+		end
+	end
+	return best
+end
+
 local function tick(player: Player)
 	local plot = PlotService.GetPlot(player)
-	local pad = plot and plot:FindFirstChild(PAD_NAME)
-	if not plot or not pad or not pad:IsA("BasePart") or not onPad(player, pad) then
+	local pad = plot and padPart(plot)
+	if not plot or not pad or not onPad(player, pad) then
 		return
 	end
-	local own = plot:FindFirstChild("TreasureChest", true)
-	if not own or not own:IsA("Model") then
+	-- the plot's own chest, else the shared workspace chest (same lookup as ChestService)
+	local own = ChestService.GetChest(plot)
+	if not own then
 		return
 	end
 	local room = CarryService.Room(player)

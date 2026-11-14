@@ -30,6 +30,10 @@ local tooltip = gui:WaitForChild("Tooltip") :: Frame
 
 local HERO_VALUE_COLOR = ItemDisplay.HERO_VALUE_COLOR
 local MATERIAL_VALUE_COLOR = ItemDisplay.MATERIAL_VALUE_COLOR
+local FILL_OK = Color3.fromRGB(60, 200, 80)
+local FILL_WARN = Color3.fromRGB(255, 160, 30)
+local FILL_FULL = Color3.fromRGB(235, 60, 50)
+local progressStroke = progress:FindFirstChildOfClass("UIStroke") :: UIStroke
 
 local openChest: Model? = nil
 local chestConnections: { RBXScriptConnection } = {}
@@ -42,19 +46,68 @@ local commas = ItemDisplay.Commas
 local abbreviate = ItemDisplay.Abbreviate
 local itemInfo = ItemDisplay.Info
 
--- Grid sizing: 5 square cells per row, sized from the grid's width (scale cell sizes don't work
--- well inside an auto-sized ScrollingFrame).
+-- Layout: the panel is sized in code. Width follows the screen; height follows the number of rows
+-- (1 to MAX_ROWS, then the grid scrolls), so a nearly empty chest is a small window, not a big
+-- empty box. Everything is placed in pixels from the panel width W.
 local COLUMNS = 5
+local MAX_ROWS = 3
 local gridLayout = grid:WaitForChild("UIGridLayout") :: UIGridLayout
-local function sizeCells()
-	local width = grid.AbsoluteSize.X - 14 - grid.ScrollBarThickness
-	local gap = math.floor(width * 0.016)
-	local cell = math.floor((width - gap * (COLUMNS - 1)) / COLUMNS)
+local title = panel:WaitForChild("Title") :: TextLabel
+local closeShadow = panel:FindFirstChild("CloseShadow") :: Frame?
+local shownRows = 1
+
+local function layout(itemCount: number?)
+	if itemCount then
+		shownRows = math.clamp(math.ceil(itemCount / COLUMNS), 1, MAX_ROWS)
+	end
+	local screen = gui.AbsoluteSize
+	local w = math.floor(math.clamp(screen.X * 0.445, 330, 760))
+	local pad = math.floor(w * 0.025)
+	local header = math.floor(w * 0.11)
+	local barHeight = math.floor(w * 0.065)
+	local footer = barHeight + pad * 2
+
+	local gridWidth = w - pad * 2
+	local inner = gridWidth - 14 - grid.ScrollBarThickness -- UIPadding left + right
+	local gap = math.max(4, math.floor(inner * 0.016))
+	local cell = math.floor((inner - gap * (COLUMNS - 1)) / COLUMNS)
 	gridLayout.CellPadding = UDim2.fromOffset(gap, gap)
 	gridLayout.CellSize = UDim2.fromOffset(cell, cell)
+
+	-- Fit on screen (leave room for the top bar and the hotbar).
+	local rows = shownRows
+	local function gridHeight(n: number): number
+		return n * cell + (n - 1) * gap + 8 -- UIPadding top + bottom
+	end
+	while rows > 1 and header + gridHeight(rows) + footer > screen.Y * 0.72 do
+		rows -= 1
+	end
+	local gh = gridHeight(rows)
+	local h = header + gh + footer
+
+	panel.Size = UDim2.fromOffset(w, h)
+	title.Position = UDim2.fromOffset(pad + 4, math.floor(w * 0.025))
+	title.Size = UDim2.fromOffset(math.floor(w * 0.4), math.floor(w * 0.065))
+	local closeSize = math.floor(w * 0.075)
+	closeButton.Position = UDim2.fromOffset(w - pad, math.floor(w * 0.02))
+	closeButton.Size = UDim2.fromOffset(closeSize, closeSize)
+	if closeShadow then
+		-- Darker copy just below the button: its 3D bottom edge.
+		closeShadow.Position = UDim2.fromOffset(w - pad, math.floor(w * 0.02) + 4)
+		closeShadow.Size = UDim2.fromOffset(closeSize, closeSize)
+	end
+	grid.Position = UDim2.fromOffset(pad, header)
+	grid.Size = UDim2.fromOffset(gridWidth, gh)
+	emptyLabel.Position = UDim2.fromOffset(pad * 4, header + math.floor(gh * 0.15))
+	emptyLabel.Size = UDim2.fromOffset(w - pad * 8, math.floor(gh * 0.7))
+	progress.AnchorPoint = Vector2.new(0.5, 0)
+	progress.Position = UDim2.fromOffset(math.floor(w / 2), header + gh + pad)
+	progress.Size = UDim2.fromOffset(gridWidth - pad * 2, barHeight)
 end
-grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeCells)
-sizeCells()
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	layout()
+end)
+layout()
 
 -- Tooltip ----------------------------------------------------------------------------------------
 
@@ -102,12 +155,7 @@ local function makeSlot(stack: string): TextButton
 	local info = itemInfo(stack)
 	local slot = slotTemplate:Clone()
 	slot.Name = stack
-	local bg = TreeConfig.RaritySlotColors[info.rarity] or Color3.fromRGB(120, 120, 120)
-	slot.BackgroundColor3 = bg
-	local border = slot:FindFirstChild("Border") :: UIStroke?
-	if border then
-		border.Color = bg:Lerp(Color3.new(1, 1, 1), 0.4)
-	end
+	ItemDisplay.PaintRarity(slot, info.rarity)
 	local nameLabel = slot:FindFirstChild("ItemName") :: TextLabel
 	nameLabel.Text = info.name
 	local valueLabel = slot:FindFirstChild("Value") :: TextLabel
@@ -181,11 +229,19 @@ local function render()
 		showTip(tipFor)
 	end
 
+	layout(#stacks)
+
 	local stored = chest:GetAttribute("Stored") or 0
 	local capacity = chest:GetAttribute("Capacity") or 0
-	progressText.Text = ("%s/%s Items"):format(commas(stored), abbreviate(capacity))
+	progressText.Text = ("%s / %s items"):format(commas(stored), abbreviate(capacity))
 	local ratio = if capacity > 0 then math.clamp(stored / capacity, 0, 1) else 0
-	TweenService:Create(progressFill, TweenInfo.new(0.2), { Size = UDim2.fromScale(math.max(ratio, 0.01), 1) }):Play()
+	-- Green while there is room, orange when it is getting full, red when (nearly) full.
+	local color = if ratio >= 0.9 then FILL_FULL elseif ratio >= 0.7 then FILL_WARN else FILL_OK
+	progressFill.BackgroundColor3 = color
+	progressStroke.Color = color
+	-- Never thinner than the bar is tall, so the rounded end stays round.
+	local minWidth = progress.AbsoluteSize.Y / math.max(progress.AbsoluteSize.X, 1)
+	TweenService:Create(progressFill, TweenInfo.new(0.2), { Size = UDim2.fromScale(math.max(ratio, minWidth), 1) }):Play()
 end
 
 local function queueRender()

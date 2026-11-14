@@ -17,6 +17,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
@@ -47,12 +48,92 @@ if not slotTemplate:FindFirstChild("HeroView") then
 	heroView.Parent = slotTemplate
 end
 
+-- Card layout: the name sits on a dark strip along the bottom (the portrait stays visible), the
+-- count is a small pill in the top-right corner. Portrait layers use ZIndex 1-2, so these go above.
+if not slotTemplate:FindFirstChild("NameBar") then
+	local nameBar = Instance.new("Frame")
+	nameBar.Name = "NameBar"
+	nameBar.AnchorPoint = Vector2.new(0, 1)
+	nameBar.Position = UDim2.fromScale(0, 1)
+	nameBar.Size = UDim2.fromScale(1, 0.4)
+	nameBar.BackgroundColor3 = Color3.new(0, 0, 0)
+	nameBar.BackgroundTransparency = 0
+	nameBar.BorderSizePixel = 0
+	nameBar.ZIndex = 4
+	local fade = Instance.new("UIGradient")
+	fade.Rotation = 90
+	fade.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.35, 0.45),
+		NumberSequenceKeypoint.new(1, 0.25),
+	})
+	fade.Parent = nameBar
+	for _, rounded in { slotTemplate, nameBar } do
+		if not rounded:FindFirstChildOfClass("UICorner") then
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 10)
+			corner.Parent = rounded
+		end
+	end
+	nameBar.Parent = slotTemplate
+
+	local itemName = slotTemplate:FindFirstChild("ItemName") :: TextLabel?
+	if itemName then
+		itemName.AnchorPoint = Vector2.new(0.5, 1)
+		itemName.Position = UDim2.new(0.5, 0, 1, -4)
+		itemName.Size = UDim2.new(1, -10, 0.3, 0)
+		itemName.TextWrapped = true
+		itemName.TextScaled = true
+		itemName.ZIndex = 5
+		local limit = itemName:FindFirstChildOfClass("UITextSizeConstraint")
+		if limit then
+			limit.MaxTextSize = 20
+		end
+		local stroke = itemName:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Thickness = 1.5
+		end
+	end
+
+	local count = slotTemplate:FindFirstChild("Count") :: TextLabel?
+	if count then
+		count.AnchorPoint = Vector2.new(1, 0)
+		count.Position = UDim2.new(1, -5, 0, 5)
+		count.Size = UDim2.fromOffset(0, 24)
+		count.AutomaticSize = Enum.AutomaticSize.X
+		count.TextScaled = false
+		count.TextSize = 18
+		count.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
+		count.BackgroundTransparency = 0.25
+		count.ZIndex = 5
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = count
+		local pad = Instance.new("UIPadding")
+		pad.PaddingLeft = UDim.new(0, 7)
+		pad.PaddingRight = UDim.new(0, 7)
+		pad.Parent = count
+		local stroke = count:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Thickness = 1.5
+		end
+	end
+
+	-- Potion / axe pictures sit in the space above the name strip.
+	for _, name in { "View", "Image" } do
+		local child = slotTemplate:FindFirstChild(name) :: GuiObject?
+		if child then
+			child.Position = UDim2.fromScale(0.5, 0.4)
+			child.Size = UDim2.fromScale(0.66, 0.66)
+		end
+	end
+end
+
 local TAB_ON_BG = Color3.fromRGB(45, 180, 60)
 local TAB_ON_STROKE = Color3.fromRGB(25, 110, 35)
 local TAB_OFF_BG = Color3.fromRGB(70, 75, 88)
 local TAB_OFF_STROKE = Color3.fromRGB(115, 120, 132)
 local SCREEN_FILL_X = 0.92 -- largest share of the screen the panel may cover
-local SCREEN_FILL_Y = 0.86
 
 local commas = ItemDisplay.Commas
 local abbreviate = ItemDisplay.Abbreviate
@@ -193,12 +274,7 @@ end
 
 local function drawCard(card: TextButton, e: Entry)
 	local info = e.info
-	local bg = ItemDisplay.SlotColor(info.rarity)
-	card.BackgroundColor3 = bg
-	local stroke = card:FindFirstChildOfClass("UIStroke")
-	if stroke then
-		stroke.Color = bg:Lerp(Color3.new(1, 1, 1), 0.4)
-	end
+	ItemDisplay.PaintRarity(card, info.rarity);
 	(card:FindFirstChild("ItemName") :: TextLabel).Text = info.name
 	local count = card:FindFirstChild("Count") :: TextLabel
 	count.Text = "x" .. commas(e.amount)
@@ -535,18 +611,60 @@ end
 
 -- Tabs & search ----------------------------------------------------------------------------------
 
+-- Selected tab: solid green shaded light-to-dark (3D look, like the other buttons).
+-- The others: dark glass with dimmed text and icon, so the choice reads at a glance.
 local function styleTabs()
 	for _, tab in tabsFrame:GetChildren() do
 		if tab:IsA("GuiButton") then
 			local on = tab.Name == currentTab
 			tab.BackgroundColor3 = if on then TAB_ON_BG else TAB_OFF_BG
-			tab.BackgroundTransparency = if on then 0 else 0.3
+			tab.BackgroundTransparency = if on then 0 else 0.45
 			local stroke = tab:FindFirstChildOfClass("UIStroke")
 			if stroke then
 				stroke.Color = if on then TAB_ON_STROKE else TAB_OFF_STROKE
+				stroke.Transparency = if on then 0 else 0.5
+			end
+			local shade = tab:FindFirstChild("Shade") :: UIGradient?
+			if shade then
+				shade.Enabled = on
+			end
+			for _, part in { "Label", "Icon" } do
+				local child = tab:FindFirstChild(part)
+				if child and child:IsA("TextLabel") then
+					child.TextTransparency = if on then 0 else 0.35
+				elseif child and child:IsA("GuiObject") then
+					for _, d in child:GetDescendants() do
+						if d:IsA("GuiObject") then
+							d.BackgroundTransparency = if on then 0 else 0.35
+						end
+					end
+				end
 			end
 		end
 	end
+end
+
+-- Rounded tabs with a shade gradient for the selected state; the Materials log emoji does
+-- not render on every device, so it gets a tree.
+for _, tab in tabsFrame:GetChildren() do
+	if tab:IsA("GuiButton") then
+		if not tab:FindFirstChildOfClass("UICorner") then
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 10)
+			corner.Parent = tab
+		end
+		if not tab:FindFirstChild("Shade") then
+			local shade = Instance.new("UIGradient")
+			shade.Name = "Shade"
+			shade.Rotation = 90
+			shade.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(175, 175, 175))
+			shade.Parent = tab
+		end
+	end
+end
+local materialsIcon = tabsFrame:FindFirstChild("Materials") and tabsFrame.Materials:FindFirstChild("Icon")
+if materialsIcon and materialsIcon:IsA("TextLabel") then
+	materialsIcon.Text = "🌳"
 end
 
 -- Four tabs have to fit the Tabs frame (it was laid out for three; "Other" starts hidden in Studio).
@@ -574,13 +692,28 @@ searchBox:GetPropertyChangedSignal("Text"):Connect(queueRender)
 
 -- Open / close -----------------------------------------------------------------------------------
 
--- Shrink the panel to fit small screens (it is laid out in pixels).
-local function fitScale(): number
+-- The panel fits in the space above the hotbar (it is laid out in pixels): shrink it for small
+-- screens and centre it in that space, so it never covers the hotbar. Returns the scale.
+local PANEL_MARGIN = 10
+local function layoutPanel(): number
 	local camera = workspace.CurrentCamera
 	local view = if camera then camera.ViewportSize else Vector2.new(1920, 1080)
+	-- Work in screen pixels. AbsolutePosition is always measured from below the top bar.
+	local inset = GuiService:GetGuiInset().Y
+	local top = inset + PANEL_MARGIN -- clear of Roblox's top-bar buttons
+	local bottom = view.Y - PANEL_MARGIN
+	local hotbar = player.PlayerGui:FindFirstChild("HotbarGui") :: ScreenGui?
+	local bar = if hotbar and hotbar.Enabled then hotbar:FindFirstChild("Bar") :: GuiObject? else nil
+	if bar and bar.Visible then
+		bottom = math.min(bottom, bar.AbsolutePosition.Y + inset - PANEL_MARGIN)
+	end
+	local origin = if gui.IgnoreGuiInset then 0 else inset -- this ScreenGui's y = 0 on screen
 	local size = panel.Size
 	local w, h = math.max(size.X.Offset, 1), math.max(size.Y.Offset, 1)
-	return math.min(1, view.X * SCREEN_FILL_X / w, view.Y * SCREEN_FILL_Y / h)
+	local scale = math.min(1, view.X * SCREEN_FILL_X / w, math.max(bottom - top, 100) / h)
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.new(0.5, 0, 0, math.floor((top + bottom) / 2 - origin))
+	return scale
 end
 
 local function setOpen(open: boolean)
@@ -591,7 +724,7 @@ local function setOpen(open: boolean)
 	gui:SetAttribute("Open", open)
 	if open then
 		panel.Visible = true
-		local target = fitScale()
+		local target = layoutPanel()
 		panelScale.Scale = target * 0.85
 		TweenService:Create(panelScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = target }):Play()
 		styleTabs()
@@ -650,7 +783,7 @@ end
 
 local function onViewportChanged()
 	if isOpen then
-		panelScale.Scale = fitScale()
+		panelScale.Scale = layoutPanel()
 	end
 end
 local function hookCamera()

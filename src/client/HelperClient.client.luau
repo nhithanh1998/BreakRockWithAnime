@@ -37,7 +37,23 @@ type Walker = {
 	conn: RBXScriptConnection?,
 	leg: number,
 	status: TextLabel?, -- the bar's second line ("Helper" / "Carrying N")
+	id: number, -- breaks ties when two walkers are exactly in line
+	base: Vector3?, -- where the server's route puts it this frame (nil when not walking)
+	off: Vector3, -- its sidestep from the route (keep right, make room for the others)
+	right: Vector3, -- its right-hand side on the last stretch it walked (kept while it stands)
 }
+
+-- Walking manners: each walker keeps KEEP_RIGHT studs to the right of the route (so two helpers
+-- coming the opposite way pass each other), and steps up to MAX_SIDE aside from any other walker
+-- closer than SEP studs (also while standing at the chest or the stand, so they wait side by side).
+-- Near the ends of a leg (pad, chest, stand: EDGE studs) it stops keeping right. The server decides when a walker is where; this only moves it sideways.
+local KEEP_RIGHT = 1
+local SEP = 3.5
+local PUSH = 1.6
+local MAX_SIDE = 1.6
+local EDGE = 2.5
+local SIDE_RATE = 5
+local nextId = 0
 
 local walkers: { [Instance]: Walker } = {}
 
@@ -150,7 +166,13 @@ local function getWalker(pad: Model): Walker?
 		conn = nil,
 		leg = 0,
 		status = status,
+		id = 0,
+		base = nil,
+		off = Vector3.zero,
+		right = Vector3.xAxis,
 	}
+	nextId += 1
+	w.id = nextId
 	walkers[pad] = w
 	return w
 end
@@ -200,7 +222,7 @@ local function playLeg(site: Instance, index: number, points: { Vector3 }, durat
 	local total = acc[#acc]
 	local t0 = os.clock()
 	local walker = w
-	walker.conn = RunService.Heartbeat:Connect(function()
+	walker.conn = RunService.Heartbeat:Connect(function(dt: number)
 		local t = if duration > 0 then math.min((os.clock() - t0) / duration, 1) else 1
 		local dist = total * t
 		local seg = 2
@@ -210,13 +232,37 @@ local function playLeg(site: Instance, index: number, points: { Vector3 }, durat
 		local a, b = points[seg - 1], points[seg]
 		local segLen = acc[seg] - acc[seg - 1]
 		local alpha = if segLen > 0 then (dist - acc[seg - 1]) / segLen else 1
-		local pos = a:Lerp(b, alpha) + Vector3.new(0, walker.lift, 0)
+		local base = a:Lerp(b, alpha)
 		local dir = Vector3.new(b.X - a.X, 0, b.Z - a.Z)
+		walker.base = base
+		local moving = dir.Magnitude > 0.05
+		if moving then
+			local u = dir.Unit
+			walker.right = Vector3.new(-u.Z, 0, u.X)
+		end
+		local right = walker.right
+		local fade = if moving then math.clamp(math.min(dist, total - dist) / EDGE, 0, 1) else 0
+		local lat = KEEP_RIGHT * fade
+		for _, o in walkers do
+			local ob = o.base
+			if o ~= walker and ob and o.model.Parent then
+				local d = Vector3.new(base.X - ob.X, 0, base.Z - ob.Z)
+				local m = d.Magnitude
+				if m < SEP then
+					local side = d:Dot(right)
+					local sign = if math.abs(side) > 0.1 then math.sign(side) elseif walker.id > o.id then 1 else -1
+					lat += sign * (1 - m / SEP) * PUSH
+				end
+			end
+		end
+		local goal = right * math.clamp(lat, -MAX_SIDE, MAX_SIDE)
+		walker.off = walker.off:Lerp(goal, math.min(1, dt * SIDE_RATE))
+		local pos = base + walker.off + Vector3.new(0, walker.lift, 0)
 		local look = if dir.Magnitude > 0.05 then CFrame.lookAt(pos, pos + dir) else CFrame.new(pos) * walker.root.CFrame.Rotation
 		walker.model:PivotTo(look)
 		if t >= 1 then
 			walker.conn:Disconnect()
-			walker.conn = nil
+			walker.conn = nil -- `base` stays: the others still make room for it while it stands
 			if walker.walk then
 				walker.walk:Stop(0.2)
 			end
@@ -236,6 +282,8 @@ local function backOnPad(site: Instance, index: number)
 			w.conn = nil
 		end
 		setCarrying(w, 0)
+		w.base = nil
+		w.off = Vector3.zero
 		if w.walk then
 			w.walk:Stop(0)
 		end

@@ -28,6 +28,7 @@ local ZoneDrops = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild(
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local SkillTreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SkillTreeConfig"))
 local ZoneConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneConfig"))
+local CollisionGroups = require(script.Parent:WaitForChild("CollisionGroups"))
 
 local CONFIG = {
 	TemplateFolder = "Trees",
@@ -339,6 +340,7 @@ local function spawnTree(state: PlotState): (boolean, number)
 	tree:SetAttribute("TreeType", template.Name)
 	tree:PivotTo(CFrame.new(pos + Vector3.new(0, bottomOffset(template), 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
 	addBar(tree, template, level)
+	CollisionGroups.SetTree(tree) -- players walk through trees
 
 	tree:GetAttributeChangedSignal("HP"):Connect(function()
 		updateInfo(tree)

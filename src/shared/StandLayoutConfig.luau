@@ -24,8 +24,11 @@
 -- Site markers:
 --   HelperSlot_1..3     Helper pads: next to the plot's chest, where helper heroes rest between trips
 --   HelperPickupPoint   helpers take materials from the chest here
---   HelperPath_N        waypoints chest -> stand (walked backwards on the way back)
---   CustomerSpawn_N, CustomerPath_N, CustomerExit_N   customers come in from the road and leave again
+--   HelperPath_N        waypoints chest -> stand (walked backwards on the way back). Straight lines between
+--                       them: keep them clear of fences and walls (on Plot1 they go down the CornerStairs)
+--   CustomerSpawn_N, CustomerPath_N, CustomerExit_N   customers walk along the sidewalk on the stand's side
+--                       of the road, never on the road: Spawn / Path on the inner lane (next to the stand),
+--                       Exit on the outer lane; Path_N are where they turn off the sidewalk to the queue
 
 local StandLayoutConfig = {}
 

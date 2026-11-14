@@ -1,4 +1,4 @@
--- CollisionGroups: players never collide with heroes.
+-- CollisionGroups: players never collide with heroes or trees.
 --
 -- Setting CanCollide = false on a hero isn't enough: the Humanoid turns collision back on for its
 -- torso / head every physics step. So every hero part goes into the "Heroes" collision group and every
@@ -15,6 +15,7 @@ local CollisionGroups = {}
 
 CollisionGroups.HEROES = "Heroes"
 CollisionGroups.PLAYERS = "Players"
+CollisionGroups.TREES = "Trees" -- players walk through trees too
 
 local registered = false
 
@@ -23,12 +24,13 @@ local function register()
 		return
 	end
 	registered = true
-	for _, name in { CollisionGroups.HEROES, CollisionGroups.PLAYERS } do
+	for _, name in { CollisionGroups.HEROES, CollisionGroups.PLAYERS, CollisionGroups.TREES } do
 		if not PhysicsService:IsCollisionGroupRegistered(name) then
 			PhysicsService:RegisterCollisionGroup(name)
 		end
 	end
 	PhysicsService:CollisionGroupSetCollidable(CollisionGroups.HEROES, CollisionGroups.PLAYERS, false)
+	PhysicsService:CollisionGroupSetCollidable(CollisionGroups.TREES, CollisionGroups.PLAYERS, false)
 end
 
 -- Puts every BasePart under `root` (now and later) in `group`.
@@ -48,6 +50,10 @@ end
 
 function CollisionGroups.SetHero(model: Model)
 	tag(model, CollisionGroups.HEROES)
+end
+
+function CollisionGroups.SetTree(model: Model)
+	tag(model, CollisionGroups.TREES)
 end
 
 function CollisionGroups.Start()

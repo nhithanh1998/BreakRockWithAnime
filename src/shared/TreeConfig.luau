@@ -153,14 +153,15 @@ TreeConfig.ChestFlashColor = Color3.fromRGB(255, 225, 90)
 -- Chest UI ------------------------------------------------------------------------------------
 TreeConfig.ChestPromptDistance = 12 -- studs; "E  Loot Chest / Open"
 TreeConfig.ChestCloseDistance = 20 -- the chest window closes when you walk this far away
--- Slot backgrounds in the chest window, per rarity.
+-- Card backgrounds (chest, inventory, hotbar, shop, ...), per rarity. Saturated and bright so each tier
+-- reads at a glance; client ItemDisplay.PaintRarity turns this into a two-tone gradient + darker border.
 TreeConfig.RaritySlotColors = {
-	Common = Color3.fromRGB(150, 150, 150),
-	Uncommon = Color3.fromRGB(60, 170, 70),
-	Rare = Color3.fromRGB(45, 110, 200),
-	Epic = Color3.fromRGB(125, 55, 190),
-	Legendary = Color3.fromRGB(215, 135, 30),
-	Mythic = Color3.fromRGB(200, 40, 60),
+	Common = Color3.fromRGB(160, 170, 185),
+	Uncommon = Color3.fromRGB(60, 200, 80),
+	Rare = Color3.fromRGB(30, 140, 255),
+	Epic = Color3.fromRGB(165, 65, 255),
+	Legendary = Color3.fromRGB(255, 165, 20),
+	Mythic = Color3.fromRGB(255, 45, 95),
 } :: { [string]: Color3 }
 
 TreeConfig.RarityOrder = { Mythic = 1, Legendary = 2, Epic = 3, Rare = 4, Uncommon = 5, Common = 6 } :: { [string]: number }

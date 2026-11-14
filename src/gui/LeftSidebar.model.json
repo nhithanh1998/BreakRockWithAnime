@@ -25,8 +25,8 @@
         "Position": {
           "UDim2": [
             [
-              0,
-              14
+              0.01,
+              0
             ],
             [
               0.47,
@@ -37,11 +37,11 @@
         "Size": {
           "UDim2": [
             [
-              0.085,
+              0,
               0
             ],
             [
-              0.6,
+              0.24,
               0
             ]
           ]
@@ -49,38 +49,73 @@
       },
       "Children": [
         {
+          "Name": "UIAspectRatioConstraint",
+          "ClassName": "UIAspectRatioConstraint",
+          "Properties": {
+            "AspectRatio": 1.14,
+            "AspectType": {
+              "Enum": 1
+            },
+            "DominantAxis": {
+              "Enum": 1
+            }
+          }
+        },
+        {
           "Name": "UISizeConstraint",
           "ClassName": "UISizeConstraint",
           "Properties": {
             "MinSize": {
               "Vector2": [
-                90,
-                0
+                160,
+                140
               ]
             },
             "MaxSize": {
               "Vector2": [
-                170,
+                10000,
                 10000
               ]
             }
           }
         },
         {
-          "Name": "UIListLayout",
-          "ClassName": "UIListLayout",
+          "Name": "UIGridLayout",
+          "ClassName": "UIGridLayout",
           "Properties": {
-            "Padding": {
-              "UDim": [
-                0,
-                10
+            "CellPadding": {
+              "UDim2": [
+                [
+                  0.08,
+                  0
+                ],
+                [
+                  0.09,
+                  0
+                ]
               ]
             },
+            "CellSize": {
+              "UDim2": [
+                [
+                  0.455,
+                  0
+                ],
+                [
+                  0.455,
+                  0
+                ]
+              ]
+            },
+            "FillDirectionMaxCells": 2,
             "SortOrder": {
               "Enum": 2
             },
             "VerticalAlignment": {
               "Enum": 0
+            },
+            "HorizontalAlignment": {
+              "Enum": 1
             }
           }
         },
@@ -266,7 +301,7 @@
                         0.05
                       ]
                     },
-                    "Thickness": 3,
+                    "Thickness": 2.5,
                     "LineJoinMode": {
                       "Enum": 0
                     }
@@ -363,7 +398,7 @@
                         0.05
                       ]
                     },
-                    "Thickness": 2.5
+                    "Thickness": 2
                   }
                 },
                 {
@@ -429,7 +464,7 @@
                             0.05
                           ]
                         },
-                        "Thickness": 2,
+                        "Thickness": 1.5,
                         "LineJoinMode": {
                           "Enum": 0
                         }
@@ -487,7 +522,7 @@
                     0.07
                   ]
                 },
-                "Thickness": 3.5,
+                "Thickness": 3,
                 "LineJoinMode": {
                   "Enum": 0
                 },
@@ -680,7 +715,7 @@
                         0.05
                       ]
                     },
-                    "Thickness": 3,
+                    "Thickness": 2.5,
                     "LineJoinMode": {
                       "Enum": 0
                     }
@@ -777,7 +812,7 @@
                         0.05
                       ]
                     },
-                    "Thickness": 2.5
+                    "Thickness": 2
                   }
                 },
                 {
@@ -843,7 +878,7 @@
                             0.05
                           ]
                         },
-                        "Thickness": 2,
+                        "Thickness": 1.5,
                         "LineJoinMode": {
                           "Enum": 0
                         }
@@ -901,7 +936,7 @@
                     0.07
                   ]
                 },
-                "Thickness": 3.5,
+                "Thickness": 3,
                 "LineJoinMode": {
                   "Enum": 0
                 },
@@ -1094,7 +1129,7 @@
                         0.05
                       ]
                     },
-                    "Thickness": 3,
+                    "Thickness": 2.5,
                     "LineJoinMode": {
                       "Enum": 0
                     }
@@ -1191,7 +1226,7 @@
                         0.05
                       ]
                     },
-                    "Thickness": 2.5
+                    "Thickness": 2
                   }
                 },
                 {
@@ -1257,7 +1292,7 @@
                             0.05
                           ]
                         },
-                        "Thickness": 2,
+                        "Thickness": 1.5,
                         "LineJoinMode": {
                           "Enum": 0
                         }
@@ -1315,7 +1350,445 @@
                     0.07
                   ]
                 },
-                "Thickness": 3.5,
+                "Thickness": 3,
+                "LineJoinMode": {
+                  "Enum": 0
+                },
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "Name": "Daily",
+          "ClassName": "TextButton",
+          "Properties": {
+            "AutoButtonColor": true,
+            "BackgroundColor3": {
+              "Color3": [
+                1,
+                1,
+                1
+              ]
+            },
+            "BackgroundTransparency": 0,
+            "BorderSizePixel": {
+              "Int32": 0
+            },
+            "LayoutOrder": {
+              "Int32": 4
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  1,
+                  0
+                ],
+                [
+                  0,
+                  0
+                ]
+              ]
+            },
+            "Text": ""
+          },
+          "Children": [
+            {
+              "Name": "UIAspectRatioConstraint",
+              "ClassName": "UIAspectRatioConstraint",
+              "Properties": {
+                "AspectRatio": 1.15,
+                "AspectType": {
+                  "Enum": 1
+                },
+                "DominantAxis": {
+                  "Enum": 0
+                }
+              }
+            },
+            {
+              "Name": "UICorner",
+              "ClassName": "UICorner",
+              "Properties": {
+                "CornerRadius": {
+                  "UDim": [
+                    0.16,
+                    0
+                  ]
+                }
+              }
+            },
+            {
+              "Name": "UIScale",
+              "ClassName": "UIScale"
+            },
+            {
+              "Name": "Icon",
+              "ClassName": "ImageLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Image": "",
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.05,
+                      0
+                    ]
+                  ]
+                },
+                "ScaleType": {
+                  "Enum": 3
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      0.64,
+                      0
+                    ]
+                  ]
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UIAspectRatioConstraint",
+                  "ClassName": "UIAspectRatioConstraint",
+                  "Properties": {
+                    "AspectRatio": 1,
+                    "AspectType": {
+                      "Enum": 1
+                    },
+                    "DominantAxis": {
+                      "Enum": 1
+                    }
+                  }
+                },
+                {
+                  "Name": "Emoji",
+                  "ClassName": "TextLabel",
+                  "Properties": {
+                    "BackgroundTransparency": 1,
+                    "Size": {
+                      "UDim2": [
+                        [
+                          1,
+                          0
+                        ],
+                        [
+                          1,
+                          0
+                        ]
+                      ]
+                    },
+                    "Text": "🎁",
+                    "TextScaled": true,
+                    "Font": {
+                      "Enum": 26
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "Name": "Label",
+              "ClassName": "TextLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    1
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Font": {
+                  "Enum": 26
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.96,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.9,
+                      0
+                    ],
+                    [
+                      0.26,
+                      0
+                    ]
+                  ]
+                },
+                "Text": "DAILY",
+                "TextColor3": {
+                  "Color3": [
+                    1,
+                    1,
+                    1
+                  ]
+                },
+                "TextScaled": true,
+                "ZIndex": {
+                  "Int32": 2
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UIStroke",
+                  "ClassName": "UIStroke",
+                  "Properties": {
+                    "Color": {
+                      "Color3": [
+                        0.08,
+                        0.05,
+                        0.05
+                      ]
+                    },
+                    "Thickness": 2.5,
+                    "LineJoinMode": {
+                      "Enum": 0
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "Name": "Badge",
+              "ClassName": "Frame",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0.5
+                  ]
+                },
+                "BackgroundColor3": {
+                  "Color3": [
+                    0.92,
+                    0.18,
+                    0.18
+                  ]
+                },
+                "BorderSizePixel": {
+                  "Int32": 0
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.9,
+                      0
+                    ],
+                    [
+                      0.1,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      0.3,
+                      0
+                    ]
+                  ]
+                },
+                "Visible": false,
+                "ZIndex": {
+                  "Int32": 3
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UIAspectRatioConstraint",
+                  "ClassName": "UIAspectRatioConstraint",
+                  "Properties": {
+                    "AspectRatio": 1,
+                    "AspectType": {
+                      "Enum": 1
+                    },
+                    "DominantAxis": {
+                      "Enum": 1
+                    }
+                  }
+                },
+                {
+                  "Name": "UICorner",
+                  "ClassName": "UICorner",
+                  "Properties": {
+                    "CornerRadius": {
+                      "UDim": [
+                        0.28,
+                        0
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Name": "UIStroke",
+                  "ClassName": "UIStroke",
+                  "Properties": {
+                    "ApplyStrokeMode": {
+                      "Enum": 1
+                    },
+                    "Color": {
+                      "Color3": [
+                        0.3,
+                        0.03,
+                        0.05
+                      ]
+                    },
+                    "Thickness": 2
+                  }
+                },
+                {
+                  "Name": "Count",
+                  "ClassName": "TextLabel",
+                  "Properties": {
+                    "AnchorPoint": {
+                      "Vector2": [
+                        0.5,
+                        0.5
+                      ]
+                    },
+                    "BackgroundTransparency": 1,
+                    "Font": {
+                      "Enum": 26
+                    },
+                    "Position": {
+                      "UDim2": [
+                        [
+                          0.5,
+                          0
+                        ],
+                        [
+                          0.5,
+                          0
+                        ]
+                      ]
+                    },
+                    "Size": {
+                      "UDim2": [
+                        [
+                          0.75,
+                          0
+                        ],
+                        [
+                          0.75,
+                          0
+                        ]
+                      ]
+                    },
+                    "Text": "0",
+                    "TextColor3": {
+                      "Color3": [
+                        1,
+                        1,
+                        1
+                      ]
+                    },
+                    "TextScaled": true,
+                    "ZIndex": {
+                      "Int32": 4
+                    }
+                  },
+                  "Children": [
+                    {
+                      "Name": "UIStroke",
+                      "ClassName": "UIStroke",
+                      "Properties": {
+                        "Color": {
+                          "Color3": [
+                            0.08,
+                            0.05,
+                            0.05
+                          ]
+                        },
+                        "Thickness": 1.5,
+                        "LineJoinMode": {
+                          "Enum": 0
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Name": "UIGradient",
+              "ClassName": "UIGradient",
+              "Properties": {
+                "Color": {
+                  "ColorSequence": {
+                    "keypoints": [
+                      {
+                        "time": 0,
+                        "color": [
+                          0.85,
+                          0.55,
+                          1
+                        ]
+                      },
+                      {
+                        "time": 0.45,
+                        "color": [
+                          0.7,
+                          0.36,
+                          0.95
+                        ]
+                      },
+                      {
+                        "time": 1,
+                        "color": [
+                          0.52,
+                          0.22,
+                          0.82
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "Rotation": 90
+              }
+            },
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "Color": {
+                  "Color3": [
+                    0.1,
+                    0.07,
+                    0.07
+                  ]
+                },
+                "Thickness": 3,
                 "LineJoinMode": {
                   "Enum": 0
                 },

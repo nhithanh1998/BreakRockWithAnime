@@ -567,7 +567,7 @@ local RESTOCK = StandConfig.Restock
 local function restockArea(plot: Instance, standId: string): (CFrame?, Vector3?)
 	local placed = StandLayout.Placed(plot, standId)
 	local pads = placed and placed:FindFirstChild(PADS_FOLDER)
-	local mat = pads and pads:FindFirstChild("RestockMat")
+	local mat = pads and pads:FindFirstChild("RestockMat", true) -- loose part, or inside a pad model (Pads.RestockPad)
 	if mat and mat:IsA("BasePart") then
 		return mat.CFrame, mat.Size
 	end
@@ -970,6 +970,47 @@ local function pathLength(points: { Vector3 }): number
 	return d
 end
 
+-- Helper `index`'s spot at `point` (chest or stand): Helper.SpotSpacing studs apart, side by side across
+-- the way in from `from`; helper 2 (of 3) stands on the marker itself.
+local function spotFor(point: Vector3, from: Vector3, index: number): Vector3
+	local d = Vector3.new(from.X - point.X, 0, from.Z - point.Z)
+	if d.Magnitude < 0.05 then
+		return point
+	end
+	local u = d.Unit
+	local k = index - (StandLayoutConfig.HelperSlots + 1) / 2
+	return point + Vector3.new(-u.Z, 0, u.X) * k * HELPER.SpotSpacing
+end
+
+-- The walk between a helper's pad and the route (pickup, HelperPath_1..N, drop): straight to the
+-- closest point of the route, then along it. Returns the points from the pad to `toEnd` ("pickup" or
+-- "drop"), so helpers never cut across the other pads or the fences.
+local function homeLeg(home: Vector3, full: { Vector3 }, toEnd: string): { Vector3 }
+	local best, bestSeg, bestPoint = math.huge, 2, full[1]
+	for i = 2, #full do
+		local a, b = full[i - 1], full[i]
+		local ab = b - a
+		local len2 = ab:Dot(ab)
+		local t = if len2 > 0 then math.clamp((home - a):Dot(ab) / len2, 0, 1) else 0
+		local q = a + ab * t
+		local d = (Vector3.new(q.X, 0, q.Z) - Vector3.new(home.X, 0, home.Z)).Magnitude
+		if d < best then
+			best, bestSeg, bestPoint = d, i, q
+		end
+	end
+	local out = { home, bestPoint }
+	if toEnd == "pickup" then
+		for i = bestSeg - 1, 1, -1 do
+			table.insert(out, full[i])
+		end
+	else
+		for i = bestSeg, #full do
+			table.insert(out, full[i])
+		end
+	end
+	return out
+end
+
 local function helperPad(plot: Instance, standId: string, index: number): Model?
 	return padsOf(plot, standId, "Helper")[index]
 end
@@ -989,8 +1030,7 @@ local function startLeg(state: PlotState, standId: string, index: number, trip: 
 end
 
 local function chestOf(plot: Instance): Model?
-	local chest = plot:FindFirstChild("TreasureChest", true)
-	return if chest and chest:IsA("Model") then chest else nil
+	return ChestService.GetChest(plot :: Model) -- the plot's own chest, else the shared one
 end
 
 -- Materials the other helpers of this stand are bringing right now (so nobody overfills the stand).
@@ -1053,11 +1093,15 @@ local function helperTick(state: PlotState, standId: string, stand: StandPads, i
 	local maxStock = statsOf(standId, stand).MaxStock
 	local chest = chestOf(state.plot)
 	local chestHas = chest ~= nil and (chest:GetAttribute("Stored") or 0) > 0
-	local path, pickup, drop = helperRoute(state.plot, standId)
+	local path, pickup0, drop0 = helperRoute(state.plot, standId)
 	local home = pointOf(state.plot, standId, "HelperSlot_" .. index)
-	if not path or not pickup or not drop or not home then
+	if not path or not pickup0 or not drop0 or not home then
 		return
 	end
+	-- each helper has its own spot at the chest and at the stand (side by side, across the way in)
+	local pickup = spotFor(pickup0, path[1] or drop0, index)
+	local drop = spotFor(drop0, path[#path] or pickup0, index)
+	local full = concat({ pickup }, path, { drop })
 
 	if t.phase == "Idle" then
 		if now < t.nextCheck then
@@ -1067,7 +1111,7 @@ local function helperTick(state: PlotState, standId: string, stand: StandPads, i
 		local stock = stockCount(stand) + inTransit(stand, index)
 		if chestHas and stock < HELPER.ResumeBelow * maxStock then
 			setAway(state, standId, index, true)
-			startLeg(state, standId, index, t, "ToPickup", { home, pickup }, stats.Speed, now)
+			startLeg(state, standId, index, t, "ToPickup", homeLeg(home, full, "pickup"), stats.Speed, now)
 		end
 	elseif now < t.phaseEnd then
 		return
@@ -1075,7 +1119,7 @@ local function helperTick(state: PlotState, standId: string, stand: StandPads, i
 		local room = maxStock - stockCount(stand) - inTransit(stand, index)
 		local taken = if chest and room > 0 then ChestService.TakeMaterials(chest, math.min(stats.Carry, room)) else {}
 		if next(taken) == nil then
-			startLeg(state, standId, index, t, "Returning", { pickup, home }, stats.Speed, now)
+			startLeg(state, standId, index, t, "Returning", reversed(homeLeg(home, full, "pickup")), stats.Speed, now)
 		else
 			t.carrying = taken
 			-- a short stop at the chest, then the walk to the stand
@@ -1110,7 +1154,7 @@ local function helperTick(state: PlotState, standId: string, stand: StandPads, i
 		if chestHas and stillRoom then
 			startLeg(state, standId, index, t, "ToPickup", backPath, stats.Speed, now)
 		else
-			startLeg(state, standId, index, t, "Returning", concat(backPath, { home }), stats.Speed, now)
+			startLeg(state, standId, index, t, "Returning", reversed(homeLeg(home, full, "drop")), stats.Speed, now)
 		end
 	elseif t.phase == "Returning" then
 		endTrip(state, standId, index, t)

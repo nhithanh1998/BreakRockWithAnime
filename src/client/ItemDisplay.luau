@@ -91,6 +91,43 @@ function ItemDisplay.SlotColor(rarity: string): Color3
 	return TreeConfig.RaritySlotColors[rarity] or Color3.fromRGB(120, 120, 120)
 end
 
+local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
+
+-- Darker shade of the rarity colour: card borders and badge outlines.
+function ItemDisplay.SlotEdgeColor(rarity: string): Color3
+	return ItemDisplay.SlotColor(rarity):Lerp(BLACK, 0.45)
+end
+
+-- Paints a card in its rarity: a two-tone gradient of the rarity colour itself (lighter on top, deeper at
+-- the bottom) instead of a grey shade over it, which washed the colours out. The card's background goes
+-- white so the gradient's colours show exactly. Also colours a UIStroke named `strokeName` (default
+-- "Border", or the first UIStroke) with the darker edge shade. Returns the rarity colour.
+function ItemDisplay.PaintRarity(card: GuiObject, rarity: string, strokeName: string?): Color3
+	local base = ItemDisplay.SlotColor(rarity)
+	card.BackgroundColor3 = WHITE
+	local gradient = card:FindFirstChildOfClass("UIGradient")
+	if not gradient then
+		gradient = Instance.new("UIGradient")
+		gradient.Parent = card
+	end
+	gradient.Enabled = true
+	gradient.Rotation = 90
+	gradient.Transparency = NumberSequence.new(0)
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, base:Lerp(WHITE, 0.28)),
+		ColorSequenceKeypoint.new(0.55, base),
+		ColorSequenceKeypoint.new(1, base:Lerp(BLACK, 0.22)),
+	})
+	local stroke = (if strokeName then card:FindFirstChild(strokeName) else nil)
+		or card:FindFirstChild("Border")
+		or card:FindFirstChildOfClass("UIStroke")
+	if stroke and stroke:IsA("UIStroke") then
+		stroke.Color = ItemDisplay.SlotEdgeColor(rarity)
+	end
+	return base
+end
+
 -- Uploaded icons ------------------------------------------------------------------------------------
 
 -- Shows `image` filling `view` (instead of a 3D model). Tint it through the "Picture" child: a

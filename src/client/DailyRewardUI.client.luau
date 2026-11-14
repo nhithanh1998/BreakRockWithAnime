@@ -6,7 +6,7 @@
 -- a Big day stretches over the free columns). A card is CLAIMED (green ✓), CLAIM! (gold, pulsing,
 -- click to claim) or LOCKED (dark, 🔒).
 --
--- Opens from the "Daily" button added to StarterGui.LeftSidebar.Buttons (a copy of Index, its Badge
+-- Opens from the "Daily" button in StarterGui.LeftSidebar.Buttons (src/gui/LeftSidebar.model.json; its Badge
 -- = days ready to claim) and by itself after joining when something can be claimed
 -- (DailyRewardConfig.OpenOnJoin). State comes from the player attributes DailyUnlocked /
 -- DailyClaimed / DailyNextAt / DailyReady; claims go through Remotes.DailyRewardAction.
@@ -663,34 +663,8 @@ end
 
 local sidebar = player.PlayerGui:WaitForChild("LeftSidebar") :: ScreenGui
 local sidebarButtons = sidebar:WaitForChild("Buttons")
-local openButton = sidebarButtons:FindFirstChild("Daily") :: GuiButton?
-if not openButton then
-	local template = sidebarButtons:WaitForChild("Index") :: GuiButton
-	local copy = template:Clone()
-	copy.Name = "Daily"
-	copy.LayoutOrder = 4
-	local icon = copy:FindFirstChild("Icon") :: ImageLabel?
-	if icon then
-		icon.Image = ""
-		new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "🎁", TextScaled = true, Font = FONT, Parent = icon })
-	end
-	local label = copy:FindFirstChild("Label") :: TextLabel?
-	if label then
-		label.Text = "DAILY"
-	end
-	-- Index is green; give the Daily tile its own (purple) gradient in the same style.
-	local gradient = copy:FindFirstChildOfClass("UIGradient")
-	if gradient then
-		gradient.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.new(0.85, 0.55, 1)),
-			ColorSequenceKeypoint.new(0.45, Color3.new(0.7, 0.36, 0.95)),
-			ColorSequenceKeypoint.new(1, Color3.new(0.52, 0.22, 0.82)),
-		})
-	end
-	copy.Parent = sidebarButtons
-	openButton = copy
-end
-local badge = (openButton :: GuiButton):FindFirstChild("Badge") :: GuiObject?
+local openButton = sidebarButtons:WaitForChild("Daily") :: GuiButton
+local badge = openButton:FindFirstChild("Badge") :: GuiObject?
 local badgeCount = badge and badge:FindFirstChild("Count") :: TextLabel?
 
 -- State -----------------------------------------------------------------------------------------------

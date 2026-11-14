@@ -60,20 +60,13 @@
       },
       "Children": [
         {
-          "Name": "UIAspectRatioConstraint",
-          "ClassName": "UIAspectRatioConstraint",
+          "Name": "UICorner",
+          "ClassName": "UICorner",
           "Properties": {
-            "AspectRatio": 1.2
-          }
-        },
-        {
-          "Name": "UISizeConstraint",
-          "ClassName": "UISizeConstraint",
-          "Properties": {
-            "MinSize": {
-              "Vector2": [
-                330,
-                275
+            "CornerRadius": {
+              "UDim": [
+                0,
+                14
               ]
             }
           }
@@ -156,6 +149,69 @@
           ]
         },
         {
+          "Name": "CloseShadow",
+          "ClassName": "Frame",
+          "Properties": {
+            "AnchorPoint": {
+              "Vector2": [
+                1,
+                0
+              ]
+            },
+            "BackgroundColor3": {
+              "Color3": [
+                0.588,
+                0.137,
+                0.098
+              ]
+            },
+            "BorderSizePixel": {
+              "Int32": 0
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  0.965,
+                  0
+                ],
+                [
+                  0.025,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.068,
+                  0
+                ],
+                [
+                  0.082,
+                  0
+                ]
+              ]
+            },
+            "ZIndex": {
+              "Int32": 2
+            }
+          },
+          "Children": [
+            {
+              "Name": "UICorner",
+              "ClassName": "UICorner",
+              "Properties": {
+                "CornerRadius": {
+                  "UDim": [
+                    0.22,
+                    0
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
           "Name": "Close",
           "ClassName": "TextButton",
           "Properties": {
@@ -167,9 +223,9 @@
             },
             "BackgroundColor3": {
               "Color3": [
-                0.804,
-                0.204,
-                0.11
+                0.922,
+                0.294,
+                0.216
               ]
             },
             "BorderSizePixel": {
@@ -211,26 +267,12 @@
               ]
             },
             "TextScaled": true,
-            "TextWrapped": true
+            "TextWrapped": true,
+            "ZIndex": {
+              "Int32": 3
+            }
           },
           "Children": [
-            {
-              "Name": "Border",
-              "ClassName": "UIStroke",
-              "Properties": {
-                "ApplyStrokeMode": {
-                  "Enum": 1
-                },
-                "Color": {
-                  "Color3": [
-                    1,
-                    0.471,
-                    0.353
-                  ]
-                },
-                "Thickness": 2
-              }
-            },
             {
               "Name": "UIPadding",
               "ClassName": "UIPadding",
@@ -254,6 +296,64 @@
               "ClassName": "UIStroke",
               "Properties": {
                 "Thickness": 1.5
+              }
+            },
+            {
+              "Name": "UICorner",
+              "ClassName": "UICorner",
+              "Properties": {
+                "CornerRadius": {
+                  "UDim": [
+                    0.22,
+                    0
+                  ]
+                }
+              }
+            },
+            {
+              "Name": "UIGradient",
+              "ClassName": "UIGradient",
+              "Properties": {
+                "Rotation": 90,
+                "Color": {
+                  "ColorSequence": {
+                    "keypoints": [
+                      {
+                        "time": 0,
+                        "color": [
+                          1,
+                          1,
+                          1
+                        ]
+                      },
+                      {
+                        "time": 1,
+                        "color": [
+                          0.8,
+                          0.8,
+                          0.8
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "Name": "Border",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                },
+                "Color": {
+                  "Color3": [
+                    0.588,
+                    0.137,
+                    0.098
+                  ]
+                },
+                "Thickness": 2
               }
             }
           ]
@@ -453,7 +553,7 @@
             "BorderSizePixel": {
               "Int32": 0
             },
-            "ClipsDescendants": true,
+            "ClipsDescendants": false,
             "Position": {
               "UDim2": [
                 [
@@ -486,8 +586,8 @@
               "Properties": {
                 "CornerRadius": {
                   "UDim": [
-                    0,
-                    10
+                    0.5,
+                    0
                   ]
                 }
               }
@@ -543,9 +643,38 @@
                   "Properties": {
                     "CornerRadius": {
                       "UDim": [
-                        0,
-                        10
+                        0.5,
+                        0
                       ]
+                    }
+                  }
+                },
+                {
+                  "Name": "UIGradient",
+                  "ClassName": "UIGradient",
+                  "Properties": {
+                    "Rotation": 90,
+                    "Color": {
+                      "ColorSequence": {
+                        "keypoints": [
+                          {
+                            "time": 0,
+                            "color": [
+                              1,
+                              1,
+                              1
+                            ]
+                          },
+                          {
+                            "time": 1,
+                            "color": [
+                              0.75,
+                              0.75,
+                              0.75
+                            ]
+                          }
+                        ]
+                      }
                     }
                   }
                 }
@@ -557,7 +686,7 @@
               "Properties": {
                 "BackgroundTransparency": 1,
                 "Font": {
-                  "Enum": 19
+                  "Enum": 26
                 },
                 "Position": {
                   "UDim2": [
@@ -566,7 +695,7 @@
                       0
                     ],
                     [
-                      0.2,
+                      0.18,
                       0
                     ]
                   ]
@@ -578,7 +707,7 @@
                       0
                     ],
                     [
-                      0.6,
+                      0.64,
                       0
                     ]
                   ]

@@ -3,7 +3,8 @@
 -- A plot is free while its "OwnerUserId" attribute is 0 / missing. Plots are handed out in
 -- name order (Plot1, Plot2, ...), so adding more plots later only means cloning Plot1.
 --
--- Spawn point: a BasePart or Attachment named "SpawnPoint" inside the plot, otherwise the top
+-- Spawn point: a BasePart or Attachment named "SpawnPoint" inside the plot (a direct child wins; the
+-- tree spots in TreeSpawns, also named "SpawnPoint", are skipped), otherwise the top
 -- step of the plot's Gate, otherwise above the plot's pivot.
 
 local Players = game:GetService("Players")
@@ -48,7 +49,16 @@ function PlotService.GetOwner(plot: Model): Player?
 end
 
 function PlotService.GetSpawnCFrame(plot: Model): CFrame
-	local marker = plot:FindFirstChild("SpawnPoint", true)
+	-- A direct child first: TreeSpawns also holds parts named "SpawnPoint" (tree spots, not the player's).
+	local marker = plot:FindFirstChild("SpawnPoint")
+	if not marker then
+		for _, d in plot:GetDescendants() do
+			if d.Name == "SpawnPoint" and not d:IsDescendantOf(plot:FindFirstChild("TreeSpawns") or d) then
+				marker = d
+				break
+			end
+		end
+	end
 	if marker and marker:IsA("BasePart") then
 		return marker.CFrame + Vector3.new(0, 3, 0)
 	elseif marker and marker:IsA("Attachment") then

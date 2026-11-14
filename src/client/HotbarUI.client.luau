@@ -88,11 +88,31 @@ end)
 local commas = ItemDisplay.Commas
 local abbreviate = ItemDisplay.Abbreviate
 
+local SELECTED_SCALE = 1.08 -- the selected slot stands a little bigger than the rest
+
 local function bump(button: GuiObject, from: number)
 	local scale = button:FindFirstChild("SlotScale") :: UIScale?
 	if scale then
-		scale.Scale = from
-		TweenService:Create(scale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		local rest = if button:GetAttribute("Selected") then SELECTED_SCALE else 1
+		scale.Scale = from * rest
+		TweenService:Create(scale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = rest }):Play()
+	end
+end
+
+-- Selected look: bigger, white border, a ▼ pointer above it. Eases between states.
+local function setSelectedLook(button: GuiObject, selected: boolean)
+	local pointer = button:FindFirstChild("Pointer") :: GuiObject?
+	if pointer then
+		pointer.Visible = selected
+	end
+	if (button:GetAttribute("Selected") == true) == selected then
+		return
+	end
+	button:SetAttribute("Selected", selected)
+	local scale = button:FindFirstChild("SlotScale") :: UIScale?
+	if scale then
+		local target = if selected then SELECTED_SCALE else 1
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = target }):Play()
 	end
 end
 
@@ -196,9 +216,15 @@ local function drawSlot(slot: Slot)
 	local border = button:FindFirstChild("Border") :: UIStroke
 	local nameLabel = button:FindFirstChild("ItemName") :: TextLabel
 	local valueLabel = button:FindFirstChild("Value") :: TextLabel
-	local countLabel = button:FindFirstChild("Count") :: TextLabel
+	-- Count lives in the CountBadge (dark shadow frame) > Face (lighter top) > Count text.
+	local countBadge = button:FindFirstChild("CountBadge") :: GuiObject
+	local countLabel = button:FindFirstChild("Count", true) :: TextLabel
 	local gradient = button:FindFirstChildOfClass("UIGradient")
+	local nameShade = button:FindFirstChild("NameShade") :: GuiObject?
 	local hero = slot.hero
+	if nameShade then
+		nameShade.Visible = hero ~= nil
+	end
 	-- All 9 slots always show (empty ones dimmed); heroes fill them from the left.
 	button.Visible = true
 
@@ -209,7 +235,8 @@ local function drawSlot(slot: Slot)
 		border.Thickness = 2
 		nameLabel.Visible = false
 		valueLabel.Visible = false
-		countLabel.Visible = false
+		countBadge.Visible = false
+		setSelectedLook(button, false)
 		if gradient then
 			gradient.Enabled = false
 		end
@@ -218,22 +245,21 @@ local function drawSlot(slot: Slot)
 	end
 
 	local info = ItemDisplay.Info(ItemDisplay.HeroStack(hero))
-	local bg = ItemDisplay.SlotColor(info.rarity)
-	button.BackgroundColor3 = bg
+	ItemDisplay.PaintRarity(button, info.rarity)
 	button.BackgroundTransparency = 0
-	if gradient then
-		gradient.Enabled = true
-	end
 	local selected = hero == selectedHero
-	border.Color = if selected then SELECTED_BORDER else bg:Lerp(Color3.new(1, 1, 1), 0.4)
+	border.Color = if selected then SELECTED_BORDER else ItemDisplay.SlotEdgeColor(info.rarity)
 	border.Thickness = if selected then 4 else 3
+	setSelectedLook(button, selected)
 	nameLabel.Visible = true
 	nameLabel.Text = info.name
 	valueLabel.Visible = true
-	valueLabel.Text = abbreviate(info.value)
-	valueLabel.TextColor3 = ItemDisplay.HERO_VALUE_COLOR
-	countLabel.Visible = true
-	countLabel.Text = "x" .. commas(availableCount(hero))
+	valueLabel.Text = abbreviate(info.value) -- white text on the red pill (HotbarGui)
+	-- "x1" on every slot is noise: the badge (right column, under the value pill) only shows
+	-- for stacks.
+	local count = availableCount(hero)
+	countBadge.Visible = count > 1
+	countLabel.Text = "x" .. commas(count)
 	ItemDisplay.SetPicture(button, info)
 end
 
@@ -511,9 +537,7 @@ local function makePopup(entry: Received): Frame
 	local info = ItemDisplay.Info(entry.Stack)
 	local frame = popupTemplate:Clone()
 	frame.Name = entry.Stack
-	local bg = ItemDisplay.SlotColor(info.rarity)
-	frame.BackgroundColor3 = bg;
-	(frame:FindFirstChild("Border") :: UIStroke).Color = bg:Lerp(Color3.new(1, 1, 1), 0.4);
+	ItemDisplay.PaintRarity(frame, info.rarity);
 	(frame:FindFirstChild("ItemName") :: TextLabel).Text = info.name
 	local valueLabel = frame:FindFirstChild("Value") :: TextLabel
 	if info.isHero then
