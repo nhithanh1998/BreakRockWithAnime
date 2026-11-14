@@ -676,7 +676,16 @@ if not openButton then
 	end
 	local label = copy:FindFirstChild("Label") :: TextLabel?
 	if label then
-		label.Text = "Daily"
+		label.Text = "DAILY"
+	end
+	-- Index is green; give the Daily tile its own (purple) gradient in the same style.
+	local gradient = copy:FindFirstChildOfClass("UIGradient")
+	if gradient then
+		gradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(0.85, 0.55, 1)),
+			ColorSequenceKeypoint.new(0.45, Color3.new(0.7, 0.36, 0.95)),
+			ColorSequenceKeypoint.new(1, Color3.new(0.52, 0.22, 0.82)),
+		})
 	end
 	copy.Parent = sidebarButtons
 	openButton = copy

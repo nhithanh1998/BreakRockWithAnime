@@ -606,8 +606,8 @@ function Build.Site(plot: Model)
 	end
 	SM("HelperPickupPoint", CFrame.new(-38.5, 5, -31)) -- left side of the chest (the Loot Pad is in front)
 	SM("HelperPath_1", CFrame.new(-41, 5, -20))
-	SM("HelperPath_2", CFrame.new(-41, 5, 1.5)) -- left of the worker pads row
-	SM("HelperPath_3", CFrame.new(RAMP_X, 5, 1.5)) -- behind the worker pads, along the fence
+	SM("HelperPath_2", CFrame.new(-41, 5, -1)) -- left of the worker pads row
+	SM("HelperPath_3", CFrame.new(RAMP_X, 5, -1)) -- behind the worker pads, inside the front fence (z 1.2)
 	SM("HelperPath_4", CFrame.new(RAMP_X, 5, 4.6)) -- top of the helper ramp
 	SM("HelperPath_5", CFrame.new(RAMP_X, 0.2, 14)) -- bottom of the ramp, behind the stand
 	-- Customers walk in on the plot side of the sidewalk (z 54) and out on the road side (z 57).

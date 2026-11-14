@@ -37,7 +37,7 @@
         "Size": {
           "UDim2": [
             [
-              0.125,
+              0.085,
               0
             ],
             [
@@ -54,13 +54,13 @@
           "Properties": {
             "MinSize": {
               "Vector2": [
-                110,
+                90,
                 0
               ]
             },
             "MaxSize": {
               "Vector2": [
-                250,
+                170,
                 10000
               ]
             }
@@ -73,7 +73,7 @@
             "Padding": {
               "UDim": [
                 0,
-                12
+                10
               ]
             },
             "SortOrder": {
@@ -91,12 +91,12 @@
             "AutoButtonColor": true,
             "BackgroundColor3": {
               "Color3": [
-                0.2,
-                0.21,
-                0.24
+                1,
+                1,
+                1
               ]
             },
-            "BackgroundTransparency": 0.05,
+            "BackgroundTransparency": 0,
             "BorderSizePixel": {
               "Int32": 0
             },
@@ -122,7 +122,7 @@
               "Name": "UIAspectRatioConstraint",
               "ClassName": "UIAspectRatioConstraint",
               "Properties": {
-                "AspectRatio": 1.7,
+                "AspectRatio": 1.15,
                 "AspectType": {
                   "Enum": 1
                 },
@@ -137,91 +137,11 @@
               "Properties": {
                 "CornerRadius": {
                   "UDim": [
-                    0,
-                    4
+                    0.16,
+                    0
                   ]
                 }
               }
-            },
-            {
-              "Name": "UIStroke",
-              "ClassName": "UIStroke",
-              "Properties": {
-                "ApplyStrokeMode": {
-                  "Enum": 1
-                },
-                "Color": {
-                  "Color3": [
-                    1,
-                    1,
-                    1
-                  ]
-                },
-                "Thickness": 4
-              },
-              "Children": [
-                {
-                  "Name": "UIGradient",
-                  "ClassName": "UIGradient",
-                  "Properties": {
-                    "Color": {
-                      "ColorSequence": {
-                        "keypoints": [
-                          {
-                            "time": 0,
-                            "color": [
-                              1,
-                              0.2,
-                              0.2
-                            ]
-                          },
-                          {
-                            "time": 0.2,
-                            "color": [
-                              1,
-                              0.85,
-                              0.2
-                            ]
-                          },
-                          {
-                            "time": 0.4,
-                            "color": [
-                              0.3,
-                              1,
-                              0.3
-                            ]
-                          },
-                          {
-                            "time": 0.6,
-                            "color": [
-                              0.2,
-                              0.8,
-                              1
-                            ]
-                          },
-                          {
-                            "time": 0.8,
-                            "color": [
-                              0.35,
-                              0.3,
-                              1
-                            ]
-                          },
-                          {
-                            "time": 1,
-                            "color": [
-                              1,
-                              0.3,
-                              0.9
-                            ]
-                          }
-                        ]
-                      }
-                    },
-                    "Rotation": 45
-                  }
-                }
-              ]
             },
             {
               "Name": "UIScale",
@@ -246,7 +166,7 @@
                       0
                     ],
                     [
-                      0.03,
+                      0.05,
                       0
                     ]
                   ]
@@ -261,7 +181,7 @@
                       0
                     ],
                     [
-                      0.66,
+                      0.64,
                       0
                     ]
                   ]
@@ -304,7 +224,7 @@
                       0
                     ],
                     [
-                      0.97,
+                      0.96,
                       0
                     ]
                   ]
@@ -312,16 +232,16 @@
                 "Size": {
                   "UDim2": [
                     [
-                      0.94,
+                      0.9,
                       0
                     ],
                     [
-                      0.3,
+                      0.26,
                       0
                     ]
                   ]
                 },
-                "Text": "Shop",
+                "Text": "SHOP",
                 "TextColor3": {
                   "Color3": [
                     1,
@@ -341,12 +261,12 @@
                   "Properties": {
                     "Color": {
                       "Color3": [
+                        0.08,
                         0.05,
-                        0.05,
-                        0.08
+                        0.05
                       ]
                     },
-                    "Thickness": 2.5,
+                    "Thickness": 3,
                     "LineJoinMode": {
                       "Enum": 0
                     }
@@ -366,8 +286,8 @@
                 },
                 "BackgroundColor3": {
                   "Color3": [
-                    0.86,
-                    0.16,
+                    0.92,
+                    0.18,
                     0.18
                   ]
                 },
@@ -377,11 +297,11 @@
                 "Position": {
                   "UDim2": [
                     [
-                      0.1,
+                      0.9,
                       0
                     ],
                     [
-                      0.24,
+                      0.1,
                       0
                     ]
                   ]
@@ -393,7 +313,7 @@
                       0
                     ],
                     [
-                      0.42,
+                      0.3,
                       0
                     ]
                   ]
@@ -423,8 +343,8 @@
                   "Properties": {
                     "CornerRadius": {
                       "UDim": [
-                        0,
-                        4
+                        0.28,
+                        0
                       ]
                     }
                   }
@@ -438,12 +358,12 @@
                     },
                     "Color": {
                       "Color3": [
-                        0.45,
-                        0.05,
-                        0.07
+                        0.3,
+                        0.03,
+                        0.05
                       ]
                     },
-                    "Thickness": 3
+                    "Thickness": 2.5
                   }
                 },
                 {
@@ -475,11 +395,11 @@
                     "Size": {
                       "UDim2": [
                         [
-                          0.8,
+                          0.75,
                           0
                         ],
                         [
-                          0.8,
+                          0.75,
                           0
                         ]
                       ]
@@ -504,9 +424,9 @@
                       "Properties": {
                         "Color": {
                           "Color3": [
+                            0.08,
                             0.05,
-                            0.05,
-                            0.08
+                            0.05
                           ]
                         },
                         "Thickness": 2,
@@ -518,6 +438,63 @@
                   ]
                 }
               ]
+            },
+            {
+              "Name": "UIGradient",
+              "ClassName": "UIGradient",
+              "Properties": {
+                "Color": {
+                  "ColorSequence": {
+                    "keypoints": [
+                      {
+                        "time": 0,
+                        "color": [
+                          1.0,
+                          0.72,
+                          0.3
+                        ]
+                      },
+                      {
+                        "time": 0.45,
+                        "color": [
+                          0.98,
+                          0.55,
+                          0.16
+                        ]
+                      },
+                      {
+                        "time": 1,
+                        "color": [
+                          0.88,
+                          0.38,
+                          0.08
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "Rotation": 90
+              }
+            },
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "Color": {
+                  "Color3": [
+                    0.1,
+                    0.07,
+                    0.07
+                  ]
+                },
+                "Thickness": 3.5,
+                "LineJoinMode": {
+                  "Enum": 0
+                },
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                }
+              }
             }
           ]
         },
@@ -528,12 +505,12 @@
             "AutoButtonColor": true,
             "BackgroundColor3": {
               "Color3": [
-                0.2,
-                0.21,
-                0.24
+                1,
+                1,
+                1
               ]
             },
-            "BackgroundTransparency": 0.05,
+            "BackgroundTransparency": 0,
             "BorderSizePixel": {
               "Int32": 0
             },
@@ -559,7 +536,7 @@
               "Name": "UIAspectRatioConstraint",
               "ClassName": "UIAspectRatioConstraint",
               "Properties": {
-                "AspectRatio": 1.7,
+                "AspectRatio": 1.15,
                 "AspectType": {
                   "Enum": 1
                 },
@@ -574,27 +551,10 @@
               "Properties": {
                 "CornerRadius": {
                   "UDim": [
-                    0,
-                    4
+                    0.16,
+                    0
                   ]
                 }
-              }
-            },
-            {
-              "Name": "UIStroke",
-              "ClassName": "UIStroke",
-              "Properties": {
-                "ApplyStrokeMode": {
-                  "Enum": 1
-                },
-                "Color": {
-                  "Color3": [
-                    0.08,
-                    0.08,
-                    0.1
-                  ]
-                },
-                "Thickness": 3
               }
             },
             {
@@ -620,7 +580,7 @@
                       0
                     ],
                     [
-                      0.03,
+                      0.05,
                       0
                     ]
                   ]
@@ -635,7 +595,7 @@
                       0
                     ],
                     [
-                      0.66,
+                      0.64,
                       0
                     ]
                   ]
@@ -678,7 +638,7 @@
                       0
                     ],
                     [
-                      0.97,
+                      0.96,
                       0
                     ]
                   ]
@@ -686,16 +646,16 @@
                 "Size": {
                   "UDim2": [
                     [
-                      0.94,
+                      0.9,
                       0
                     ],
                     [
-                      0.3,
+                      0.26,
                       0
                     ]
                   ]
                 },
-                "Text": "Upgrades",
+                "Text": "UPGRADES",
                 "TextColor3": {
                   "Color3": [
                     1,
@@ -715,12 +675,12 @@
                   "Properties": {
                     "Color": {
                       "Color3": [
+                        0.08,
                         0.05,
-                        0.05,
-                        0.08
+                        0.05
                       ]
                     },
-                    "Thickness": 2.5,
+                    "Thickness": 3,
                     "LineJoinMode": {
                       "Enum": 0
                     }
@@ -740,8 +700,8 @@
                 },
                 "BackgroundColor3": {
                   "Color3": [
-                    0.86,
-                    0.16,
+                    0.92,
+                    0.18,
                     0.18
                   ]
                 },
@@ -751,11 +711,11 @@
                 "Position": {
                   "UDim2": [
                     [
-                      0.1,
+                      0.9,
                       0
                     ],
                     [
-                      0.24,
+                      0.1,
                       0
                     ]
                   ]
@@ -767,7 +727,7 @@
                       0
                     ],
                     [
-                      0.42,
+                      0.3,
                       0
                     ]
                   ]
@@ -797,8 +757,8 @@
                   "Properties": {
                     "CornerRadius": {
                       "UDim": [
-                        0,
-                        4
+                        0.28,
+                        0
                       ]
                     }
                   }
@@ -812,12 +772,12 @@
                     },
                     "Color": {
                       "Color3": [
-                        0.45,
-                        0.05,
-                        0.07
+                        0.3,
+                        0.03,
+                        0.05
                       ]
                     },
-                    "Thickness": 3
+                    "Thickness": 2.5
                   }
                 },
                 {
@@ -849,11 +809,11 @@
                     "Size": {
                       "UDim2": [
                         [
-                          0.8,
+                          0.75,
                           0
                         ],
                         [
-                          0.8,
+                          0.75,
                           0
                         ]
                       ]
@@ -878,9 +838,9 @@
                       "Properties": {
                         "Color": {
                           "Color3": [
+                            0.08,
                             0.05,
-                            0.05,
-                            0.08
+                            0.05
                           ]
                         },
                         "Thickness": 2,
@@ -892,6 +852,63 @@
                   ]
                 }
               ]
+            },
+            {
+              "Name": "UIGradient",
+              "ClassName": "UIGradient",
+              "Properties": {
+                "Color": {
+                  "ColorSequence": {
+                    "keypoints": [
+                      {
+                        "time": 0,
+                        "color": [
+                          0.42,
+                          0.78,
+                          1.0
+                        ]
+                      },
+                      {
+                        "time": 0.45,
+                        "color": [
+                          0.24,
+                          0.6,
+                          0.98
+                        ]
+                      },
+                      {
+                        "time": 1,
+                        "color": [
+                          0.12,
+                          0.42,
+                          0.86
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "Rotation": 90
+              }
+            },
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "Color": {
+                  "Color3": [
+                    0.1,
+                    0.07,
+                    0.07
+                  ]
+                },
+                "Thickness": 3.5,
+                "LineJoinMode": {
+                  "Enum": 0
+                },
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                }
+              }
             }
           ]
         },
@@ -902,12 +919,12 @@
             "AutoButtonColor": true,
             "BackgroundColor3": {
               "Color3": [
-                0.2,
-                0.21,
-                0.24
+                1,
+                1,
+                1
               ]
             },
-            "BackgroundTransparency": 0.05,
+            "BackgroundTransparency": 0,
             "BorderSizePixel": {
               "Int32": 0
             },
@@ -933,7 +950,7 @@
               "Name": "UIAspectRatioConstraint",
               "ClassName": "UIAspectRatioConstraint",
               "Properties": {
-                "AspectRatio": 1.7,
+                "AspectRatio": 1.15,
                 "AspectType": {
                   "Enum": 1
                 },
@@ -948,27 +965,10 @@
               "Properties": {
                 "CornerRadius": {
                   "UDim": [
-                    0,
-                    4
+                    0.16,
+                    0
                   ]
                 }
-              }
-            },
-            {
-              "Name": "UIStroke",
-              "ClassName": "UIStroke",
-              "Properties": {
-                "ApplyStrokeMode": {
-                  "Enum": 1
-                },
-                "Color": {
-                  "Color3": [
-                    0.08,
-                    0.08,
-                    0.1
-                  ]
-                },
-                "Thickness": 3
               }
             },
             {
@@ -994,7 +994,7 @@
                       0
                     ],
                     [
-                      0.03,
+                      0.05,
                       0
                     ]
                   ]
@@ -1009,7 +1009,7 @@
                       0
                     ],
                     [
-                      0.66,
+                      0.64,
                       0
                     ]
                   ]
@@ -1052,7 +1052,7 @@
                       0
                     ],
                     [
-                      0.97,
+                      0.96,
                       0
                     ]
                   ]
@@ -1060,16 +1060,16 @@
                 "Size": {
                   "UDim2": [
                     [
-                      0.94,
+                      0.9,
                       0
                     ],
                     [
-                      0.3,
+                      0.26,
                       0
                     ]
                   ]
                 },
-                "Text": "Index",
+                "Text": "INDEX",
                 "TextColor3": {
                   "Color3": [
                     1,
@@ -1089,12 +1089,12 @@
                   "Properties": {
                     "Color": {
                       "Color3": [
+                        0.08,
                         0.05,
-                        0.05,
-                        0.08
+                        0.05
                       ]
                     },
-                    "Thickness": 2.5,
+                    "Thickness": 3,
                     "LineJoinMode": {
                       "Enum": 0
                     }
@@ -1114,8 +1114,8 @@
                 },
                 "BackgroundColor3": {
                   "Color3": [
-                    0.86,
-                    0.16,
+                    0.92,
+                    0.18,
                     0.18
                   ]
                 },
@@ -1125,11 +1125,11 @@
                 "Position": {
                   "UDim2": [
                     [
-                      0.1,
+                      0.9,
                       0
                     ],
                     [
-                      0.24,
+                      0.1,
                       0
                     ]
                   ]
@@ -1141,7 +1141,7 @@
                       0
                     ],
                     [
-                      0.42,
+                      0.3,
                       0
                     ]
                   ]
@@ -1171,8 +1171,8 @@
                   "Properties": {
                     "CornerRadius": {
                       "UDim": [
-                        0,
-                        4
+                        0.28,
+                        0
                       ]
                     }
                   }
@@ -1186,12 +1186,12 @@
                     },
                     "Color": {
                       "Color3": [
-                        0.45,
-                        0.05,
-                        0.07
+                        0.3,
+                        0.03,
+                        0.05
                       ]
                     },
-                    "Thickness": 3
+                    "Thickness": 2.5
                   }
                 },
                 {
@@ -1223,11 +1223,11 @@
                     "Size": {
                       "UDim2": [
                         [
-                          0.8,
+                          0.75,
                           0
                         ],
                         [
-                          0.8,
+                          0.75,
                           0
                         ]
                       ]
@@ -1252,9 +1252,9 @@
                       "Properties": {
                         "Color": {
                           "Color3": [
+                            0.08,
                             0.05,
-                            0.05,
-                            0.08
+                            0.05
                           ]
                         },
                         "Thickness": 2,
@@ -1266,6 +1266,63 @@
                   ]
                 }
               ]
+            },
+            {
+              "Name": "UIGradient",
+              "ClassName": "UIGradient",
+              "Properties": {
+                "Color": {
+                  "ColorSequence": {
+                    "keypoints": [
+                      {
+                        "time": 0,
+                        "color": [
+                          0.55,
+                          0.88,
+                          0.32
+                        ]
+                      },
+                      {
+                        "time": 0.45,
+                        "color": [
+                          0.38,
+                          0.75,
+                          0.2
+                        ]
+                      },
+                      {
+                        "time": 1,
+                        "color": [
+                          0.24,
+                          0.58,
+                          0.12
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "Rotation": 90
+              }
+            },
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "Color": {
+                  "Color3": [
+                    0.1,
+                    0.07,
+                    0.07
+                  ]
+                },
+                "Thickness": 3.5,
+                "LineJoinMode": {
+                  "Enum": 0
+                },
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                }
+              }
             }
           ]
         }

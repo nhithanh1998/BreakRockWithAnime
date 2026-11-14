@@ -1,7 +1,7 @@
 --!strict
--- StandUpgradeConfig: the upgrades bought on the Farm Stand's upgrade pads (UpgradePad_<Id> markers;
--- which pads a level has: StandLayoutConfig UpgradePads). Each has levels with rising costs and a MAX.
--- A new upgrade = a new entry here + its pad in the level models.
+-- StandUpgradeConfig: the Farm Stand's upgrades. Board = true ones are buttons on the stand's billboard
+-- (BoardOrder); the others are bought on upgrade pads (UpgradePad_<Id> markers; which pads a level has:
+-- StandLayoutConfig UpgradePads). Each has levels with rising costs and a MAX.
 --
 -- Effect kinds:
 --   Flat     +PerLevel x level to a stand stat (StandStats "Upgrades" column)
@@ -25,52 +25,41 @@ export type UpgradeDef = {
 	Costs: { number }, -- cost of level 1, 2, ... (MaxLevel = #Costs)
 	Effect: Effect,
 	Color: Color3, -- pad / window accent
+	Board: boolean?, -- bought with a button on the stand's billboard (near the stand), not on a pad
 }
 
+-- n costs: base x growth^(level - 1), rounded to 2 significant digits.
+local function costs(base: number, growth: number, n: number): { number }
+	local out = {}
+	for i = 1, n do
+		local c = base * growth ^ (i - 1)
+		local step = 10 ^ math.max(0, math.floor(math.log10(c)) - 1)
+		out[i] = math.floor(c / step + 0.5) * step
+	end
+	return out
+end
+
 StandUpgradeConfig.Upgrades = {
-	FarmSide = {
-		Name = "Farm Side",
-		Desc = "+30% customers per level",
-		Costs = { 300, 1200, 4000, 12000, 35000 },
-		Effect = { Kind = "Percent", Stat = "CustomersPerMinute", PerLevel = 0.3 },
-		Color = Color3.fromRGB(90, 200, 110),
+	Capacity = {
+		Name = "Capacity",
+		Desc = "+23 max stock per level",
+		Costs = costs(100, 1.45, 20),
+		Effect = { Kind = "Flat", Stat = "MaxStock", PerLevel = 23 },
+		Color = Color3.fromRGB(235, 140, 50),
+		Board = true,
 	},
-	FarmSign = {
-		Name = "Farm Sign",
-		Desc = "+1 item per customer per level",
-		Costs = { 500, 2500, 9000, 30000 },
-		Effect = { Kind = "Flat", Stat = "MaxItemsPerCustomer", PerLevel = 1 },
-		Color = Color3.fromRGB(230, 90, 70),
-	},
-	MaterialPrice = {
-		Name = "Material Price +",
-		Desc = "+10% sell price per level",
-		Costs = { 150, 400, 900, 2000, 4500, 9000, 18000, 35000, 70000, 140000 },
-		Effect = { Kind = "Flat", Stat = "PriceMultiplier", PerLevel = 0.1 },
-		Color = Color3.fromRGB(250, 200, 60),
-	},
-	BiggerShelf = {
-		Name = "Bigger Shelf",
-		Desc = "+25% max stock per level",
-		Costs = { 200, 800, 2500, 7000, 18000, 45000 },
-		Effect = { Kind = "Percent", Stat = "MaxStock", PerLevel = 0.25 },
-		Color = Color3.fromRGB(176, 120, 64),
-	},
-	CarryCapacity = {
-		Name = "Carry Capacity",
-		Desc = "+10 materials you can carry per level",
-		Costs = { 100, 300, 800, 2000, 5000, 12000, 30000, 75000 },
-		Effect = { Kind = "Carry", PerLevel = 10 },
-		Color = Color3.fromRGB(90, 160, 240),
-	},
-	HelperTraining = {
-		Name = "Helper Training",
-		Desc = "Helpers carry +2 and walk 10% faster per level",
-		Costs = { 600, 2500, 8000, 25000, 70000 },
-		Effect = { Kind = "Helper", Carry = 2, Speed = 0.1 },
-		Color = Color3.fromRGB(170, 100, 230),
+	Fame = {
+		Name = "Fame",
+		Desc = "+2 customers a minute per level",
+		Costs = costs(150, 1.45, 20),
+		Effect = { Kind = "Flat", Stat = "CustomersPerMinute", PerLevel = 2 },
+		Color = Color3.fromRGB(170, 90, 230),
+		Board = true,
 	},
 } :: { [string]: UpgradeDef }
+
+-- The buttons on the stand's billboard, left to right (upgrades with Board = true).
+StandUpgradeConfig.BoardOrder = { "Capacity", "Fame" }
 
 -- How close (studs) the player must be to an upgrade pad to buy (server check) / open its window.
 StandUpgradeConfig.PadReach = 7

@@ -732,12 +732,15 @@ local function previewOf(standId: string, stand: StandPads)
 	}
 end
 
+-- Near the stand's counter (CoinFxPoint marker, so a stall moved on the plot still counts), else its site Anchor.
 local function near(player: Player, plot: Instance, standId: string): boolean
+	local at = StandLayout.Get(plot, standId, "CoinFxPoint")
 	local site = StandLayout.Site(plot, standId)
 	local anchor = site and site:FindFirstChild(StandLayoutConfig.AnchorName)
+	local pos = if at then at.Position elseif anchor and anchor:IsA("BasePart") then anchor.Position else nil
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	return anchor ~= nil and root ~= nil and (root.Position - (anchor :: BasePart).Position).Magnitude <= UPGRADE_REACH
+	return pos ~= nil and root ~= nil and (root.Position - pos).Magnitude <= UPGRADE_REACH
 end
 
 local function upgradeStand(player: Player, standId: string)
@@ -847,14 +850,21 @@ local function buyUpgrade(player: Player, standId: string, id: string)
 	if not state or not stand or not def then
 		return { ok = false, message = "No such upgrade" }
 	end
-	-- the pad must exist at this stand level, and the player must stand at it
-	local layout = StandLayoutConfig.Stands[standId]
-	local levelLayout = layout and layout.Levels[stand.Level]
-	if not levelLayout or not table.find(levelLayout.UpgradePads, id) then
-		return { ok = false, message = "Upgrade your stand to unlock this" }
-	end
-	if not nearPad(player, state.plot, standId, id) then
-		return { ok = false, message = "Stand on the upgrade pad" }
+	if def.Board then
+		-- a billboard button: the player must be near the stand
+		if not near(player, state.plot, standId) then
+			return { ok = false, message = "Go to your Farm Stand" }
+		end
+	else
+		-- the pad must exist at this stand level, and the player must stand at it
+		local layout = StandLayoutConfig.Stands[standId]
+		local levelLayout = layout and layout.Levels[stand.Level]
+		if not levelLayout or not table.find(levelLayout.UpgradePads, id) then
+			return { ok = false, message = "Upgrade your stand to unlock this" }
+		end
+		if not nearPad(player, state.plot, standId, id) then
+			return { ok = false, message = "Stand on the upgrade pad" }
+		end
 	end
 	local level = stand.Upgrades[id] or 0
 	local cost = StandUpgradeConfig.NextCost(id, level)
@@ -1339,7 +1349,11 @@ function StandService.Start()
 				site:SetAttribute("DebugMarkers", nil) -- left over from a Studio preview
 				StandLayout.SetMarkersVisible(site, false)
 				if not states[plot] then
-					StandLayout.Place(plot, standId, 1)
+					-- keep a level-1 stand already built on the plot (the hand-placed MainStall)
+					local placed = StandLayout.Placed(plot, standId)
+					if not placed or placed:GetAttribute("Level") ~= 1 then
+						StandLayout.Place(plot, standId, 1)
+					end
 					for _, kind in KINDS do
 						for _, padModel in padsOf(plot, standId, kind) do
 							clearPad(padModel, kind)

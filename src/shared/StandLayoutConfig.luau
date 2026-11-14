@@ -86,7 +86,7 @@ export type StandLayout = {
 	SiteMarkers: { [string]: number }, -- site marker prefix -> how many (at least)
 }
 
-local BASE_PADS = { "MaterialPrice", "BiggerShelf", "CarryCapacity" }
+local BASE_PADS: { string } = {} -- the stand's upgrades are billboard buttons now (StandUpgradeConfig Board)
 
 StandLayoutConfig.Stands = {
 	FarmStand = {

@@ -332,8 +332,22 @@ local function drawPadHero(slot: Model, hero: string?, owner: Player?)
 	local padScale = if def and def.PadScale then def.PadScale else 1
 	local factor = HeroModels.ScaleToHeight(model, HeroModels.PlayerBodyHeight(owner) * padScale)
 
-	-- Feet on the pad's top face, facing the way the pad faces.
+	-- Feet on the pad's top face, facing the plot's chop ground (Floor), snapped to the pad's nearest
+	-- side so a row of pads faces one way; without a Floor, the way the pad faces.
 	local look = Vector3.new(pad.CFrame.LookVector.X, 0, pad.CFrame.LookVector.Z)
+	local plot = slot.Parent and slot.Parent.Parent
+	local floor = plot and plot:FindFirstChild("Floor")
+	if floor and (floor:IsA("Model") or floor:IsA("BasePart")) then
+		local to = floor:GetPivot().Position - pad.Position
+		local best, bestDot = look, -math.huge
+		for _, axis in { pad.CFrame.LookVector, -pad.CFrame.LookVector, pad.CFrame.RightVector, -pad.CFrame.RightVector } do
+			local flat = Vector3.new(axis.X, 0, axis.Z)
+			if flat.Magnitude > 0.01 and flat.Unit:Dot(to) > bestDot then
+				best, bestDot = flat, flat.Unit:Dot(to)
+			end
+		end
+		look = best
+	end
 	look = if look.Magnitude > 0.01 then look.Unit else Vector3.new(0, 0, -1)
 	local top = pad.Position + Vector3.new(0, pad.Size.Y / 2, 0)
 	model:PivotTo(CFrame.lookAt(top, top + look))

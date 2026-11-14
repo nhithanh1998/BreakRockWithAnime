@@ -96,12 +96,11 @@ StandConfig.Restock = {
 StandConfig.Stands = {
 	FarmStand = {
 		Name = "Farm Stand",
+		-- One level only (the MainStall placed on the plot). It grows with the billboard's Capacity and
+		-- Fame upgrades (StandUpgradeConfig): at their MAX 40 + 20 x 23 = 500 stock, 10 + 20 x 2 = 50
+		-- customers a minute (keeper heroes add on top).
 		Levels = {
-			{ Name = "Farm Stand", BaseMaxStock = 40, BaseCustomersPerMinute = 20, BaseMaxItemsPerCustomer = 2, BasePriceMultiplier = 1 },
-			{ Name = "Farm Stand", BaseMaxStock = 80, BaseCustomersPerMinute = 30, BaseMaxItemsPerCustomer = 3, BasePriceMultiplier = 1.1, UpgradeCost = 500 },
-			{ Name = "Farm Stand", BaseMaxStock = 150, BaseCustomersPerMinute = 45, BaseMaxItemsPerCustomer = 4, BasePriceMultiplier = 1.25, UpgradeCost = 2500 },
-			{ Name = "Farm Market", BaseMaxStock = 300, BaseCustomersPerMinute = 65, BaseMaxItemsPerCustomer = 5, BasePriceMultiplier = 1.45, UpgradeCost = 12000 },
-			{ Name = "Grand Farm Market", BaseMaxStock = 600, BaseCustomersPerMinute = 90, BaseMaxItemsPerCustomer = 6, BasePriceMultiplier = 1.7, UpgradeCost = 60000 },
+			{ Name = "Farm Stand", BaseMaxStock = 40, BaseCustomersPerMinute = 10, BaseMaxItemsPerCustomer = 2, BasePriceMultiplier = 1 },
 		},
 	},
 } :: { [string]: StandDef }

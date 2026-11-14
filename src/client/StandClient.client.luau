@@ -1,15 +1,15 @@
 -- StandClient: what players see on every Farm Stand (StandService on the server).
 --
---   Billboard   at the placed stand's BillboardAnchor marker: name + level, stock / max, price per item,
---               customers a minute. Size and colours follow the level's BillboardStyle (StandLayoutConfig).
+--   Billboard   at the placed stand's BillboardAnchor marker: name, stock n/max, customers a minute and,
+--               for the owner, the upgrade buttons (StandUpgradeConfig.BoardOrder: CAPACITY+, FAME+, each
+--               "Lv n/20 $cost" or MAX). Size and colours follow the level's BillboardStyle (StandLayoutConfig).
 --               Reads the site attributes (Stock, MaxStock, PriceMin, PriceMax, CustomersPerMinute,
 --               Level, StandName, OwnerUserId), so it updates live.
 --   Goods       small crates at the StockVisual_N markers, as many as the stock fill (local parts).
 --   Customers   StandCustomers (customer NPCs) uses this script's popup ("+$X" rising from CoinFxPoint)
 --               and coins flying to the owner with a ping, when an NPC pays at the counter.
 --   Level up    "LevelUp": the new level model rises with a bounce, confetti, sounds, "LEVEL UP!",
---               new keeper pads sparkle. The billboard grows with the level (BillboardStyle) and, for
---               the owner, has an UPGRADE STAND button that opens StandUI.
+--               new keeper pads sparkle. The billboard grows with the level (BillboardStyle).
 --   Restock FX  "Restock" (owner only): boxes fly from the player into the counter, "+N stock" pops,
 --               a tick sound that pitches up while the player keeps restocking.
 
@@ -22,6 +22,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local StandLayoutConfig = require(Shared:WaitForChild("StandLayoutConfig"))
 local StandConfig = require(Shared:WaitForChild("StandConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
+local StandUpgradeConfig = require(Shared:WaitForChild("StandUpgradeConfig"))
+local standAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("StandAction") :: RemoteFunction
 local standEvent = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("StandEvent") :: RemoteEvent
 
 local player = Players.LocalPlayer
@@ -91,9 +93,24 @@ end
 
 -- Billboard ------------------------------------------------------------------------------------------------
 
-type Board = { gui: BillboardGui, title: TextLabel, level: TextLabel, stock: TextLabel, price: TextLabel, customers: TextLabel, button: TextButton, buttonText: TextLabel, styleKey: string }
+type UpgradeButton = { id: string, button: TextButton, name: TextLabel, info: TextLabel, scale: UIScale }
+type Board = { gui: BillboardGui, title: TextLabel, stock: TextLabel, customers: TextLabel, buttons: { UpgradeButton }, buttonRow: Frame, styleKey: string }
 
 local boards: { [Instance]: Board } = {}
+
+local BUTTON_H = 2.2 -- studs under the board for the upgrade buttons (owner only)
+local MAXED = Color3.fromRGB(120, 120, 128)
+local POOR = Color3.fromRGB(150, 140, 130)
+
+local function money(): number
+	local stats = player:FindFirstChild("leaderstats")
+	local v = stats and stats:FindFirstChild("Money")
+	return if v and v:IsA("ValueBase") then (v :: any).Value else 0
+end
+
+local function darker(c: Color3, k: number): Color3
+	return Color3.new(c.R * k, c.G * k, c.B * k)
+end
 
 local function buildBoard(site: Instance): Board?
 	local anchor = marker(site, "BillboardAnchor")
@@ -104,8 +121,7 @@ local function buildBoard(site: Instance): Board?
 	local gui = Instance.new("BillboardGui")
 	gui.Name = site:GetFullName()
 	gui.Adornee = anchor
-	local buttonH = 1.7 -- studs under the board for the UPGRADE button
-	gui.Size = UDim2.new(style.W, 0, style.H + buttonH, 0)
+	gui.Size = UDim2.new(style.W, 0, style.H + BUTTON_H, 0)
 	gui.Active = true
 	gui.LightInfluence = 0
 	gui.MaxDistance = 160
@@ -114,7 +130,7 @@ local function buildBoard(site: Instance): Board?
 	local body = Instance.new("Frame")
 	body.Name = "Body"
 	body.BackgroundTransparency = 1
-	body.Size = UDim2.fromScale(1, style.H / (style.H + buttonH))
+	body.Size = UDim2.fromScale(1, style.H / (style.H + BUTTON_H))
 	body.Parent = gui
 
 	local panel = Instance.new("Frame")
@@ -140,80 +156,106 @@ local function buildBoard(site: Instance): Board?
 	local title = label({ Size = UDim2.fromScale(0.94, 0.8), Position = UDim2.fromScale(0.03, 0.1), TextColor3 = Color3.new(1, 1, 1), ZIndex = 3, Parent = plate })
 	stroke(title, Color3.fromRGB(60, 35, 15), 2)
 
-	local level = label({ AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.98, 0.25), Size = UDim2.fromScale(0.2, 0.13), TextColor3 = style.Border, Parent = body })
-
-	-- row: crate + stock, coin + price
-	local stock = label({ Position = UDim2.fromScale(0.16, 0.42), Size = UDim2.fromScale(0.32, 0.2), TextXAlignment = Enum.TextXAlignment.Left, Parent = body })
+	-- row: crate + stock n/max
 	local crate = Instance.new("Frame")
-	crate.Position = UDim2.fromScale(0.05, 0.44)
-	crate.Size = UDim2.fromScale(0.09, 0.16)
+	crate.Position = UDim2.fromScale(0.2, 0.4)
+	crate.Size = UDim2.fromScale(0.12, 0.2)
 	crate.BackgroundColor3 = Color3.fromRGB(176, 120, 64)
 	crate.Parent = body
 	corner(crate, 0.15)
 	stroke(crate, Color3.fromRGB(100, 62, 30), 2)
-	local coin = Instance.new("TextLabel")
-	coin.Position = UDim2.fromScale(0.5, 0.43)
-	coin.Size = UDim2.fromScale(0.1, 0.18)
-	coin.BackgroundColor3 = Color3.fromRGB(250, 200, 50)
-	coin.Font = FONT
-	coin.TextScaled = true
-	coin.Text = "$"
-	coin.TextColor3 = Color3.fromRGB(190, 120, 20)
-	coin.Parent = body
-	corner(coin, 1)
-	stroke(coin, Color3.fromRGB(190, 120, 20), 2)
-	local price = label({ Position = UDim2.fromScale(0.62, 0.42), Size = UDim2.fromScale(0.36, 0.2), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(60, 160, 60), Parent = body })
+	local band = Instance.new("Frame")
+	band.AnchorPoint = Vector2.new(0, 0.5)
+	band.Position = UDim2.fromScale(0, 0.5)
+	band.Size = UDim2.fromScale(1, 0.18)
+	band.BorderSizePixel = 0
+	band.BackgroundColor3 = Color3.fromRGB(120, 78, 38)
+	band.Parent = crate
+	local stock = label({ Position = UDim2.fromScale(0.36, 0.38), Size = UDim2.fromScale(0.5, 0.24), TextXAlignment = Enum.TextXAlignment.Left, Parent = body })
 	local customers = label({ AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.7), Size = UDim2.fromScale(0.86, 0.15), TextColor3 = Color3.fromRGB(200, 120, 40), Parent = body })
 
-	-- UPGRADE button (owner only): opens the stand window (StandUI).
-	local button = Instance.new("TextButton")
-	button.Name = "Upgrade"
-	button.AnchorPoint = Vector2.new(0.5, 1)
-	button.Position = UDim2.fromScale(0.5, 1)
-	button.Size = UDim2.fromScale(0.62, buttonH / (style.H + buttonH) * 0.9)
-	button.BackgroundColor3 = Color3.fromRGB(235, 80, 70)
-	button.Text = ""
-	button.AutoButtonColor = true
-	button.Visible = false
-	button.Parent = gui
-	corner(button, 0.3)
-	stroke(button, Color3.fromRGB(150, 30, 30), 2)
-	local buttonText = label({ Size = UDim2.fromScale(0.9, 0.8), Position = UDim2.fromScale(0.05, 0.1), TextColor3 = Color3.new(1, 1, 1), Parent = button })
-	stroke(buttonText, Color3.fromRGB(110, 20, 20), 1.5)
-	button.Activated:Connect(function()
-		local standGui = player.PlayerGui:FindFirstChild("StandGui")
-		if standGui then
-			standGui:SetAttribute("Open", nil)
-			standGui:SetAttribute("Open", site.Name)
+	-- Upgrade buttons (owner only), StandUpgradeConfig.BoardOrder left to right.
+	local row = Instance.new("Frame")
+	row.Name = "Upgrades"
+	row.AnchorPoint = Vector2.new(0.5, 1)
+	row.Position = UDim2.fromScale(0.5, 1)
+	row.Size = UDim2.fromScale(1, BUTTON_H / (style.H + BUTTON_H) * 0.94)
+	row.BackgroundTransparency = 1
+	row.Visible = false
+	row.Parent = gui
+	local list = Instance.new("UIListLayout")
+	list.FillDirection = Enum.FillDirection.Horizontal
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	list.Padding = UDim.new(0.03, 0)
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Parent = row
+	local buttons: { UpgradeButton } = {}
+	for i, id in StandUpgradeConfig.BoardOrder do
+		local def = StandUpgradeConfig.Get(id)
+		if not def then
+			continue
 		end
-	end)
+		local button = Instance.new("TextButton")
+		button.Name = id
+		button.LayoutOrder = i
+		button.Size = UDim2.fromScale(0.47, 1)
+		button.BackgroundColor3 = def.Color
+		button.Text = ""
+		button.AutoButtonColor = true
+		button.Parent = row
+		corner(button, 0.25)
+		stroke(button, darker(def.Color, 0.6), 2)
+		local scale = Instance.new("UIScale")
+		scale.Parent = button
+		local name = label({ Position = UDim2.fromScale(0.05, 0.06), Size = UDim2.fromScale(0.9, 0.5), TextColor3 = Color3.new(1, 1, 1), Text = string.upper(def.Name) .. "+", Parent = button })
+		stroke(name, darker(def.Color, 0.45), 1.5)
+		local info = label({ Position = UDim2.fromScale(0.05, 0.56), Size = UDim2.fromScale(0.9, 0.38), TextColor3 = Color3.fromRGB(255, 245, 200), Parent = button })
+		stroke(info, darker(def.Color, 0.45), 1.2)
+		local busy = false
+		button.Activated:Connect(function()
+			if busy then
+				return
+			end
+			busy = true
+			scale.Scale = 0.9
+			TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+			pcall(standAction.InvokeServer, standAction, "BuyUpgrade", site.Name, id)
+			busy = false
+		end)
+		table.insert(buttons, { id = id, button = button, name = name, info = info, scale = scale })
+	end
 
-	return { gui = gui, title = title, level = level, stock = stock, price = price, customers = customers, button = button, buttonText = buttonText, styleKey = "" }
+	return { gui = gui, title = title, stock = stock, customers = customers, buttons = buttons, buttonRow = row, styleKey = "" }
 end
 
 local function drawBoard(site: Instance, board: Board)
 	local stockN = site:GetAttribute("Stock") or 0
 	local maxN = site:GetAttribute("MaxStock") or 0
-	local low, high = site:GetAttribute("PriceMin") or 0, site:GetAttribute("PriceMax") or 0
 	local cpm = site:GetAttribute("CustomersPerMinute") or 0
-	local level = site:GetAttribute("Level") or 1
 	board.title.Text = string.upper(tostring(site:GetAttribute("StandName") or "Farm Stand"))
-	board.level.Text = ("Lv %d"):format(level)
 	board.stock.Text = ("%s/%s"):format(abbreviate(stockN), abbreviate(maxN))
 	board.stock.TextColor3 = if maxN > 0 and stockN >= maxN then Color3.fromRGB(220, 60, 50) else Color3.fromRGB(90, 55, 25)
-	if high <= 0 then
-		board.price.Text = "-"
-	elseif low == high then
-		board.price.Text = ("$%s each"):format(abbreviate(low))
-	else
-		board.price.Text = ("$%s-%s"):format(abbreviate(low), abbreviate(high))
-	end
 	board.customers.Text = ("%s customers a minute"):format(tostring(cpm))
 	local mine = site:GetAttribute("OwnerUserId") == player.UserId
-	board.button.Visible = mine
-	if mine then
-		local nextDef = StandConfig.Level(site.Name, level + 1)
-		board.buttonText.Text = if nextDef then ("UPGRADE STAND  $%s"):format(abbreviate(nextDef.UpgradeCost or 0)) else "MAX LEVEL"
+	board.buttonRow.Visible = mine
+	if not mine then
+		return
+	end
+	local cash = money()
+	for _, b in board.buttons do
+		local def = StandUpgradeConfig.Get(b.id)
+		if not def then
+			continue
+		end
+		local level = site:GetAttribute("Upgrade_" .. b.id) or 0
+		local cost = StandUpgradeConfig.NextCost(b.id, level)
+		if cost then
+			b.info.Text = ("Lv %d/%d  $%s"):format(level, StandUpgradeConfig.MaxLevel(b.id), abbreviate(cost))
+			b.button.BackgroundColor3 = if cash >= cost then def.Color else POOR
+		else
+			b.info.Text = "MAX"
+			b.button.BackgroundColor3 = MAXED
+		end
 	end
 end
 
@@ -331,6 +373,17 @@ local function watchPlot(plot: Instance)
 	end
 	sites.ChildAdded:Connect(watchSite)
 end
+
+-- Money changes: the upgrade buttons turn coloured / grey.
+task.spawn(function()
+	local stats = player:WaitForChild("leaderstats")
+	local v = stats:WaitForChild("Money") :: ValueBase
+	(v :: any).Changed:Connect(function()
+		for site, board in boards do
+			drawBoard(site, board)
+		end
+	end)
+end)
 
 task.spawn(function()
 	local plots = workspace:WaitForChild("Plots")
