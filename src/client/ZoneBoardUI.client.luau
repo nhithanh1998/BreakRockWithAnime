@@ -1,6 +1,9 @@
--- ZoneBoardUI: draws the "Zones" board on every plot (plot.ZoneBoard.Board, Front face).
+-- ZoneBoardUI: draws the "Zones" panel floating at the back of every plot, facing into the plot.
+-- It is drawn on plot.ZoneBoardSpot (invisible Part, Front face toward the plot): move / resize that
+-- part in Studio to move / resize the panel (the layout scales with the part's width). Keep its
+-- CanQuery on: the buttons only get clicks through raycasts onto it.
 --
--- The SurfaceGui lives in PlayerGui with Adornee = the board, so its buttons get clicks. Each board
+-- The SurfaceGui lives in PlayerGui with Adornee = the spot, so its buttons get clicks. Each board
 -- shows its plot owner's zones from the plot attributes "Zone" and "UnlockedZones"
 -- (ZoneBoardService). Only the owner's own board has working buttons:
 --   current zone            -> "Current"
@@ -23,7 +26,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local Plots = workspace:WaitForChild("Plots")
 
 local FONT = Enum.Font.FredokaOne
-local PIXELS_PER_STUD = 50
+local PANEL_WIDTH_PX = 648 -- the layout below is made for this width; height follows the spot's shape
 local ROW_HEIGHT = 92
 local MESSAGE_TIME = 2
 
@@ -113,21 +116,22 @@ end
 
 -- Building ---------------------------------------------------------------------------------------
 
-local function buildGui(plot: Model, part: BasePart): Board
+local function buildGui(plot: Model, spot: BasePart): Board
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = "ZoneBoard_" .. plot.Name
-	gui.Adornee = part
+	gui.Adornee = spot
 	gui.Face = Enum.NormalId.Front
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = PIXELS_PER_STUD
+	gui.PixelsPerStud = PANEL_WIDTH_PX / math.max(spot.Size.X, 1)
 	gui.LightInfluence = 0
-	gui.MaxDistance = 150
+	gui.MaxDistance = 300
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	gui.ResetOnSpawn = false
 
 	local panel = Instance.new("Frame")
 	panel.Size = UDim2.fromScale(1, 1)
 	panel.BackgroundColor3 = COLORS.Panel
+	panel.BackgroundTransparency = 0.8
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
 	local gradient = Instance.new("UIGradient")
@@ -341,17 +345,29 @@ local function addBoard(plot: Instance)
 	if not plot:IsA("Model") or boards[plot] then
 		return
 	end
-	local model = plot:WaitForChild("ZoneBoard", 30)
-	local part = model and model:WaitForChild("Board", 10)
-	if not part or not part:IsA("BasePart") or boards[plot] then
+	local spot = plot:WaitForChild("ZoneBoardSpot", 30)
+	if not spot or not spot:IsA("BasePart") or boards[plot] then
 		return
 	end
-	local board = buildGui(plot, part)
+	-- SurfaceGui clicks are raycasts onto the adornee: the spot must be queryable.
+	spot.CanQuery = true
+	local board = buildGui(plot, spot)
 	boards[plot] = board
 	render(board)
+	-- Unlocking changes "UnlockedZones" and "Zone" together: rebuild the rows once, not per attribute.
+	local renderQueued = false
 	for _, attr in { "Zone", "UnlockedZones", "OwnerUserId" } do
 		table.insert(board.connections, plot:GetAttributeChangedSignal(attr):Connect(function()
-			render(board)
+			if renderQueued then
+				return
+			end
+			renderQueued = true
+			task.defer(function()
+				renderQueued = false
+				if boards[plot] == board then
+					render(board)
+				end
+			end)
 		end))
 	end
 	table.insert(board.connections, plot.AncestryChanged:Connect(function()

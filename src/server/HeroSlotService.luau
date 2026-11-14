@@ -3,7 +3,7 @@
 --
 -- The plot owner picks a hero on the hotbar (HotbarUI sends Remotes.HeroSlot("Select", heroName | nil)),
 -- then presses E at an empty pad: the hero is placed there and HeroWorkerService spawns it at the
--- HeroGate to chop trees. E at a filled pad takes the hero back.
+-- plot's floor to chop trees. E at a filled pad takes the hero back.
 -- A hero can be placed as many times as the player owns it (player.Heroes.<Name>.Value).
 -- Nothing is saved yet: pads are cleared when the plot is released.
 -- Only the first HeroConfig.Slots.StartUnlocked pads are unlocked; the owner's "UnlockedSlots"

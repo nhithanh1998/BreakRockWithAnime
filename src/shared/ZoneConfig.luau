@@ -1,6 +1,6 @@
 --!strict
 -- ZoneConfig: the zones a player can unlock and travel to from the Zones board on their plot
--- (plot.ZoneBoard.Board, drawn by ZoneBoardUI, handled by ZoneBoardService).
+-- (plot.ZoneBoardSpot at the back of the plot, drawn by ZoneBoardUI, handled by ZoneBoardService).
 --
 -- Zones are unlocked in order: only the next one (UnlockedZones + 1) can be bought, for its Price.
 -- Unlocked zones can be swapped to for free at any time.

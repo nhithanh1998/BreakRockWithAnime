@@ -196,6 +196,10 @@ local function canHit(player: Player, tree: any): boolean
 	if not plot then
 		return false
 	end
+	-- Zone swap playing (ZoneService): no chopping until the new floor is up.
+	if plot:GetAttribute("ZoneBusy") then
+		return false
+	end
 	if TreeConfig.OnlyOwnPlot and plot:GetAttribute("OwnerUserId") ~= player.UserId then
 		return false
 	end

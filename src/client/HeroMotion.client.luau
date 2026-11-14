@@ -14,13 +14,17 @@
 -- Every client plays the same path against the server clock, so all players see every hero in the same
 -- place, at their own frame rate. Whatever differs from the server (ping, a changed path) is kept as an
 -- offset that fades out, so heroes never pop.
--- Ground height comes from a raycast on the plot's Floor / HeroGate / Gate, like the server's Movement.
+-- Ground height comes from a raycast on the plot's Floor / Gate, like the server's Movement.
+-- Zone swap: while the plot's floor moves (ZoneLift, drawn by ZoneTransitionFX), heroes standing on it are
+-- drawn exactly on its top every frame, so they ride it without hovering or sinking.
 
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 
+local ZoneLift = require(script.Parent:WaitForChild("ZoneLift"))
+
 local TAG = "ClientMoved"
-local GROUND_NAMES = { "Floor", "HeroGate", "Gate" } -- same as HeroWorkerService groundOf
+local GROUND_NAMES = { "Floor", "Gate" } -- same as HeroWorkerService groundOf
 local RAY_UP = 2 -- same as HeroWorkerService GROUND_RAY_OFFSET (stay under the gate's arch)
 local RAY_DOWN = 60
 local MIN_GROUND_NORMAL_Y = 0.5
@@ -155,6 +159,12 @@ local function step(s: State, dt: number, now: number)
 		s.root = again
 		s.settled = false
 	end
+	local folder = s.model.Parent
+	local plot = folder and folder.Parent
+	local lifting = ZoneLift.IsLifting(plot)
+	if lifting then
+		s.settled = false
+	end
 	if s.settled then
 		return
 	end
@@ -163,6 +173,17 @@ local function step(s: State, dt: number, now: number)
 	s.err *= math.exp(-ERROR_RATE * dt)
 	local x, z = ideal.X + s.err.X, ideal.Z + s.err.Z
 	local y = s.pos.Y
+
+	if lifting then
+		local top = ZoneLift.FloorTopAt(plot, Vector3.new(x, y, z), os.clock())
+		if top then
+			-- Glued to the floor that is drawn this frame; turning still eases.
+			s.pos = Vector3.new(x, top + s.stand, z)
+			s.rot = s.rot:Lerp(if s.dir then s.look else s.rest.Rotation, math.min(1, ROTATION_RATE * dt))
+			root.CFrame = CFrame.new(s.pos) * s.rot
+			return
+		end
+	end
 
 	local goalY, goalRot = y, s.rot
 	if s.dir then

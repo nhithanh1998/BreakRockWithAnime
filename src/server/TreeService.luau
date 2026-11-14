@@ -39,6 +39,10 @@ local CONFIG = {
 	BarAboveTop = 2, -- studs between the top of the tree and the centre of its HP bar
 	ScanInterval = 1, -- seconds between two upkeep scans (respawns, burns)
 	ScanBatch = 25, -- work items per frame during a scan; the rest waits for the next frame
+	-- Refills (e.g. a whole new zone after a swap) are paced by parts, not trees: a tree can have hundreds
+	-- of parts, and every client builds them in the frame they arrive (mobile hitches otherwise). After a
+	-- tree of N parts the fill waits ceil(N / FillPartsPerFrame) frames.
+	FillPartsPerFrame = 250,
 }
 
 local TreeService = {}
@@ -54,6 +58,7 @@ type PlotState = {
 	active: boolean,
 	connections: { RBXScriptConnection },
 	respawnAt: { number }, -- os.clock() times at which a felled tree may grow back
+	filling: boolean, -- a fill loop is running (it yields between batches)
 }
 
 -- A burning tree (TreeService.Burn): `tick` runs once per scan until `ends`.
@@ -299,24 +304,27 @@ local function onTreeGone(state: PlotState, tree: Model)
 	end
 end
 
-local function spawnTree(state: PlotState): boolean
+-- Returns whether a tree was spawned, and how many parts it has.
+local function spawnTree(state: PlotState): (boolean, number)
 	local template = pickTemplate(state.plot)
 	if not template then
 		warn(("[TreeService] No tree templates for %s"):format(state.plot.Name))
-		return false
+		return false, 0
 	end
 	local pos = findSpot(state, template)
 	if not pos then
-		return false
+		return false, 0
 	end
 
 	local tree = template:Clone()
 	pcall(tree.ScaleTo, tree, tree:GetScale() * CONFIG.ModelScale)
 	-- Trees never use physics (clients animate shakes / falls locally). Anchor everything so loose
 	-- pieces like the Ground mound can't fall apart, even if a template forgot to anchor them.
+	local parts = 0
 	for _, d in tree:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Anchored = true
+			parts += 1
 		end
 	end
 	-- HP from TreeConfig.TreeHP, by the tree's level and the plot's zone.
@@ -353,19 +361,27 @@ local function spawnTree(state: PlotState): boolean
 	state.alive[tree] = true
 	state.count += 1
 	tree.Parent = state.folder
-	return true
+	return true, parts
 end
 
+-- Spawns trees paced by FillPartsPerFrame (a refill after a zone swap is a whole forest at once otherwise).
+-- Only one loop per plot; a second call while it runs does nothing (the running one keeps going).
 fill = function(state: PlotState)
-	-- ZoneService is swapping the zone: it removes the old trees and clears ZoneBusy when the new floor is ready.
-	if state.plot:GetAttribute("ZoneBusy") then
+	if state.filling then
 		return
 	end
-	while state.active and state.count < maxTrees(state.plot) do
-		if not spawnTree(state) then
+	state.filling = true
+	-- ZoneService is swapping the zone: it removes the old trees and clears ZoneBusy when the new floor is ready.
+	while state.active and not state.plot:GetAttribute("ZoneBusy") and state.count < maxTrees(state.plot) do
+		local ok, parts = spawnTree(state)
+		if not ok then
 			break -- no room right now; the next felled tree triggers another try
 		end
+		for _ = 1, math.max(1, math.ceil(parts / CONFIG.FillPartsPerFrame)) do
+			task.wait()
+		end
 	end
+	state.filling = false
 end
 
 local function clear(state: PlotState)
@@ -400,6 +416,7 @@ function TreeService.StartPlot(plot: Model)
 		active = true,
 		connections = {},
 		respawnAt = {},
+		filling = false,
 	}
 	states[plot] = state
 
@@ -425,7 +442,7 @@ function TreeService.StartPlot(plot: Model)
 		)
 	end
 
-	fill(state)
+	task.spawn(fill, state) -- fill yields between batches; StartPlot returns right away
 end
 
 function TreeService.StopPlot(plot: Model)
@@ -513,7 +530,7 @@ local function scan()
 	end
 	for _, state in plots do
 		if state.active and states[state.plot] == state then
-			fill(state)
+			task.spawn(fill, state)
 		end
 		step()
 	end

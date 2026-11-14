@@ -57,7 +57,7 @@ HeroConfig.FallbackTemplate = "UzumakiShounen"
 HeroConfig.BarFolder = "InfoBars"
 HeroConfig.BarAboveHead = 2 -- studs between the top of the head and the bar's centre
 
--- Heroes placed on a plot's HeroSlots walk out of the HeroGate and chop trees (HeroWorkerService).
+-- Heroes placed on a plot's HeroSlots appear on the plot's floor and chop trees (HeroWorkerService).
 HeroConfig.Worker = {
 	WalkSpeed = 8, -- studs/s
 	-- Heroes chopping trees are sized by the plot owner's body height, not the template's size:

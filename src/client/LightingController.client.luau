@@ -197,9 +197,18 @@ for _, attr in { "Weather", "WeatherEnds", "LightingPreset" } do
 		refresh()
 	end)
 end
+-- A zone swap sets all its Zone* attributes in one go: one refresh (one set of tweens) for all of them.
+local refreshQueued = false
 for attr in ZONE_ATTRS do
 	Lighting:GetAttributeChangedSignal(attr):Connect(function()
-		refresh()
+		if refreshQueued then
+			return
+		end
+		refreshQueued = true
+		task.defer(function()
+			refreshQueued = false
+			refresh()
+		end)
 	end)
 end
 

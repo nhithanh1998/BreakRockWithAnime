@@ -44,7 +44,7 @@ local DIVE_CLIMB_MULT = 2.5         -- hạ nhanh hơn bình thường khi dive
 	config:
 	  Speed, RotationSpeed, AttackType         (như cũ)
 	  GroundInstances : danh sách Instance được tính là mặt đất (mặc định { workspace.Terrain }).
-	                    Map dựng bằng Part thì truyền các Part/Model sàn vào đây, vd { plot.Floor, plot.HeroGate }
+	                    Map dựng bằng Part thì truyền các Part/Model sàn vào đây, vd { plot.Floor, plot.Gate }
 	  GroundRayOffset : raycast bắt đầu cao hơn Root bao nhiêu (mặc định 100). Map có mái/vòm (cổng)
 	                    thì để nhỏ (vd 2) để không bị snap lên nóc vòm khi đi bên dưới
 	  GroundRayDistance: độ dài raycast xuống (mặc định 300)
@@ -214,6 +214,31 @@ function Movement:Resync()
 	end
 	self:Commit()
 	self:Publish(true)
+end
+
+-- Đặt Root ở đúng độ cao y (giữ XZ và hướng). Dùng khi sàn bên dưới đổi độ cao
+-- (zone swap) mà model đang đứng yên: SnapToGround có ngưỡng SNAP_THRESHOLD và raycast từ thấp nên không đủ.
+-- Không snap: client đang trễ vài cm theo XZ (ping) thì vẫn trượt nốt chứ không giật; độ cao trong lúc
+-- sàn chạy do client tự bám sàn (HeroMotion + ZoneLift).
+-- noCommit = true (ClientRendered): chỉ đổi vị trí logic + báo client, chưa ghi part thật (gọi Commit sau).
+-- Dùng lúc sàn đang chạy trên client: part thật replicate tới sẽ ghi đè root đúng 1 frame -> giật.
+function Movement:SetHeight(y, noCommit)
+	local cf = self:GetCFrame()
+	local moved = cf + Vector3.new(0, y - cf.Position.Y, 0)
+	if self.ClientRendered then
+		self.CFrame = moved
+		if not noCommit then
+			self:Commit()
+		end
+		self:Publish()
+	else
+		self:SetRootCFrame(moved)
+	end
+end
+
+-- true = đứng yên giữ nguyên độ cao, không tự snap về mặt đất (sàn đang đổi độ cao, độ cao do bên ngoài đặt).
+function Movement:SetHoldHeight(hold)
+	self.HoldHeight = hold == true
 end
 
 -- Đặt CFrame cho Root (cả model đi theo). Pivot của model thường KHÔNG trùng Root
@@ -571,7 +596,9 @@ function Movement:Update(dt)
 
 	-- Always try to snap back to ground if fallen below or floating above.
 	-- ClientRendered: lúc đang đi thì bước đi đã tự bám đất; lúc đứng yên chỉ kiểm tra thưa.
-	if not self.ClientRendered then
+	if self.HoldHeight then
+		-- độ cao do bên ngoài giữ (SetHoldHeight)
+	elseif not self.ClientRendered then
 		self:SnapToGround()
 	elseif not targetPosition then
 		self.IdleSnap += dt

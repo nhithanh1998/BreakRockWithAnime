@@ -62,8 +62,16 @@ local function canChop(tree: Model): boolean
 	if tree:GetAttribute("Dead") or (tree:GetAttribute("HP") or 0) <= 0 then
 		return false
 	end
+	-- Zone swap playing (ZoneTransitionFX freezes the player, ZoneService marks the plot busy).
+	if player:GetAttribute("ZoneFrozen") then
+		return false
+	end
+	local treePlot = tree.Parent and tree.Parent.Parent
+	if treePlot and treePlot:GetAttribute("ZoneBusy") then
+		return false
+	end
 	if TreeConfig.OnlyOwnPlot then
-		local plot = tree.Parent and tree.Parent.Parent
+		local plot = treePlot
 		if not plot or plot:GetAttribute("OwnerUserId") ~= player.UserId then
 			return false
 		end
