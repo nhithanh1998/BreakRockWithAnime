@@ -13,10 +13,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local StandUpgradeConfig = require(Shared:WaitForChild("StandUpgradeConfig"))
 local StandLayoutConfig = require(Shared:WaitForChild("StandLayoutConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local action = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("StandAction") :: RemoteFunction
 
 local player = Players.LocalPlayer
@@ -69,6 +72,8 @@ local levelText = text({ Position = UDim2.fromOffset(14, 70), Size = UDim2.new(1
 local statText = text({ Position = UDim2.fromOffset(14, 98), Size = UDim2.new(1, -28, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(110, 255, 120), Parent = card })
 local buy = make("TextButton", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.new(1, -28, 0, 50), BackgroundColor3 = Color3.fromRGB(45, 180, 60), Text = "", Parent = card })
 make("UICorner", { CornerRadius = UDim.new(0, 10), Parent = buy })
+make("UIStroke", { Thickness = 3, Color = Color3.fromRGB(25, 110, 35), ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = buy })
+UIStyle.Button(buy)
 local buyText = text({ Size = UDim2.fromScale(1, 0.8), Position = UDim2.fromScale(0, 0.1), Text = "BUY", Parent = buy })
 
 local openPad: { standId: string, id: string }? = nil
@@ -133,6 +138,9 @@ local function closeCard()
 	info = nil
 	card.Visible = false
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("StandUpgrade", card, closeCard)
 
 buy.Activated:Connect(function()
 	if busy or not openPad or not info or info.level >= info.maxLevel then

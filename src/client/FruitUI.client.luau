@@ -27,6 +27,9 @@ local FruitModels = require(Shared:WaitForChild("FruitModels"))
 local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local FruitAction = Remotes:WaitForChild("FruitAction") :: RemoteFunction
 local FruitOpen = Remotes:WaitForChild("FruitOpen") :: RemoteEvent
@@ -34,15 +37,15 @@ local FruitOpen = Remotes:WaitForChild("FruitOpen") :: RemoteEvent
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local FONT = Enum.Font.FredokaOne
+local FONT = Theme.Font
 local DESIGN = Vector2.new(780, 440) -- the window is laid out at this size, then scaled to fit
-local PANEL = Color3.fromRGB(38, 40, 50)
-local PANEL_DARK = Color3.fromRGB(26, 27, 34)
-local STROKE = Color3.fromRGB(20, 20, 24)
-local GREEN = Color3.fromRGB(40, 170, 70)
-local GREY = Color3.fromRGB(80, 82, 92)
-local PURPLE = Color3.fromRGB(150, 80, 220)
-local ORANGE = Color3.fromRGB(214, 92, 28)
+local PANEL = Theme.Color.Surface
+local PANEL_DARK = Theme.Color.SurfaceInset
+local STROKE = Theme.Color.Stroke
+local GREEN = Theme.Color.Primary
+local GREY = Theme.Color.Disabled
+local PURPLE = Theme.Color.Accent -- Robux / premium = gold
+local ORANGE = Theme.Color.Danger -- close X
 local INFO = Color3.fromRGB(180, 182, 195)
 local BAD = Color3.fromRGB(255, 90, 90)
 local GOOD = Color3.fromRGB(90, 255, 110)
@@ -101,6 +104,7 @@ local function button(text: string, color: Color3, props: { [string]: any }): Te
 	local b = new("TextButton", props, { corner(6), outline(STROKE, 2.5, true) })
 	outline(STROKE, 2).Parent = b
 	new("UIPadding", { PaddingTop = UDim.new(0.14, 0), PaddingBottom = UDim.new(0.14, 0), PaddingLeft = UDim.new(0.06, 0), PaddingRight = UDim.new(0.06, 0), Parent = b })
+	UIStyle.Button(b)
 	return b
 end
 
@@ -153,6 +157,7 @@ local root = new("Frame", {
 	BackgroundColor3 = PANEL,
 	Parent = gui,
 }, { corner(12), outline(STROKE, 4, true) })
+UIStyle.Panel(root)
 local scale = new("UIScale", { Parent = root })
 local function fit()
 	local view = workspace.CurrentCamera.ViewportSize
@@ -164,6 +169,7 @@ fit()
 local title = label({ Text = "Devil Tree", Position = UDim2.fromOffset(0, -26), Size = UDim2.new(1, 0, 0, 52), StrokeThickness = 4, ZIndex = 3, Parent = root })
 new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(230, 170, 255), Color3.fromRGB(150, 70, 230)), Rotation = 90, Parent = title })
 local close = button("X", ORANGE, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10), Size = UDim2.fromOffset(40, 40), ZIndex = 3, Parent = root })
+UIStyle.Close(close)
 
 -- Left: the fruit index.
 local left = new("Frame", { Name = "Fruits", Position = UDim2.fromOffset(16, 34), Size = UDim2.fromOffset(470, 390), BackgroundColor3 = PANEL_DARK, Parent = root }, { corner(8) })
@@ -304,6 +310,9 @@ local function closeWindow()
 	isOpen = false
 	gui.Enabled = false
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Fruit", root, closeWindow)
 
 close.Activated:Connect(closeWindow)
 FruitOpen.OnClientEvent:Connect(openWindow)

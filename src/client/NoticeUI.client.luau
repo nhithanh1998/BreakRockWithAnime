@@ -19,6 +19,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
 local SkillTreeConfig = require(Shared:WaitForChild("SkillTreeConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
 
 local player = Players.LocalPlayer
 local abbreviate = HeroConfig.Abbreviate
@@ -163,6 +164,7 @@ local closeButton = new("TextButton", {
 	new("UIAspectRatioConstraint", { AspectRatio = 1.1 }),
 	new("UIPadding", { PaddingTop = UDim.new(0.18, 0), PaddingBottom = UDim.new(0.18, 0) }),
 })
+UIStyle.Close(closeButton)
 stroke(DARK, 3, true).Parent = closeButton
 stroke(DARK, 2).Parent = closeButton
 

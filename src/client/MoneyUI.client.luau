@@ -4,7 +4,9 @@
 -- and restyled in Studio; this script only fills it:
 --   MoneyGui.Strip.Amount   TextLabel: "$<money>" (needs a UIScale child for the pop)
 --   MoneyGui.Strip.Gain     TextLabel template (hidden): cloned for the floating "+$X" on gains
--- Counts up / down to the new value when leaderstats.Money changes.
+--   MoneyGui.Strip.Coin     the round coin icon on the pill's left (CoinScale UIScale for the bounce)
+-- Counts up / down to the new value when leaderstats.Money changes (longer for bigger gains), and
+-- the coin bounces on every gain.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -21,6 +23,8 @@ local label = strip:WaitForChild("Amount") :: TextLabel
 local gainTemplate = strip:WaitForChild("Gain") :: TextLabel
 local scale = label:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
 scale.Parent = label
+local coin = strip:FindFirstChild("Coin")
+local coinScale = coin and coin:FindFirstChild("CoinScale") :: UIScale?
 
 -- Count-up ---------------------------------------------------------------------------------------
 
@@ -54,13 +58,20 @@ local function onMoney(value: number)
 		shown.Value = value
 	else
 		local diff = value - last
-		TweenService:Create(shown, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Value = value }):Play()
+		-- Small changes tick over quickly; big payouts roll up for a bit longer.
+		local ratio = if last > 0 then math.abs(diff) / last else 1
+		local duration = math.clamp(0.4 + ratio * 0.6, 0.4, 1)
+		TweenService:Create(shown, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Value = value }):Play()
 		if diff ~= 0 then
 			scale.Scale = 1.12
 			TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 		end
 		if diff > 0 then
 			floatGain(diff)
+			if coinScale then
+				coinScale.Scale = 1.3
+				TweenService:Create(coinScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+			end
 		end
 	end
 	last = value

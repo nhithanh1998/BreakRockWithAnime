@@ -18,6 +18,8 @@ local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local ShopAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ShopAction") :: RemoteFunction
 
 local player = Players.LocalPlayer
@@ -25,7 +27,7 @@ local player = Players.LocalPlayer
 local FONT = Enum.Font.FredokaOne
 local PANEL_COLOR = Color3.fromRGB(38, 40, 50)
 local PANEL_STROKE = Color3.fromRGB(78, 80, 92)
-local CLOSE_COLOR = Color3.fromRGB(214, 92, 28)
+local CLOSE_COLOR = UIStyle.CLOSE_COLOR
 local RED_BUTTON = Color3.fromRGB(150, 38, 44)
 local GREEN_BUTTON = Color3.fromRGB(36, 132, 66)
 local GREY_BUTTON = Color3.fromRGB(80, 82, 92)
@@ -96,6 +98,7 @@ local function button(props: { [string]: any }): TextButton
 	})
 	stroke(props.Color:Lerp(Color3.new(1, 1, 1), 0.25), 2, true).Parent = b
 	stroke(Color3.fromRGB(20, 20, 24), 1.5).Parent = b
+	UIStyle.Button(b)
 	return b
 end
 
@@ -143,6 +146,7 @@ local function makeWindow(name: string, title: string, gradient: ColorSequence, 
 		new("UISizeConstraint", { MinSize = Vector2.new(380, 316) }),
 	})
 	stroke(PANEL_STROKE, 2, true).Parent = root
+	UIStyle.Panel(root)
 	local scale = new("UIScale", { Parent = root })
 
 	local titleLabel = text({
@@ -168,6 +172,7 @@ local function makeWindow(name: string, title: string, gradient: ColorSequence, 
 	})
 	local close = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.97, 0.025), Size = UDim2.fromScale(0.075, 0.085), Parent = root })
 	close.Name = "Close"
+	UIStyle.Close(close)
 
 	local grid = new("ScrollingFrame", {
 		Name = "Grid",
@@ -377,6 +382,7 @@ local function makeAxeWindow(): Window
 	})
 	stroke(Color3.fromRGB(10, 10, 12), 3, true).Parent = close
 	stroke(Color3.fromRGB(10, 10, 12), 2.5).Parent = close
+	UIStyle.Close(close)
 
 	-- Info bar: restock timer | axes in stock | cash.
 	local info = new("Frame", {
@@ -694,6 +700,7 @@ local function cardButton(parent: Instance, label: string, color: Color3, pos: U
 	})
 	stroke(Color3.fromRGB(10, 10, 12), 3, true).Parent = b
 	stroke(Color3.fromRGB(10, 10, 12), 2.5).Parent = b
+	UIStyle.Button(b)
 	return b
 end
 
@@ -849,6 +856,9 @@ local function closeAll()
 		w.root.Visible = false
 	end
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Shop", axeWindow.root, closeAll)
 
 local function onClosed()
 	for _, c in watchers do

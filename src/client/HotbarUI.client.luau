@@ -23,8 +23,16 @@ local UserInputService = game:GetService("UserInputService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 local ItemsAdded = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ItemsAdded") :: RemoteEvent
 local HeroSlotRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HeroSlot") :: RemoteEvent
+
+-- Phones (touch, small screen): the bar must leave room for the thumbstick (bottom-left) and the
+-- jump button (bottom-right), so it is centred, narrower and keeps 5 big hero slots + BAG
+-- (the rest of the heroes are in the BAG).
+local COMPACT = Theme.IsPhone()
+local SLOT_COUNT = if COMPACT then 5 else 9 -- hero slots; the last cell of the bar is the Backpack button
+local CELL_GAP = 0.0085 -- UIListLayout padding between cells (fraction of the bar width)
 
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui"):WaitForChild("HotbarGui") :: ScreenGui
@@ -40,10 +48,37 @@ local slotTemplate = (slotsFrame:FindFirstChild("HeroSlot") or gui:FindFirstChil
 	or slotsFrame:WaitForChild("HeroSlot")) :: TextButton
 slotTemplate.Parent = nil
 slotTemplate:SetAttribute("PreviewHero", nil)
+
+if COMPACT then
+	-- SLOT_COUNT heroes + the backpack, same cell shape: shrink the bar's width and aspect to fit.
+	local cells = SLOT_COUNT + 1
+	local cellWidth = (1 - CELL_GAP * (cells - 1)) / cells
+	for _, cell in { slotTemplate, backpackButton } do
+		cell.Size = UDim2.fromScale(cellWidth, 1)
+	end
+	local aspect = bar:FindFirstChildOfClass("UIAspectRatioConstraint")
+	if aspect then
+		aspect.AspectRatio = aspect.AspectRatio * cells / 10
+	end
+	local limits = bar:FindFirstChildOfClass("UISizeConstraint")
+	if limits then
+		-- 6 cells of at least 48 px: thumb-sized.
+		limits.MinSize = Vector2.new(300, 48)
+	end
+	bar.Size = UDim2.fromScale(0.52, bar.Size.Y.Scale)
+	-- Number keys mean nothing on a phone, and the name can't be read at this size (tap = tooltip).
+	for _, name in { "Key", "ItemName", "NameShade" } do
+		local child = slotTemplate:FindFirstChild(name) :: GuiObject?
+		if child then
+			child.Visible = false
+		end
+	end
+	-- The BAG stands out: secondary blue.
+	backpackButton.BackgroundColor3 = Theme.Color.Secondary
+end
 local popupTemplate = templates:WaitForChild("Popup") :: Frame
 local moreTemplate = templates:WaitForChild("More") :: Frame
 
-local SLOT_COUNT = 9 -- slots 1-9; the 10th cell of the bar is the Backpack button
 local MAX_POPUPS = 7
 local POPUP_TIME = 6 -- seconds the popups stay before hiding
 local POPUP_STAGGER = 0.07
@@ -118,7 +153,7 @@ end
 
 -- Hero slots -------------------------------------------------------------------------------------
 
-type Slot = { button: TextButton, hero: string? }
+type Slot = { button: TextButton, hero: string?, shownHero: string?, shownCount: number }
 
 local slots: { Slot } = {}
 local selectedHero: string? = nil
@@ -211,11 +246,25 @@ end
 
 -- Drawing ----------------------------------------------------------------------------------------
 
+local BADGE_POP = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+local function popBadge(badge: GuiObject)
+	local scale = badge:FindFirstChild("PopScale") :: UIScale?
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Name = "PopScale"
+		scale.Parent = badge
+	end
+	local s = scale :: UIScale
+	s.Scale = 1.45
+	TweenService:Create(s, BADGE_POP, { Scale = 1 }):Play()
+end
+
 local function drawSlot(slot: Slot)
 	local button = slot.button
 	local border = button:FindFirstChild("Border") :: UIStroke
 	local nameLabel = button:FindFirstChild("ItemName") :: TextLabel
-	local valueLabel = button:FindFirstChild("Value") :: TextLabel
+	local valueLabel = button:FindFirstChild("Value") :: TextLabel? -- optional: the slot may have no price pill
 	-- Count lives in the CountBadge (dark shadow frame) > Face (lighter top) > Count text.
 	local countBadge = button:FindFirstChild("CountBadge") :: GuiObject
 	local countLabel = button:FindFirstChild("Count", true) :: TextLabel
@@ -223,7 +272,7 @@ local function drawSlot(slot: Slot)
 	local nameShade = button:FindFirstChild("NameShade") :: GuiObject?
 	local hero = slot.hero
 	if nameShade then
-		nameShade.Visible = hero ~= nil
+		nameShade.Visible = hero ~= nil and not COMPACT
 	end
 	-- All 9 slots always show (empty ones dimmed); heroes fill them from the left.
 	button.Visible = true
@@ -234,9 +283,13 @@ local function drawSlot(slot: Slot)
 		border.Color = Color3.fromRGB(70, 74, 92)
 		border.Thickness = 2
 		nameLabel.Visible = false
-		valueLabel.Visible = false
+		if valueLabel then
+			valueLabel.Visible = false
+		end
 		countBadge.Visible = false
 		setSelectedLook(button, false)
+		slot.shownHero = nil
+		slot.shownCount = 0
 		if gradient then
 			gradient.Enabled = false
 		end
@@ -251,15 +304,23 @@ local function drawSlot(slot: Slot)
 	border.Color = if selected then SELECTED_BORDER else ItemDisplay.SlotEdgeColor(info.rarity)
 	border.Thickness = if selected then 4 else 3
 	setSelectedLook(button, selected)
-	nameLabel.Visible = true
+	nameLabel.Visible = not COMPACT
 	nameLabel.Text = info.name
-	valueLabel.Visible = true
-	valueLabel.Text = abbreviate(info.value) -- white text on the red pill (HotbarGui)
+	if valueLabel then
+		valueLabel.Visible = true
+		valueLabel.Text = abbreviate(info.value) -- white text on the red pill (HotbarGui)
+	end
 	-- "x1" on every slot is noise: the badge (right column, under the value pill) only shows
 	-- for stacks.
 	local count = availableCount(hero)
 	countBadge.Visible = count > 1
 	countLabel.Text = "x" .. commas(count)
+	-- The same hero's stack grew: pop the badge.
+	if slot.shownHero == hero and count > slot.shownCount and count > 1 then
+		popBadge(countBadge)
+	end
+	slot.shownHero = hero
+	slot.shownCount = count
 	ItemDisplay.SetPicture(button, info)
 end
 
@@ -335,7 +396,7 @@ for i = 1, SLOT_COUNT do
 	button.Name = "Slot" .. i
 	button.LayoutOrder = i;
 	(button:FindFirstChild("Key") :: TextLabel).Text = tostring(i)
-	local slot: Slot = { button = button, hero = nil }
+	local slot: Slot = { button = button, hero = nil, shownHero = nil, shownCount = 0 }
 	slots[i] = slot
 	button.MouseEnter:Connect(function()
 		hoveredSlot = slot
@@ -547,7 +608,10 @@ local function makePopup(entry: Received): Frame
 		valueLabel.Text = "$" .. abbreviate(info.value)
 		valueLabel.TextColor3 = ItemDisplay.MATERIAL_VALUE_COLOR
 	end
-	(frame:FindFirstChild("Count") :: TextLabel).Text = "x" .. commas(entry.Amount)
+	-- "x1" says nothing: only show the count for more than one.
+	local countLabel = frame:FindFirstChild("Count") :: TextLabel
+	countLabel.Text = "x" .. commas(entry.Amount)
+	countLabel.Visible = entry.Amount > 1
 	local tag = frame:FindFirstChild("Tag") :: TextLabel
 	tag.Text = if entry.New then "New!" else "Added!"
 	tag.BackgroundColor3 = if entry.New then TAG_NEW else TAG_ADDED;

@@ -14,6 +14,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui"):WaitForChild("ChestGui") :: ScreenGui
@@ -88,7 +89,7 @@ local function layout(itemCount: number?)
 	panel.Size = UDim2.fromOffset(w, h)
 	title.Position = UDim2.fromOffset(pad + 4, math.floor(w * 0.025))
 	title.Size = UDim2.fromOffset(math.floor(w * 0.4), math.floor(w * 0.065))
-	local closeSize = math.floor(w * 0.075)
+	local closeSize = math.max(40, math.floor(w * 0.075)) -- 40 px min touch target
 	closeButton.Position = UDim2.fromOffset(w - pad, math.floor(w * 0.02))
 	closeButton.Size = UDim2.fromOffset(closeSize, closeSize)
 	if closeShadow then
@@ -320,6 +321,9 @@ local function closeAnimated()
 	end)
 	tween:Play()
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Chest", panel, close)
 
 local function open(chest: Model, prompt: ProximityPrompt?)
 	if openChest == chest and closingChest ~= chest then

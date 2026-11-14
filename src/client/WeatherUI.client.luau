@@ -88,7 +88,13 @@ iconStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 iconStroke.Parent = iconButton
 local iconScale = new("UIScale", { Parent = iconButton })
 local iconEmoji = new("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.68, 0.68), Font = FONT, TextScaled = true, Text = CLEAR_ICON, Parent = iconButton })
-local countdown = label({ Name = "Time", Text = "", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.fromScale(1.7, 0.27), StrokeThickness = 2, Parent = widget })
+-- The countdown sits on its own dark pill under the icon, big enough to read at a glance.
+local countdown = label({ Name = "Time", Text = "", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.fromScale(1.45, 0.34), StrokeThickness = 2.5, Parent = widget })
+countdown.BackgroundColor3 = PANEL
+countdown.BackgroundTransparency = 0.15
+countdown.Visible = false -- the timer loop shows it once there is a time to show
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = countdown })
+new("UIPadding", { PaddingTop = UDim.new(0.1, 0), PaddingBottom = UDim.new(0.1, 0), PaddingLeft = UDim.new(0.12, 0), PaddingRight = UDim.new(0.12, 0), Parent = countdown })
 
 -- Tooltip: opens to the left of the icon, growing upwards (the icon sits in the bottom-right corner).
 local tooltip = new("Frame", {
@@ -159,8 +165,12 @@ local function placeWidget()
 	local camera = workspace.CurrentCamera
 	local view = if camera then camera.ViewportSize else Vector2.new(1280, 720)
 	local s = math.clamp(view.Y * 0.075, 44, 64)
-	widget.Size = UDim2.fromOffset(s, s * 1.37)
-	widget.Position = UDim2.new(1, -16, 1, -16)
+	widget.Size = UDim2.fromOffset(s, s * 1.5)
+	-- Right edge, just above the money strip (MoneyGui.Strip: anchor (1, 0.5) at Y 0.42, height
+	-- 0.058 / min 40, with its "+gain" label above it). Kept out of the bottom-right thumb zone
+	-- where the mobile Jump button sits.
+	local moneyHalf = math.max(40, view.Y * 0.058) / 2
+	widget.Position = UDim2.new(1, -16, 0.42, -math.floor(moneyHalf + 32))
 end
 widget.AnchorPoint = Vector2.new(1, 1)
 placeWidget()
@@ -284,6 +294,7 @@ task.spawn(function()
 				tipTime.Text = "🌦️ Next weather: soon"
 			end
 		end
+		countdown.Visible = countdown.Text ~= "" -- no empty pill
 		task.wait(0.25)
 	end
 end)

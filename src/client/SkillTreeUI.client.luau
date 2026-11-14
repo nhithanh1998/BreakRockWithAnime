@@ -32,6 +32,8 @@ local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ZoneConfig = require(Shared:WaitForChild("ZoneConfig"))
 local SkillAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SkillAction") :: RemoteFunction
 local Templates = ReplicatedStorage:WaitForChild("SkillTreeTemplates")
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 
 type NodeDef = SkillTreeConfig.NodeDef
 type TreeDef = SkillTreeConfig.TreeDef
@@ -66,6 +68,11 @@ local pEffect = preview:WaitForChild("Effect") :: TextLabel
 local pReqs = preview:WaitForChild("Requirements") :: TextLabel
 local pMessage = preview:WaitForChild("Message") :: TextLabel
 local upgradeButton = preview:WaitForChild("UpgradeButton") :: TextButton
+
+-- Same 3D buttons as Shop / Index / Upgrades (UIStyle). The window itself fills the screen, so it
+-- keeps its square edges.
+UIStyle.Close(exitButton) -- red X, top-right (SkillTreeGui.model.json)
+UIStyle.Button(upgradeButton)
 
 local tabTemplate = Templates:WaitForChild("ZoneTab") :: GuiButton
 local nodeTemplate = Templates:WaitForChild("Node") :: GuiButton
@@ -654,6 +661,11 @@ local function setOpen(open: boolean)
 		refresh()
 	end
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("SkillTree", window, function()
+	setOpen(false)
+end)
 
 upgradesButton.Activated:Connect(function()
 	setOpen(not window.Visible)

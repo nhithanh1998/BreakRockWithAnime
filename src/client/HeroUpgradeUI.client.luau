@@ -35,6 +35,8 @@ local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
 local FruitConfig = require(Shared:WaitForChild("FruitConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local HeroUpgrade = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HeroUpgrade") :: RemoteFunction
 
 local player = Players.LocalPlayer
@@ -46,7 +48,7 @@ local FONT = Enum.Font.FredokaOne
 local PANEL_COLOR = Color3.fromRGB(38, 40, 50)
 local PANEL_STROKE = Color3.fromRGB(78, 80, 92)
 local ROW_COLOR = Color3.fromRGB(28, 30, 38)
-local CLOSE_COLOR = Color3.fromRGB(214, 92, 28)
+local CLOSE_COLOR = UIStyle.CLOSE_COLOR
 local GREEN_BUTTON = Color3.fromRGB(36, 132, 66)
 local GREY_BUTTON = Color3.fromRGB(80, 82, 92)
 local GOLD_BUTTON = Color3.fromRGB(190, 140, 30)
@@ -129,6 +131,7 @@ local function button(props: { [string]: any }): TextButton
 	border.Name = "Border"
 	border.Parent = b
 	stroke(Color3.fromRGB(20, 20, 24), 1.5).Parent = b
+	UIStyle.Button(b)
 	return b
 end
 
@@ -211,6 +214,7 @@ local function makeWindow(name: string, title: string, gradient: ColorSequence):
 		Parent = gui,
 	}, { corner(6) })
 	stroke(PANEL_STROKE, 2, true).Parent = root
+	UIStyle.Panel(root)
 	local scale = new("UIScale", { Name = "Fit", Scale = fitScale(), Parent = root })
 	local titleLabel = text({
 		Name = "Title",
@@ -394,6 +398,7 @@ end
 
 local upgradeWin = makeWindow("Upgrade", "Upgrade Hero!", ColorSequence.new(Color3.fromRGB(255, 240, 120), Color3.fromRGB(255, 150, 30)))
 local close = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = upgradeWin.root })
+UIStyle.Close(close)
 
 local upgradeCard, fillUpgradeCard = heroCard(upgradeWin.root, 0.44)
 local axeButton = button({ Text = "", Color = AXE_BUTTON, Position = UDim2.fromScale(0.07, 0.67), Size = UDim2.fromScale(0.42, 0.14), Parent = upgradeCard })
@@ -420,6 +425,7 @@ local rowHeight = (1 - 0.04 * (#HeroConfig.UpgradeOrder - 1)) / #HeroConfig.Upgr
 
 local rerollWin = makeWindow("StatReroll", "Stat Reroll", ColorSequence.new(Color3.fromRGB(170, 255, 120), Color3.fromRGB(40, 200, 70)))
 local rerollBack = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = rerollWin.root })
+UIStyle.Close(rerollBack)
 local rerollCard, fillRerollCard = heroCard(rerollWin.root, 0.6)
 local bestChance = text({
 	Name = "Best",
@@ -459,6 +465,7 @@ rerollAll.Name = "RerollAll"
 
 local axeWin = makeWindow("HeroAxe", "Hero Axe", ColorSequence.new(Color3.fromRGB(255, 220, 120), Color3.fromRGB(230, 120, 30)))
 local axeBack = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = axeWin.root })
+UIStyle.Close(axeBack)
 local axeInfo = text({
 	Name = "Info",
 	Text = "",
@@ -512,6 +519,7 @@ text({
 
 local fruitWin = makeWindow("HeroFruit", "Hero Fruit", ColorSequence.new(Color3.fromRGB(230, 170, 255), Color3.fromRGB(150, 70, 230)))
 local fruitBack = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = fruitWin.root })
+UIStyle.Close(fruitBack)
 local fruitInfo = text({
 	Name = "Info",
 	Text = "",
@@ -1087,6 +1095,15 @@ local function closeWindow()
 		w.root.Visible = false
 	end
 end
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("HeroUpgrade", (function()
+	local roots = {}
+	for _, w in windows do
+		table.insert(roots, w.root)
+	end
+	return roots
+end)(), closeWindow)
+
 close.Activated:Connect(closeWindow)
 rerollBack.Activated:Connect(function()
 	show(upgradeWin)

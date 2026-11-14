@@ -27,13 +27,15 @@ local Plots = workspace:WaitForChild("Plots")
 
 local FONT = Enum.Font.FredokaOne
 local PANEL_WIDTH_PX = 648 -- the layout below is made for this width; height follows the spot's shape
-local ROW_HEIGHT = 92
+local ROW_HEIGHT = 112 -- big rows: the board is read from a few studs away
 local MESSAGE_TIME = 2
 
 local COLORS = {
-	Panel = Color3.fromRGB(45, 48, 60),
-	Row = Color3.fromRGB(62, 66, 82),
-	RowLocked = Color3.fromRGB(38, 40, 50),
+	Panel = Color3.fromRGB(28, 30, 40),
+	Title = Color3.fromRGB(255, 215, 70),
+	Row = Color3.fromRGB(58, 62, 80),
+	RowLocked = Color3.fromRGB(42, 44, 56),
+	LockedText = Color3.fromRGB(205, 208, 222),
 	Current = Color3.fromRGB(70, 200, 80),
 	CurrentDark = Color3.fromRGB(25, 90, 30),
 	Swap = Color3.fromRGB(50, 150, 245),
@@ -131,7 +133,7 @@ local function buildGui(plot: Model, spot: BasePart): Board
 	local panel = Instance.new("Frame")
 	panel.Size = UDim2.fromScale(1, 1)
 	panel.BackgroundColor3 = COLORS.Panel
-	panel.BackgroundTransparency = 0.8
+	panel.BackgroundTransparency = 0.12 -- solid enough that the text reads against the world behind
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
 	local gradient = Instance.new("UIGradient")
@@ -139,9 +141,14 @@ local function buildGui(plot: Model, spot: BasePart): Board
 	gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(170, 175, 195))
 	gradient.Parent = panel
 
-	local title = label(panel, "Zones", 78)
+	local title = label(panel, "ZONES", 88)
 	title.Size = UDim2.new(1, 0, 0, 110)
 	title.Position = UDim2.fromOffset(0, 8)
+	title.TextColor3 = COLORS.Title
+	local titleStroke = title:FindFirstChildOfClass("UIStroke")
+	if titleStroke then
+		titleStroke.Thickness = 5
+	end
 
 	local list = Instance.new("ScrollingFrame")
 	list.Name = "List"
@@ -166,7 +173,7 @@ local function buildGui(plot: Model, spot: BasePart): Board
 	pad.PaddingRight = UDim.new(0, 16)
 	pad.Parent = list
 
-	local message = label(panel, "", 40)
+	local message = label(panel, "", 46)
 	message.Size = UDim2.new(1, -40, 0, 60)
 	message.Position = UDim2.new(0, 20, 1, -72)
 	message.Visible = false
@@ -206,13 +213,13 @@ local function makeButton(row: Frame, text: string, color: Color3, dark: Color3,
 	button.Name = "Action"
 	button.AnchorPoint = Vector2.new(1, 0.5)
 	button.Position = UDim2.new(1, -12, 0.5, 0)
-	button.Size = UDim2.fromOffset(190, 62)
+	button.Size = UDim2.fromOffset(220, 76)
 	button.BackgroundColor3 = color
 	button.AutoButtonColor = active
 	button.Active = active
 	button.Font = FONT
 	button.Text = text
-	button.TextSize = 30
+	button.TextSize = 38
 	button.TextScaled = false
 	button.TextColor3 = COLORS.Text
 	button.ZIndex = 3
@@ -258,20 +265,21 @@ local function makeRow(board: Board, zone: number, info: ZoneConfig.ZoneInfo?, s
 	badge.Parent = row
 	corner(badge, 12)
 	stroke(badge, COLORS.Stroke, 2, true)
-	local badgeText = label(badge, if state == "Soon" then "?" else tostring(zone), 40)
+	local badgeText = label(badge, if state == "Soon" then "?" else tostring(zone), 52)
 	badgeText.Size = UDim2.fromScale(1, 1)
 
 	local nameText = if state == "Soon" then (ZoneConfig.ComingSoonText or "") elseif state == "Locked" then "???" else (info :: ZoneConfig.ZoneInfo).Name
-	local name = label(row, nameText, 36)
+	local name = label(row, nameText, 48)
 	name.TextXAlignment = Enum.TextXAlignment.Left
-	name.Position = UDim2.fromOffset(ROW_HEIGHT + 4, 0)
-	name.Size = UDim2.new(1, -(ROW_HEIGHT + 4 + 210), 1, 0)
+	name.Position = UDim2.fromOffset(ROW_HEIGHT + 6, 0)
+	name.Size = UDim2.new(1, -(ROW_HEIGHT + 6 + 240), 1, 0)
 	name.TextScaled = true
 	local limit = Instance.new("UITextSizeConstraint")
-	limit.MaxTextSize = 36
+	limit.MaxTextSize = 48
+	limit.MinTextSize = 26
 	limit.Parent = name
 	if state == "Locked" or state == "Soon" then
-		name.TextColor3 = Color3.fromRGB(170, 172, 185)
+		name.TextColor3 = COLORS.LockedText
 	end
 
 	local mine = ownsPlot(board.plot)

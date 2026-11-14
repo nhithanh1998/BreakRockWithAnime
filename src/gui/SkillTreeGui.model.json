@@ -22,7 +22,7 @@
             0.1
           ]
         },
-        "BackgroundTransparency": 0.3,
+        "BackgroundTransparency": 0,
         "BorderSizePixel": {
           "Int32": 0
         },
@@ -1051,7 +1051,7 @@
             "AnchorPoint": {
               "Vector2": [
                 1,
-                1
+                0
               ]
             },
             "BackgroundColor3": {
@@ -1070,11 +1070,11 @@
             "Position": {
               "UDim2": [
                 [
-                  0.46,
+                  0.985,
                   0
                 ],
                 [
-                  0.97,
+                  0.025,
                   0
                 ]
               ]
@@ -1082,16 +1082,16 @@
             "Size": {
               "UDim2": [
                 [
-                  0.075,
+                  0,
                   0
                 ],
                 [
-                  0.07,
+                  0.075,
                   0
                 ]
               ]
             },
-            "Text": "Exit",
+            "Text": "X",
             "TextColor3": {
               "Color3": [
                 1,
@@ -1134,6 +1134,16 @@
                     0.18,
                     0
                   ]
+                }
+              }
+            },
+            {
+              "Name": "UIAspectRatioConstraint",
+              "ClassName": "UIAspectRatioConstraint",
+              "Properties": {
+                "AspectRatio": 1.0,
+                "DominantAxis": {
+                  "Enum": 1
                 }
               }
             }

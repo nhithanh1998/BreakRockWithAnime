@@ -9,20 +9,23 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 local FeedbackAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("FeedbackAction") :: RemoteFunction
 
 local player = Players.LocalPlayer
 local CONFIG = ShopConfig.Feedback
 
-local FONT = Enum.Font.FredokaOne
-local PANEL_COLOR = Color3.fromRGB(38, 40, 50)
-local PANEL_STROKE = Color3.fromRGB(78, 80, 92)
-local INNER_COLOR = Color3.fromRGB(28, 30, 38)
-local ACCENT = Color3.fromRGB(140, 85, 220)
-local CLOSE_COLOR = Color3.fromRGB(214, 92, 28)
-local GREEN_BUTTON = Color3.fromRGB(36, 132, 66)
-local GREY_BUTTON = Color3.fromRGB(80, 82, 92)
-local STAR_ON = Color3.fromRGB(255, 205, 50)
+local FONT = Theme.Font
+local PANEL_COLOR = Theme.Color.Surface
+local PANEL_STROKE = Theme.Color.Stroke
+local INNER_COLOR = Theme.Color.SurfaceInset
+local ACCENT = Theme.Color.Secondary
+local CLOSE_COLOR = Theme.Color.Danger
+local GREEN_BUTTON = Theme.Color.Primary
+local GREY_BUTTON = Theme.Color.Disabled
+local STAR_ON = Theme.Color.Accent
 local STAR_OFF = Color3.fromRGB(90, 92, 104)
 local OK_COLOR = Color3.fromRGB(110, 230, 120)
 local ERROR_COLOR = Color3.fromRGB(255, 110, 100)
@@ -118,7 +121,7 @@ local function fit()
 	local cam = workspace.CurrentCamera
 	if cam then
 		local vp = cam.ViewportSize
-		fitScale = math.min(1, (vp.X - 24) / 520, (vp.Y - 24) / 430)
+		fitScale = math.min(1, (vp.X - 24) / 520, (vp.Y - 60) / 430) -- 60: top bar + margin
 	end
 end
 fit()
@@ -141,6 +144,7 @@ text({
 	Parent = root,
 })
 local closeButton = button({ Text = "X", Color = CLOSE_COLOR, Position = UDim2.new(1, -54, 0, 12), Size = UDim2.fromOffset(42, 42), Parent = root })
+UIStyle.Close(closeButton)
 
 -- Category
 text({ Text = "Type", Position = UDim2.fromOffset(20, 84), Size = UDim2.fromOffset(80, 22), TextXAlignment = Enum.TextXAlignment.Left, Parent = root })
@@ -271,9 +275,12 @@ local function open(prompt: ProximityPrompt)
 	paintCategories()
 	paintStars()
 	root.Visible = true
-	openScale.Scale = fitScale * 0.6
-	TweenService:Create(openScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = fitScale }):Play()
+	openScale.Scale = fitScale * 0.85
+	TweenService:Create(openScale, Theme.Tween.Open, { Scale = fitScale }):Play()
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Feedback", root, close)
 
 local function setStatus(message: string?, ok: boolean)
 	status.Text = message or ""

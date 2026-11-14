@@ -25,11 +25,15 @@ local PotionConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChi
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui"):WaitForChild("InventoryGui") :: ScreenGui
 local panel = gui:WaitForChild("Panel") :: Frame
 local panelScale = panel:WaitForChild("UIScale") :: UIScale
+UIStyle.Panel(panel)
 local closeButton = panel:WaitForChild("Close") :: TextButton
 local tabsFrame = panel:WaitForChild("Tabs") :: Frame
 local searchBox = (panel:WaitForChild("Search") :: Frame):WaitForChild("Box") :: TextBox
@@ -129,9 +133,9 @@ if not slotTemplate:FindFirstChild("NameBar") then
 	end
 end
 
-local TAB_ON_BG = Color3.fromRGB(45, 180, 60)
-local TAB_ON_STROKE = Color3.fromRGB(25, 110, 35)
-local TAB_OFF_BG = Color3.fromRGB(70, 75, 88)
+local TAB_ON_BG = Theme.Color.Secondary
+local TAB_ON_STROKE = Theme.Color.SecondaryDark
+local TAB_OFF_BG = Theme.Color.SurfaceInset
 local TAB_OFF_STROKE = Color3.fromRGB(115, 120, 132)
 local SCREEN_FILL_X = 0.92 -- largest share of the screen the panel may cover
 
@@ -316,7 +320,7 @@ end
 -- Potion card: what it does and DRINK -----------------------------------------------------------------
 
 local PotionAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("PotionAction", 10) :: RemoteFunction?
-local FONT = Enum.Font.FredokaOne
+local FONT = Theme.Font
 
 local function uiText(props: { [string]: any }): TextLabel
 	local l = Instance.new("TextLabel")
@@ -339,7 +343,7 @@ potionCard.Name = "PotionCard"
 potionCard.AnchorPoint = Vector2.new(0.5, 0.5)
 potionCard.Position = UDim2.fromScale(0.5, 0.55)
 potionCard.Size = UDim2.fromOffset(440, 250)
-potionCard.BackgroundColor3 = Color3.fromRGB(34, 36, 46)
+potionCard.BackgroundColor3 = Theme.Color.Surface
 potionCard.Visible = false
 potionCard.ZIndex = 20
 potionCard.Parent = panel
@@ -367,7 +371,7 @@ drinkButton.Name = "Drink"
 drinkButton.AutoButtonColor = true
 drinkButton.Position = UDim2.fromOffset(180, 180)
 drinkButton.Size = UDim2.fromOffset(150, 52)
-drinkButton.BackgroundColor3 = Color3.fromRGB(45, 180, 60)
+drinkButton.BackgroundColor3 = Theme.Color.Primary
 drinkButton.Text = ""
 drinkButton.ZIndex = 21
 drinkButton.Parent = potionCard
@@ -387,7 +391,7 @@ local sellAllButton = drinkButton:Clone()
 sellAllButton.Name = "SellAll"
 sellAllButton.Position = UDim2.fromOffset(340, 180)
 sellAllButton.Size = UDim2.fromOffset(88, 52)
-sellAllButton.BackgroundColor3 = Color3.fromRGB(210, 120, 30)
+sellAllButton.BackgroundColor3 = Theme.Color.Accent
 sellAllButton.Visible = false
 sellAllButton.Parent = potionCard
 local sellAllLabel = sellAllButton:FindFirstChildOfClass("TextLabel") :: TextLabel
@@ -397,7 +401,7 @@ closeCard.Name = "Close"
 closeCard.AnchorPoint = Vector2.new(1, 0)
 closeCard.Position = UDim2.new(1, -12, 0, 12)
 closeCard.Size = UDim2.fromOffset(40, 40)
-closeCard.BackgroundColor3 = Color3.fromRGB(220, 70, 60)
+closeCard.BackgroundColor3 = Theme.Color.Danger
 closeCard.Text = ""
 closeCard.ZIndex = 21
 closeCard.Parent = potionCard
@@ -407,13 +411,16 @@ do
 	c.Parent = closeCard
 end
 uiText({ Size = UDim2.fromScale(1, 1), Text = "X", ZIndex = 22, Parent = closeCard })
+UIStyle.Close(closeCard)
+UIStyle.Button(drinkButton)
+UIStyle.Button(sellAllButton)
 local cardMessage = uiText({ Position = UDim2.fromOffset(16, 200), Size = UDim2.fromOffset(150, 30), Text = "", TextColor3 = Color3.fromRGB(255, 220, 120), ZIndex = 21, Parent = potionCard })
 
 local shownPotion: string? = nil
 local shownHero: string? = nil
 local InventoryAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("InventoryAction", 10) :: RemoteFunction?
-local SELL_COLOR = Color3.fromRGB(45, 180, 60)
-local OFF_COLOR = Color3.fromRGB(90, 92, 102)
+local SELL_COLOR = Theme.Color.Primary
+local OFF_COLOR = Theme.Color.Disabled
 
 local function freeCopies(hero: string): (number, number)
 	local heroes = player:FindFirstChild("Heroes")
@@ -445,7 +452,7 @@ local function drawHeroCard()
 	drinkButton.BackgroundColor3 = if free > 0 then SELL_COLOR else OFF_COLOR
 	sellAllButton.Visible = true
 	sellAllButton.Active = free > 0
-	sellAllButton.BackgroundColor3 = if free > 0 then Color3.fromRGB(210, 120, 30) else OFF_COLOR
+	sellAllButton.BackgroundColor3 = if free > 0 then Theme.Color.Accent else OFF_COLOR
 end
 
 local function drawPotionCard()
@@ -481,7 +488,7 @@ local function drawPotionCard()
 		if left > 0 then ("   •   Active: %s"):format(PotionConfig.Clock(left)) else ""
 	)
 	drinkButton.Active = owned > 0
-	drinkButton.BackgroundColor3 = if owned > 0 then Color3.fromRGB(45, 180, 60) else Color3.fromRGB(90, 92, 102)
+	drinkButton.BackgroundColor3 = if owned > 0 then Theme.Color.Primary else Theme.Color.Disabled
 end
 
 local function openPotion(id: string)
@@ -737,6 +744,11 @@ end
 
 gui:GetAttributeChangedSignal("Open"):Connect(function()
 	setOpen(gui:GetAttribute("Open") == true)
+end)
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Inventory", panel, function()
+	setOpen(false)
 end)
 
 closeButton.Activated:Connect(function()

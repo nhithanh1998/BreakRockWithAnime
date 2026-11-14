@@ -16,17 +16,22 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local StandConfig = require(Shared:WaitForChild("StandConfig"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 local action = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("StandAction") :: RemoteFunction
 
 local player = Players.LocalPlayer
 local abbreviate = HeroConfig.Abbreviate
 
-local FONT = Enum.Font.FredokaOne
-local PANEL = Color3.fromRGB(38, 40, 50)
-local ROW = Color3.fromRGB(52, 55, 68)
-local GREEN = Color3.fromRGB(45, 180, 60)
-local GREY = Color3.fromRGB(90, 92, 102)
+local FONT = Theme.Font
+local PANEL = Theme.Color.Surface
+local ROW = Theme.Color.SurfaceInset
+local GREEN = Theme.Color.Primary
+local GREY = Theme.Color.Disabled
 local UP = Color3.fromRGB(110, 255, 120)
+local TAB_ON = Theme.Color.Secondary
+local DESIGN_SIZE = Vector2.new(460, 506) -- the panel's size at scale 1
 
 local STAT_ROWS = {
 	{ stat = "MaxStock", label = "Max Stock", fmt = function(v: number)
@@ -73,23 +78,39 @@ end
 local panel = make("Frame", {
 	Name = "Panel",
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(460, 506),
+	Position = UDim2.fromScale(0.5, 0.45), -- a little high: clears the hotbar on PC
+	Size = UDim2.fromOffset(DESIGN_SIZE.X, DESIGN_SIZE.Y),
 	BackgroundColor3 = PANEL,
 	Visible = false,
 	Parent = gui,
 })
-round(panel, 16)
-make("UIStroke", { Thickness = 4, Color = Color3.fromRGB(255, 255, 255), ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = panel })
+UIStyle.Panel(panel)
 local scale = make("UIScale", { Parent = panel })
 
-local header = make("Frame", { Size = UDim2.new(1, 0, 0, 64), BackgroundColor3 = Color3.fromRGB(214, 52, 48), Parent = panel })
-round(header, 16)
-make("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 120, 90), Color3.fromRGB(200, 40, 40)), Rotation = 90, Parent = header })
+-- Fits the fixed-size panel on any screen (phones in landscape are ~375 px tall).
+local function fitScale(): number
+	local view = gui.AbsoluteSize
+	if view.X <= 0 or view.Y <= 0 then
+		return 1
+	end
+	-- Phones hide the hotbar while a window is open (UIManager): use 86% of the height.
+	-- PC keeps the hotbar, so stay inside 78% and clear it.
+	local maxH = if Theme.IsPhone() then 0.86 else 0.78
+	return math.min(1, view.X * 0.92 / DESIGN_SIZE.X, view.Y * maxH / DESIGN_SIZE.Y)
+end
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	if panel.Visible then
+		scale.Scale = fitScale()
+	end
+end)
+
+-- Same window header as every other window: title on the panel, red X top-right.
+local header = make("Frame", { Size = UDim2.new(1, 0, 0, 64), BackgroundTransparency = 1, Parent = panel })
 local title = text({ Position = UDim2.fromOffset(18, 10), Size = UDim2.new(1, -90, 0, 44), TextXAlignment = Enum.TextXAlignment.Left, Text = "FARM STAND", Parent = header })
 local close = make("TextButton", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 12), Size = UDim2.fromOffset(40, 40), BackgroundColor3 = Color3.fromRGB(220, 70, 60), Text = "", Parent = header })
 round(close, 10)
 text({ Size = UDim2.fromScale(1, 1), Text = "X", Parent = close })
+UIStyle.Close(close)
 
 -- Tabs: Stand (level / stats / upgrade) and Helpers (the 3 helper pads).
 local tabs = make("Frame", { Position = UDim2.fromOffset(18, 72), Size = UDim2.new(1, -36, 0, 36), BackgroundTransparency = 1, Parent = panel })
@@ -97,6 +118,7 @@ make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = 
 local function tabButton(name: string): TextButton
 	local b = make("TextButton", { Name = name, Size = UDim2.new(0.5, -4, 1, 0), BackgroundColor3 = ROW, Text = "", Parent = tabs })
 	round(b, 8)
+	UIStyle.Button(b)
 	text({ Size = UDim2.fromScale(1, 0.8), Position = UDim2.fromScale(0, 0.1), Text = name, Parent = b })
 	return b
 end
@@ -110,16 +132,16 @@ local levelLine = text({ Position = UDim2.fromOffset(18, 74), Size = UDim2.new(1
 local rowsFrame = make("Frame", { Position = UDim2.fromOffset(18, 116), Size = UDim2.new(1, -36, 0, 210), BackgroundTransparency = 1, Parent = standPage })
 make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = rowsFrame })
 
-type Row = { name: TextLabel, now: TextLabel, nxt: TextLabel }
+type Row = { name: TextLabel, now: TextLabel, arrow: TextLabel, nxt: TextLabel }
 local rows: { [string]: Row } = {}
 local function addRow(key: string, labelText: string, order: number)
 	local f = make("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = ROW, LayoutOrder = order, Parent = rowsFrame })
 	round(f, 8)
 	local name = text({ Position = UDim2.fromOffset(10, 5), Size = UDim2.new(0.5, -10, 1, -10), TextXAlignment = Enum.TextXAlignment.Left, Text = labelText, Parent = f })
 	local now = text({ Position = UDim2.new(0.5, 0, 0, 5), Size = UDim2.new(0.2, 0, 1, -10), Text = "", Parent = f })
-	text({ Position = UDim2.new(0.7, 0, 0, 5), Size = UDim2.new(0.08, 0, 1, -10), Text = ">", TextColor3 = Color3.fromRGB(180, 180, 190), Parent = f })
+	local arrow = text({ Position = UDim2.new(0.7, 0, 0, 5), Size = UDim2.new(0.08, 0, 1, -10), Text = ">", TextColor3 = Color3.fromRGB(180, 180, 190), Parent = f })
 	local nxt = text({ Position = UDim2.new(0.78, 0, 0, 5), Size = UDim2.new(0.2, 0, 1, -10), Text = "", TextColor3 = UP, Parent = f })
-	rows[key] = { name = name, now = now, nxt = nxt }
+	rows[key] = { name = name, now = now, arrow = arrow, nxt = nxt }
 end
 for i, r in STAT_ROWS do
 	addRow(r.stat, r.label, i)
@@ -131,9 +153,16 @@ local heroLine = text({ Position = UDim2.fromOffset(18, 330), Size = UDim2.new(1
 
 local upgrade = make("TextButton", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.new(1, -36, 0, 62), BackgroundColor3 = GREEN, Text = "", AutoButtonColor = true, Parent = standPage })
 round(upgrade, 12)
-make("UIStroke", { Thickness = 3, Color = Color3.fromRGB(25, 110, 35), ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = upgrade })
+make("UIStroke", { Thickness = 3, Color = Theme.Color.PrimaryDark, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = upgrade })
 local upgradeLabel = text({ Size = UDim2.fromScale(1, 1), Text = "UPGRADE", Parent = upgrade })
 local pressScale = make("UIScale", { Parent = upgrade })
+UIStyle.Button(upgrade)
+
+-- At max level the button is replaced by a small gold MAX badge.
+local maxBadge = make("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Size = UDim2.fromOffset(150, 46), BackgroundColor3 = Theme.Color.Accent, Visible = false, Parent = standPage })
+round(maxBadge, 23)
+make("UIStroke", { Thickness = 3, Color = Theme.Color.AccentDark, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = maxBadge })
+text({ Size = UDim2.fromScale(1, 0.8), Position = UDim2.fromScale(0, 0.1), Text = "MAX", Parent = maxBadge })
 
 -- Helpers page: one card per helper pad.
 local helperTitle = text({ Position = UDim2.fromOffset(18, 74), Size = UDim2.new(1, -36, 0, 30), Text = "Helpers carry materials from the chest", TextColor3 = Color3.fromRGB(255, 220, 90), Parent = helpersPage })
@@ -163,8 +192,8 @@ local function showTab(name: string)
 	currentTab = name
 	standPage.Visible = name == "Stand"
 	helpersPage.Visible = name == "Helpers"
-	standTab.BackgroundColor3 = if name == "Stand" then GREEN else ROW
-	helpersTab.BackgroundColor3 = if name == "Helpers" then GREEN else ROW
+	standTab.BackgroundColor3 = if name == "Stand" then TAB_ON else ROW
+	helpersTab.BackgroundColor3 = if name == "Helpers" then TAB_ON else ROW
 end
 showTab("Stand")
 
@@ -219,6 +248,9 @@ local function draw()
 		local nxt = preview.next and preview.next[r.stat]
 		row.now.Text = r.fmt(now and now.Final or 0)
 		row.nxt.Text = if nxt then r.fmt(nxt.Final) else "-"
+		-- Maxed: no "next" column, just the value.
+		row.arrow.Visible = not maxed
+		row.nxt.Visible = not maxed
 		row.nxt.TextColor3 = if nxt and now and nxt.Final > now.Final then UP else Color3.fromRGB(200, 200, 210)
 	end
 	local cpm = preview.current.CustomersPerMinute
@@ -231,10 +263,13 @@ local function draw()
 	local keepers = rows.KeeperSlots
 	keepers.now.Text = tostring(preview.keeperSlots or 0)
 	keepers.nxt.Text = if preview.nextKeeperSlots then tostring(preview.nextKeeperSlots) else "-"
+	keepers.arrow.Visible = not maxed
+	keepers.nxt.Visible = not maxed
 	keepers.nxt.TextColor3 = if preview.nextKeeperSlots and preview.nextKeeperSlots > (preview.keeperSlots or 0) then UP else Color3.fromRGB(200, 200, 210)
+	upgrade.Visible = not maxed
+	maxBadge.Visible = maxed
 	if maxed then
 		upgradeLabel.Text = "MAX LEVEL"
-		upgrade.BackgroundColor3 = GREY
 	else
 		local cost = preview.cost or 0
 		upgradeLabel.Text = ("UPGRADE  $%s"):format(abbreviate(cost))
@@ -254,14 +289,20 @@ local function setOpen(standId: string?)
 	openStand = standId
 	if standId then
 		panel.Visible = true
-		scale.Scale = 0.6
-		TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		local target = fitScale()
+		scale.Scale = target * 0.85
+		TweenService:Create(scale, Theme.Tween.Open, { Scale = target }):Play()
 		load(standId)
 	else
 		panel.Visible = false
 	end
 	gui:SetAttribute("Open", standId)
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Stand", panel, function()
+	setOpen(nil)
+end)
 
 close.Activated:Connect(function()
 	setOpen(nil)

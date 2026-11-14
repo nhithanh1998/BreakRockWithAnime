@@ -21,6 +21,9 @@ local DailyRewardConfig = require(Shared:WaitForChild("DailyRewardConfig"))
 local FruitConfig = require(Shared:WaitForChild("FruitConfig"))
 local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local DailyRewardAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DailyRewardAction") :: RemoteFunction
 
 type Reward = DailyRewardConfig.Reward
@@ -29,14 +32,14 @@ local player = Players.LocalPlayer
 local MAX = DailyRewardConfig.MaxDays
 
 local WIDTH, HEIGHT = 1000, 500
-local FONT = Enum.Font.FredokaOne
+local FONT = Theme.Font
 local BG_TOP = Color3.fromRGB(58, 34, 96)
 local BG_BOTTOM = Color3.fromRGB(24, 20, 44)
-local GOLD = Color3.fromRGB(255, 200, 60)
-local GOLD_DARK = Color3.fromRGB(150, 100, 20)
+local GOLD = Theme.Color.Accent
+local GOLD_DARK = Theme.Color.AccentDark
 local GREEN = Color3.fromRGB(70, 210, 90)
-local GREEN_BUTTON = Color3.fromRGB(40, 175, 70)
-local CLOSE_COLOR = Color3.fromRGB(220, 50, 70)
+local GREEN_BUTTON = Theme.Color.Primary
+local CLOSE_COLOR = Theme.Color.Danger
 local DARK = Color3.fromRGB(16, 14, 22)
 local ERROR_COLOR = Color3.fromRGB(255, 110, 100)
 
@@ -101,6 +104,7 @@ local function button(props: { [string]: any }): TextButton
 	})
 	stroke(props.Color:Lerp(Color3.new(1, 1, 1), 0.35), 2, true).Parent = b
 	stroke(DARK, 1.5).Parent = b
+	UIStyle.Button(b)
 	return b
 end
 
@@ -358,6 +362,7 @@ local closeButton = button({
 	Size = UDim2.fromOffset(48, 48),
 	Parent = root,
 })
+UIStyle.Close(closeButton)
 
 -- Dark pill: [🗓 x/7 Days] Next Claim: <gold time>
 local infoPill = new("Frame", {
@@ -734,15 +739,20 @@ local function refresh()
 		tint(card.extras, not isOpen)
 		if isClaimed then
 			card.status.Text = statusText(card, "CLAIMED", "#46D25A")
-		elseif isOpen then
+		elseif isOpen and isReady then
 			card.status.Text = statusText(card, "CLAIM!", "#FFD447")
+		elseif isOpen then
+			-- State not loaded yet: don't promise a claim the server may refuse.
+			card.status.Text = statusText(card, "...", "#FFFFFF")
 		else
 			card.status.Text = statusText(card, "LOCKED", "#FFFFFF")
 		end
 		setPulse(card, isOpen and not isClaimed and isReady)
 	end
 	daysLabel.Text = ("🗓 %d/%d Days"):format(claimedCount, MAX)
-	claimAllButton.Visible = claimable > 0
+	-- One CTA at a time: a single ready day is claimed on its (pulsing) card; CLAIM ALL only shows
+	-- when there are several.
+	claimAllButton.Visible = claimable > 1
 	if badge then
 		badge.Visible = claimable > 0
 	end
@@ -790,6 +800,9 @@ end
 local function close()
 	root.Visible = false
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Daily", root, close)
 
 local function showMessage(message: string?)
 	messageLabel.Text = message or ""

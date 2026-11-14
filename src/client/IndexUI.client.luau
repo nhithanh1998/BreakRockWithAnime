@@ -22,6 +22,8 @@ local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local PotionConfig = require(Shared:WaitForChild("PotionConfig"))
 local FruitConfig = require(Shared:WaitForChild("FruitConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local UIManager = require(script.Parent:WaitForChild("UIManager"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -121,6 +123,7 @@ local root = new("Frame", {
 	Parent = gui,
 }, { corner(14) })
 stroke(Color3.fromRGB(70, 72, 82), 3, true).Parent = root
+UIStyle.Panel(root)
 local openScale = new("UIScale", { Parent = root })
 
 local function fitScale(): number
@@ -142,6 +145,7 @@ local barPct = label({ Text = "0%", AnchorPoint = Vector2.new(1, 0.5), Position 
 local closeButton = new("TextButton", { Name = "Close", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 16), Size = UDim2.fromOffset(58, 54), BackgroundColor3 = Color3.fromRGB(214, 92, 28), Text = "", AutoButtonColor = true, Parent = root }, { corner(8) })
 stroke(Color3.fromRGB(120, 45, 10), 3, true).Parent = closeButton
 label({ Text = "X", Size = UDim2.fromScale(1, 1), Parent = closeButton })
+UIStyle.Close(closeButton)
 
 -- Zone tabs (scroll sideways when there are many zones).
 local tabs = new("ScrollingFrame", {
@@ -261,6 +265,7 @@ local function drawTabs()
 			Parent = tabs,
 		}, { corner(8) })
 		stroke(if on then Color3.fromRGB(25, 110, 35) else Color3.fromRGB(120, 124, 136), 3, true).Parent = tab
+		UIStyle.Button(tab) -- tabs sit in a list: corners + gloss, no lip
 		label({
 			Text = if locked then "🔒 " .. name else name,
 			TextColor3 = if locked then Color3.fromRGB(255, 120, 120) else Color3.new(1, 1, 1),
@@ -442,6 +447,7 @@ local function drawMilestone(zone: number, index: number, milestone: IndexConfig
 	elseif ready then
 		local button = new("TextButton", { Position = UDim2.new(0.5, -90, 0, stateY), Size = UDim2.fromOffset(180, 42), BackgroundColor3 = TAB_ON, Text = "", Parent = col }, { corner(10) })
 		stroke(Color3.fromRGB(25, 110, 35), 3, true).Parent = button
+		UIStyle.Button(button)
 		local text = label({ Text = "CLAIM!", Size = UDim2.fromScale(1, 1), Parent = button })
 		-- Gentle pulse so it gets noticed.
 		local pulse = new("UIScale", { Parent = button })
@@ -520,6 +526,11 @@ local function setOpen(open: boolean)
 		root.Visible = false
 	end
 end
+
+-- One window at a time; dims the world, hides the HUD on phones (UIManager).
+UIManager.Register("Index", root, function()
+	setOpen(false)
+end)
 
 closeButton.Activated:Connect(function()
 	press(closeButton)

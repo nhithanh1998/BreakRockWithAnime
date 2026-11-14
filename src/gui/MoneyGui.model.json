@@ -1,69 +1,449 @@
 {
   "ClassName": "ScreenGui",
   "Properties": {
-    "DisplayOrder": {"Int32": 5},
+    "DisplayOrder": {
+      "Int32": 5
+    },
     "IgnoreGuiInset": true,
     "ResetOnSpawn": false,
-    "ZIndexBehavior": {"Enum": 1}
+    "ZIndexBehavior": {
+      "Enum": 1
+    }
   },
   "Children": [
     {
       "Name": "Strip",
       "ClassName": "Frame",
       "Properties": {
-        "AnchorPoint": {"Vector2": [1, 0.5]},
-        "BackgroundColor3": {"Color3": [0.047, 0.047, 0.063]},
-        "BackgroundTransparency": 0.35,
-        "BorderSizePixel": {"Int32": 0},
-        "Position": {"UDim2": [[1, 0], [0.42, 0]]},
-        "Size": {"UDim2": [[0.2, 0], [0.065, 0]]}
+        "AnchorPoint": {
+          "Vector2": [
+            1,
+            0.5
+          ]
+        },
+        "BackgroundColor3": {
+          "Color3": [
+            0.094,
+            0.102,
+            0.141
+          ]
+        },
+        "BackgroundTransparency": 0.1,
+        "BorderSizePixel": {
+          "Int32": 0
+        },
+        "Position": {
+          "UDim2": [
+            [
+              1,
+              -14
+            ],
+            [
+              0.42,
+              0
+            ]
+          ]
+        },
+        "Size": {
+          "UDim2": [
+            [
+              0.16,
+              0
+            ],
+            [
+              0.058,
+              0
+            ]
+          ]
+        }
       },
       "Children": [
         {
           "Name": "UISizeConstraint",
           "ClassName": "UISizeConstraint",
           "Properties": {
-            "MinSize": {"Vector2": [170, 40]},
-            "MaxSize": {"Vector2": [330, 70]}
+            "MinSize": {
+              "Vector2": [
+                150,
+                40
+              ]
+            },
+            "MaxSize": {
+              "Vector2": [
+                290,
+                62
+              ]
+            }
           }
         },
         {
-          "Name": "Fade",
+          "Name": "UICorner",
+          "ClassName": "UICorner",
+          "Properties": {
+            "CornerRadius": {
+              "UDim": [
+                1,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "Name": "Border",
+          "ClassName": "UIStroke",
+          "Properties": {
+            "ApplyStrokeMode": {
+              "Enum": 1
+            },
+            "Color": {
+              "Color3": [
+                0.039,
+                0.047,
+                0.071
+              ]
+            },
+            "Thickness": 3
+          }
+        },
+        {
+          "Name": "Gloss",
           "ClassName": "UIGradient",
           "Properties": {
-            "Transparency": {
-              "NumberSequence": {
+            "Rotation": 90,
+            "Color": {
+              "ColorSequence": {
                 "keypoints": [
-                  {"time": 0, "value": 1, "envelope": 0},
-                  {"time": 0.35, "value": 0.1, "envelope": 0},
-                  {"time": 1, "value": 0, "envelope": 0}
+                  {
+                    "time": 0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  },
+                  {
+                    "time": 1,
+                    "color": [
+                      0.588,
+                      0.588,
+                      0.647
+                    ]
+                  }
                 ]
               }
             }
           }
         },
         {
+          "Name": "Coin",
+          "ClassName": "Frame",
+          "Properties": {
+            "AnchorPoint": {
+              "Vector2": [
+                0,
+                0.5
+              ]
+            },
+            "BackgroundColor3": {
+              "Color3": [
+                1.0,
+                0.804,
+                0.196
+              ]
+            },
+            "BorderSizePixel": {
+              "Int32": 0
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  0,
+                  -10
+                ],
+                [
+                  0.5,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  1.25,
+                  0
+                ],
+                [
+                  1.25,
+                  0
+                ]
+              ]
+            },
+            "SizeConstraint": {
+              "Enum": 2
+            },
+            "ZIndex": {
+              "Int32": 3
+            }
+          },
+          "Children": [
+            {
+              "Name": "UICorner",
+              "ClassName": "UICorner",
+              "Properties": {
+                "CornerRadius": {
+                  "UDim": [
+                    1,
+                    0
+                  ]
+                }
+              }
+            },
+            {
+              "Name": "UIStroke",
+              "ClassName": "UIStroke",
+              "Properties": {
+                "ApplyStrokeMode": {
+                  "Enum": 1
+                },
+                "Color": {
+                  "Color3": [
+                    0.451,
+                    0.243,
+                    0.0
+                  ]
+                },
+                "Thickness": 3
+              }
+            },
+            {
+              "Name": "UIGradient",
+              "ClassName": "UIGradient",
+              "Properties": {
+                "Rotation": 90,
+                "Color": {
+                  "ColorSequence": {
+                    "keypoints": [
+                      {
+                        "time": 0,
+                        "color": [
+                          1.0,
+                          1.0,
+                          1.0
+                        ]
+                      },
+                      {
+                        "time": 1,
+                        "color": [
+                          0.882,
+                          0.588,
+                          0.118
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "Name": "CoinScale",
+              "ClassName": "UIScale"
+            },
+            {
+              "Name": "Inner",
+              "ClassName": "Frame",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0.5
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.5,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.7,
+                      0
+                    ],
+                    [
+                      0.7,
+                      0
+                    ]
+                  ]
+                },
+                "ZIndex": {
+                  "Int32": 3
+                }
+              },
+              "Children": [
+                {
+                  "Name": "UICorner",
+                  "ClassName": "UICorner",
+                  "Properties": {
+                    "CornerRadius": {
+                      "UDim": [
+                        1,
+                        0
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Name": "UIStroke",
+                  "ClassName": "UIStroke",
+                  "Properties": {
+                    "ApplyStrokeMode": {
+                      "Enum": 1
+                    },
+                    "Color": {
+                      "Color3": [
+                        0.784,
+                        0.471,
+                        0.039
+                      ]
+                    },
+                    "Thickness": 2,
+                    "Transparency": 0.2
+                  }
+                }
+              ]
+            },
+            {
+              "Name": "Symbol",
+              "ClassName": "TextLabel",
+              "Properties": {
+                "AnchorPoint": {
+                  "Vector2": [
+                    0.5,
+                    0.5
+                  ]
+                },
+                "BackgroundTransparency": 1,
+                "Font": {
+                  "Enum": 26
+                },
+                "Position": {
+                  "UDim2": [
+                    [
+                      0.5,
+                      0
+                    ],
+                    [
+                      0.5,
+                      0
+                    ]
+                  ]
+                },
+                "Size": {
+                  "UDim2": [
+                    [
+                      0.6,
+                      0
+                    ],
+                    [
+                      0.6,
+                      0
+                    ]
+                  ]
+                },
+                "Text": "$",
+                "TextColor3": {
+                  "Color3": [
+                    0.549,
+                    0.314,
+                    0.0
+                  ]
+                },
+                "TextScaled": true,
+                "ZIndex": {
+                  "Int32": 4
+                }
+              }
+            }
+          ]
+        },
+        {
           "Name": "Amount",
           "ClassName": "TextLabel",
           "Properties": {
-            "AnchorPoint": {"Vector2": [1, 0.5]},
+            "AnchorPoint": {
+              "Vector2": [
+                1,
+                0.5
+              ]
+            },
             "BackgroundTransparency": 1,
-            "Font": {"Enum": 26},
-            "Position": {"UDim2": [[1, -14], [0.5, 0]]},
-            "Size": {"UDim2": [[0.85, 0], [0.82, 0]]},
+            "Font": {
+              "Enum": 26
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  1,
+                  -16
+                ],
+                [
+                  0.5,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.66,
+                  0
+                ],
+                [
+                  0.74,
+                  0
+                ]
+              ]
+            },
             "Text": "$0",
-            "TextColor3": {"Color3": [0.588, 1, 0.235]},
+            "TextColor3": {
+              "Color3": [
+                0.588,
+                1,
+                0.235
+              ]
+            },
             "TextScaled": true,
             "TextWrapped": true,
-            "TextXAlignment": {"Enum": 1}
+            "TextXAlignment": {
+              "Enum": 1
+            },
+            "ZIndex": {
+              "Int32": 3
+            }
           },
           "Children": [
             {
               "Name": "UIStroke",
               "ClassName": "UIStroke",
               "Properties": {
-                "Color": {"Color3": [0.063, 0.157, 0.031]},
-                "LineJoinMode": {"Enum": 0},
+                "Color": {
+                  "Color3": [
+                    0.063,
+                    0.157,
+                    0.031
+                  ]
+                },
+                "LineJoinMode": {
+                  "Enum": 0
+                },
                 "Thickness": 2.5
               }
             },
@@ -77,25 +457,73 @@
           "Name": "Gain",
           "ClassName": "TextLabel",
           "Properties": {
-            "AnchorPoint": {"Vector2": [1, 1]},
+            "AnchorPoint": {
+              "Vector2": [
+                1,
+                1
+              ]
+            },
             "BackgroundTransparency": 1,
-            "Font": {"Enum": 26},
-            "Position": {"UDim2": [[1, -14], [0, 0]]},
-            "Size": {"UDim2": [[0.7, 0], [0.6, 0]]},
+            "Font": {
+              "Enum": 26
+            },
+            "Position": {
+              "UDim2": [
+                [
+                  1,
+                  -16
+                ],
+                [
+                  0,
+                  -4
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  0.7,
+                  0
+                ],
+                [
+                  0.6,
+                  0
+                ]
+              ]
+            },
             "Text": "+$0",
-            "TextColor3": {"Color3": [0.588, 1, 0.235]},
+            "TextColor3": {
+              "Color3": [
+                0.588,
+                1,
+                0.235
+              ]
+            },
             "TextScaled": true,
             "TextWrapped": true,
-            "TextXAlignment": {"Enum": 1},
-            "Visible": false
+            "TextXAlignment": {
+              "Enum": 1
+            },
+            "Visible": false,
+            "ZIndex": {
+              "Int32": 3
+            }
           },
           "Children": [
             {
               "Name": "UIStroke",
               "ClassName": "UIStroke",
               "Properties": {
-                "Color": {"Color3": [0.063, 0.157, 0.031]},
-                "LineJoinMode": {"Enum": 0},
+                "Color": {
+                  "Color3": [
+                    0.063,
+                    0.157,
+                    0.031
+                  ]
+                },
+                "LineJoinMode": {
+                  "Enum": 0
+                },
                 "Thickness": 2.5
               }
             }
