@@ -31,6 +31,7 @@ local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local FruitConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitConfig"))
 local FruitModels = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitModels"))
+local PotionConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PotionConfig"))
 
 local ItemDisplay = {}
 
@@ -224,6 +225,102 @@ local function lightView(view: ViewportFrame)
 	view.LightDirection = Vector3.new(-0.4, -1, -0.6)
 	view.ImageTransparency = 0
 	view.ImageColor3 = Color3.new(1, 1, 1)
+end
+
+-- Axes ----------------------------------------------------------------------------------------------
+
+-- Axe picture: its AxeImage, or the model in ReplicatedStorage.Axes tilted a little. Skips the work
+-- when `view` already shows this axe.
+function ItemDisplay.FillAxeViewport(view: ViewportFrame, model: string)
+	if view:GetAttribute("Axe") == model then
+		return
+	end
+	view:ClearAllChildren()
+	view:SetAttribute("Axe", model)
+	if ItemDisplay.ShowAxeImage(view, model) then
+		return
+	end
+	local axes = ReplicatedStorage:FindFirstChild("Axes")
+	local source = axes and axes:FindFirstChild(model)
+	if not source or not source:IsA("Model") then
+		return
+	end
+	local m = source:Clone()
+	for _, d in m:GetDescendants() do
+		if d:IsA("LayerCollector") then
+			d:Destroy()
+		end
+	end
+	local bbox, size = m:GetBoundingBox()
+	m:PivotTo(CFrame.Angles(0, 0, math.rad(-28)) * bbox:ToObjectSpace(m:GetPivot()))
+	m.Parent = view
+	local fov = 40
+	local reach = math.max(size.X, size.Y) * 0.45
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = fov
+	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0.2, reach / math.tan(math.rad(fov / 2))), Vector3.new(0, 0.2, 0))
+	camera.Parent = view
+	view.CurrentCamera = camera
+end
+
+-- Potions -------------------------------------------------------------------------------------------
+
+-- A blocky potion bottle (studded glass cube, coloured liquid, neck and cork), pivot = its centre.
+function ItemDisplay.PotionModel(color: Color3): Model
+	local model = Instance.new("Model")
+	model.Name = "Potion"
+	local function block(name: string, size: Vector3, cf: CFrame, c: Color3, props: { [string]: any }?): BasePart
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Anchored = true
+		p.CanCollide = false
+		p.Size = size
+		p.CFrame = cf
+		p.Color = c
+		p.Material = Enum.Material.SmoothPlastic
+		studs(p)
+		for k, v in props or {} do
+			(p :: any)[k] = v
+		end
+		p.Parent = model
+		return p
+	end
+	local liquid = block("Liquid", Vector3.new(1.7, 1.45, 1.7), CFrame.new(0, -0.35, 0), color)
+	model.PrimaryPart = liquid
+	block("Glass", Vector3.new(2, 2, 2), CFrame.new(0, -0.2, 0), Color3.fromRGB(220, 240, 255), { Transparency = 0.6 })
+	block("Shine", Vector3.new(0.3, 0.9, 0.12), CFrame.new(-0.6, 0.05, -1.02), Color3.new(1, 1, 1), { Transparency = 0.25 })
+	block("Neck", Vector3.new(0.9, 0.6, 0.9), CFrame.new(0, 1.1, 0), Color3.fromRGB(220, 240, 255), { Transparency = 0.5 })
+	block("Cork", Vector3.new(1, 0.55, 1), CFrame.new(0, 1.6, 0), Color3.fromRGB(150, 100, 60))
+	block("Label", Vector3.new(1.2, 0.7, 0.1), CFrame.new(0, -0.35, -1.02), Color3.fromRGB(250, 240, 210))
+	block("Mark", Vector3.new(0.5, 0.35, 0.1), CFrame.new(0, -0.35, -1.06), color:Lerp(Color3.new(0, 0, 0), 0.3))
+	return model
+end
+
+-- Potion picture: its uploaded Image, or the 3D bottle in its colour. Skips the work when `view`
+-- already shows this potion.
+function ItemDisplay.FillPotionViewport(view: ViewportFrame, potionId: string)
+	if view:GetAttribute("Potion") == potionId and #view:GetChildren() > 0 then
+		return
+	end
+	view:ClearAllChildren()
+	view:SetAttribute("Potion", potionId)
+	local def = PotionConfig.Get(potionId)
+	if not def then
+		return
+	end
+	if def.Image and def.Image ~= "" then
+		ItemDisplay.ShowImage(view, def.Image)
+		return
+	end
+	lightView(view)
+	local model = ItemDisplay.PotionModel(def.Color)
+	model:PivotTo(CFrame.Angles(0, math.rad(-25), 0))
+	model.Parent = view
+	local camera = Instance.new("Camera")
+	camera.Parent = view
+	view.CurrentCamera = camera
+	local cf, size = model:GetBoundingBox()
+	fitCamera(view, camera, cf, size, Vector3.new(0.25, 0.35, -1).Unit)
 end
 
 -- The material's custom voxel model (ReplicatedStorage.DropModels.<key>, the same model the drops

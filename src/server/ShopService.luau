@@ -29,6 +29,7 @@ local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
 local SkillTreeConfig = require(Shared:WaitForChild("SkillTreeConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local WeatherConfig = require(Shared:WaitForChild("WeatherConfig"))
+local PotionConfig = require(Shared:WaitForChild("PotionConfig"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
 local PlotService = require(script.Parent:WaitForChild("PlotService"))
@@ -131,7 +132,7 @@ local function sell(player: Player, stacks: any): Result
 			local value = heroes:FindFirstChild(name) :: IntValue?
 			if def and value then
 				local amount = math.max(0, value.Value - placedCount(player, name))
-				earned += math.floor(def.SellValue * ShopConfig.HeroSellMultiplier * WeatherConfig.Mult("SellBonus")) * amount
+				earned += math.floor(def.SellValue * ShopConfig.HeroSellMultiplier * WeatherConfig.Mult("SellBonus") * PotionConfig.Mult(player, "SellBonus")) * amount
 				value.Value -= amount
 				if value.Value <= 0 then
 					value:Destroy()

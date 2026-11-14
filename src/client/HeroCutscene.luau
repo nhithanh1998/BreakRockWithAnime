@@ -280,9 +280,20 @@ local function buildUi(drop: Drop, color: Color3): Ui
 	end
 	local hero = HeroConfig.Get(drop.Name)
 	local power = if hero then HeroConfig.Abbreviate(hero.MinePower) else "?"
-	local name = sub(0.735, 0.075, drop.Name, Color3.new(1, 1, 1))
+	-- The name without its size ("Diamond Huge X" -> "Diamond X"), in the rarity's moving gradient; the
+	-- size gets a line of its own under the info line.
+	local name = sub(0.735, 0.075, if hero then HeroConfig.DisplayName(hero) else drop.Name, Color3.new(1, 1, 1))
+	if hero then
+		HeroConfig.PaintRarityGradient(name, hero.Rarity)
+	end
 	name.MaxVisibleGraphemes = 0
 	local info = sub(0.8, 0.045, ("Power %s   •   %s chance"):format(power, DropFX.FormatChance(drop.Chance)), color:Lerp(Color3.new(1, 1, 1), 0.25))
+	local sizeLabel: TextLabel? = nil
+	if hero and hero.Size and HeroConfig.SizeBadgeFX[hero.Size] then
+		local label = sub(0.857, 0.05, string.upper(hero.Size), Color3.new(1, 1, 1))
+		HeroConfig.PaintRarityGradient(label, hero.Size) -- SizeBadgeFX colours, animated like rarities
+		sizeLabel = label
+	end
 
 	local hint = new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 1),
@@ -310,6 +321,7 @@ local function buildUi(drop: Drop, color: Color3): Ui
 		titleScale = titleScale,
 		name = name,
 		info = info,
+		size = sizeLabel,
 		hint = hint,
 	}
 end
@@ -570,13 +582,21 @@ local function run(drop: Drop, origin: Vector3, groundY: number)
 			if outroStarted then
 				return
 			end
-			local graphemes = utf8.len(drop.Name) or #drop.Name
+			local graphemes = utf8.len(ui.name.Text) or #ui.name.Text
 			tween(ui.name, math.min(0.05 * graphemes, 0.8), { MaxVisibleGraphemes = graphemes }, Enum.EasingStyle.Linear)
 			ui.name.TextTransparency = 0
 		end)
 		task.delay(0.9, function()
 			if not outroStarted then
 				tween(ui.info, 0.4, { TextTransparency = 0 })
+				if ui.size then
+					-- The size line pops in after the info line.
+					local pop = Instance.new("UIScale")
+					pop.Scale = 1.8
+					pop.Parent = ui.size
+					tween(ui.size, 0.3, { TextTransparency = 0 })
+					tween(pop, 0.4, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+				end
 			end
 		end)
 	end
@@ -829,6 +849,9 @@ local function run(drop: Drop, origin: Vector3, groundY: number)
 	ui.title.Visible = false
 	ui.name.Visible = false
 	ui.info.Visible = false
+	if ui.size then
+		ui.size.Visible = false
+	end
 	ui.hint.Visible = false
 	vignette.Visible = false
 	tween(ui.fade, 0.4, { BackgroundTransparency = 1 })

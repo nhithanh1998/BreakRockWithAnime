@@ -211,22 +211,22 @@ local function groundY(plot: Model, at: Vector3): number?
 	return if hit then hit.Position.Y else nil
 end
 
--- Glass greenhouse around the planter (FruitModels.Greenhouse), sized to its Base; the sign moves
--- up above the roof so it stays readable.
+-- Walk-in greenhouse around the planter (FruitModels.Greenhouse), standing on the planter's floor
+-- level; the sign moves up above the roof so it stays readable.
 local function addGreenhouse(garden: Model)
 	if garden:FindFirstChild("Greenhouse") then
 		return
 	end
 	local base = garden:FindFirstChild("Base") :: BasePart?
-	local width = if base then math.max(base.Size.X, base.Size.Z) + 2 else FruitConfig.GardenSize + 2
 	local ground = if base then base.CFrame * CFrame.new(0, -base.Size.Y / 2, 0) else garden:GetPivot()
-	local house = FruitModels.Greenhouse(width, FruitConfig.GreenhouseHeight)
+	local size = FruitConfig.GreenhouseSize
+	local house = FruitModels.Greenhouse(size.X, size.Z, size.Y)
 	house:PivotTo(ground)
 	house.Parent = garden
 	local sign = garden:FindFirstChild("SignAnchor") :: BasePart?
 	if sign then
-		local roofTop = FruitConfig.GreenhouseHeight + width * 0.3
-		sign.CFrame = ground * CFrame.new(0, roofTop + 3, 0)
+		local roofTop = house:GetAttribute("RoofTop") :: number? or size.Y
+		sign.CFrame = ground * CFrame.new(0, roofTop + 4, 0)
 	end
 end
 

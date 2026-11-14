@@ -172,7 +172,7 @@ end)
 -- HP bars --------------------------------------------------------------------------------------
 -- Tree templates carry InfoAttachment.TreeBar.Container: "TreeName" and "HPFill" (with "Empty" and
 -- "HPDisplay" "1.2K/2K"). The look is rebuilt here on the client, from the tree's HP / MaxHP
--- attributes: a dark studded track, a studded fill (green -> yellow -> red as HP drops) that slides
+-- attributes: a dark track, a fill (green -> yellow -> red as HP drops) that slides
 -- down on each hit, a white "lag" bar behind it
 -- that catches up a moment later, and a quick pop + shake of the whole bar when the tree is hit.
 
@@ -185,11 +185,6 @@ local FLASH_COLOR = Color3.fromRGB(255, 255, 255)
 local FULL_TOP, FULL_BOTTOM = Color3.fromRGB(130, 255, 90), Color3.fromRGB(45, 185, 40)
 local HALF_TOP, HALF_BOTTOM = Color3.fromRGB(255, 235, 90), Color3.fromRGB(235, 165, 20)
 local LOW_TOP, LOW_BOTTOM = Color3.fromRGB(255, 125, 100), Color3.fromRGB(215, 35, 35)
--- Stud texture tiled over the bar (the same "Checker" stud texture as the map's blocks); one tile
--- per bar height.
-local STUD_TEXTURE = "rbxassetid://6372755229"
-local STUD_FILL_TRANSPARENCY = 0.45
-local STUD_TRACK_TRANSPARENCY = 0.8
 
 local FILL_TWEEN = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local LAG_DELAY = 0.28
@@ -236,20 +231,6 @@ local function layer(parent: Frame, name: string, color: Color3, z: number): Fra
 	return f
 end
 
-local function studLayer(parent: GuiObject, transparency: number, z: number): ImageLabel
-	local img = Instance.new("ImageLabel")
-	img.Name = "Studs"
-	img.BackgroundTransparency = 1
-	img.BorderSizePixel = 0
-	img.Image = STUD_TEXTURE
-	img.ImageTransparency = transparency
-	img.ScaleType = Enum.ScaleType.Tile
-	img.Position = UDim2.fromScale(0, 0)
-	img.ZIndex = z
-	img.Parent = parent
-	return img
-end
-
 local function setupBar(tree: Model): Bar?
 	local existing = bars[tree]
 	if existing and existing.track.Parent then
@@ -278,35 +259,19 @@ local function setupBar(tree: Model): Bar?
 		empty.Visible = false
 	end
 
-	-- Faint studs on the empty part of the bar.
-	local trackStuds = studLayer(track, STUD_TRACK_TRANSPARENCY, 1)
-	trackStuds.Size = UDim2.fromScale(1, 1)
 	local lag = layer(track, "Lag", LAG_COLOR, 2)
 	lag.BackgroundTransparency = 0.15
 	local fill = layer(track, "Fill", Color3.new(1, 1, 1), 3)
-	fill.ClipsDescendants = true -- the studs below stay put while the fill shrinks over them
+	fill.ClipsDescendants = true
 	local gradient = Instance.new("UIGradient")
 	gradient.Rotation = 90
 	gradient.Parent = fill
-	-- Studs on the fill, as wide as the whole track so they don't stretch as HP drops.
-	local fillStuds = studLayer(fill, STUD_FILL_TRANSPARENCY, 4)
 	-- Shine on the upper half of the fill.
 	local shine = layer(fill, "Shine", Color3.new(1, 1, 1), 5)
 	shine.Size = UDim2.fromScale(1, 0.42)
 	shine.BackgroundTransparency = 0.72
 	local flash = layer(fill, "Flash", FLASH_COLOR, 6)
 	flash.BackgroundTransparency = 1
-
-	-- Square stud tiles, one per bar height (billboard pixels change with distance / screen).
-	local function sizeStuds()
-		local size = track.AbsoluteSize
-		local tile = UDim2.fromOffset(math.max(1, size.Y), math.max(1, size.Y))
-		trackStuds.TileSize = tile
-		fillStuds.TileSize = tile
-		fillStuds.Size = UDim2.fromOffset(size.X, size.Y)
-	end
-	sizeStuds()
-	track:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeStuds)
 
 	local text = track:FindFirstChild("HPDisplay") :: TextLabel?
 	if text then

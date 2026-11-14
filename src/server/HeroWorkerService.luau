@@ -35,6 +35,7 @@ local Movement = require(script.Parent:WaitForChild("Movement"))
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local FruitConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitConfig"))
 local WeatherConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeatherConfig"))
+local PotionConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PotionConfig"))
 local FruitService = require(script.Parent:WaitForChild("FruitService"))
 
 local ATTACK_RANGE = HeroConfig.Worker.AttackRange or 2.5 -- studs from the trunk's center at which a hero stops and chops
@@ -135,8 +136,8 @@ local function padStat(plot: Model, slot: number, hero: string, stat: string): n
 	elseif fruit and stat == "Walk" and fruit.Skill.Walk then
 		value *= fruit.Skill.Walk
 	end
-	-- Weather buffs (WeatherConfig): HeroDamage / HeroSpeed / HeroWalk.
-	local weather = WeatherConfig.Mult("Hero" .. stat)
+	-- Weather buffs (WeatherConfig) and the owner's potions (PotionConfig): HeroDamage / HeroSpeed / HeroWalk.
+	local weather = WeatherConfig.Mult("Hero" .. stat) * PotionConfig.MultForPlot(plot, "Hero" .. stat)
 	if weather ~= 1 then
 		value = if stat == "Damage" then math.max(1, math.floor(value * weather)) else value * weather
 	end

@@ -1,10 +1,8 @@
 -- WeatherFX: what the weather (WeatherConfig / WeatherService) looks like, client-side only.
 --
 -- While a weather is on (ReplicatedStorage "Weather"):
---   colour grading   a ColorCorrection "WeatherTint" in Lighting: Tint / Brightness / Saturation,
---                    Haze (washed-out, tinted towards HazeColor) and Night (dark, blue).
---                    Only this effect is touched: ZoneService owns ClockTime / Atmosphere, so a zone
---                    change during a weather never fights with it.
+--   light / colour   NOT here: LightingController tweens Lighting to the weather's LightingPresets entry.
+--                    The ColorCorrection "WeatherTint" here stays neutral; only the lightning flash uses it.
 --   particles        around the camera: Rain streaks, Snow flakes, Sand gusts, Gold sparkles, red
 --                    Embers rising, Aurora ribbons in the sky, Rainbow arc + sparkles
 --   lightning        Thunderstorm: bolts from the sky and a white flash every few seconds
@@ -59,35 +57,13 @@ if not tint then
 end
 local cc = tint :: ColorCorrectionEffect
 
-local NIGHT_TINT = Color3.fromRGB(150, 165, 230)
-
-local function applyLighting(v: WeatherConfig.Visual?)
-	cc.Enabled = true
-	local tintColor = if v and v.Tint then v.Tint else Color3.new(1, 1, 1)
-	local brightness = if v and v.Brightness then v.Brightness else 0
-	local contrast = 0
-	local haze = if v and v.Haze then v.Haze else 0
-	if haze > 0 then
-		-- Hazy: flatter colours, pulled towards the haze colour.
-		contrast -= haze * 0.45
-		brightness += haze * 0.05
-		if v and v.HazeColor then
-			tintColor = tintColor:Lerp(v.HazeColor:Lerp(Color3.new(1, 1, 1), 0.35), haze * 0.6)
-		end
-	end
-	if v and v.Night then
-		-- Night: darker and bluer (multiplied with the weather's own tint).
-		brightness -= 0.22
-		contrast += 0.15
-		tintColor = Color3.new(tintColor.R * NIGHT_TINT.R, tintColor.G * NIGHT_TINT.G, tintColor.B * NIGHT_TINT.B)
-	end
-	tween(cc, FADE, {
-		TintColor = tintColor,
-		Brightness = brightness,
-		Contrast = contrast,
-		Saturation = if v and v.Saturation then v.Saturation else 0,
-	})
-end
+-- The weather's colours / light are LightingController's job (LightingPresets). This effect stays
+-- neutral and is only used for the lightning flash.
+cc.Enabled = true
+cc.TintColor = Color3.new(1, 1, 1)
+cc.Brightness = 0
+cc.Contrast = 0
+cc.Saturation = 0
 
 -- Particles ---------------------------------------------------------------------------------------------
 
@@ -391,7 +367,6 @@ local function setWeather(def: WeatherConfig.WeatherDef?)
 	end
 	current = id
 	clearEffects()
-	applyLighting(def and def.Visual)
 	if not def then
 		return
 	end

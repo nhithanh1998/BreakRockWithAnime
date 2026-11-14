@@ -8,6 +8,8 @@
 --         The plot's TreasureChest contents (Chest; the shared fallback chest is not saved).
 --         Devil Fruits: Fertilizer bags, owned fruits (Fruits) and the fruit on each pad (PadFruits).
 --         7 Day Login Rewards streak (Daily, DailyRewardService).
+--         Potions owned + time left on active ones (Potions / PotionTime, PotionService).
+--         Index: found items and claimed zone rewards (IndexFound / IndexClaimed, IndexService).
 -- Not saved: trees.
 --
 -- Load: when the player joins (3 tries). Saved amounts are ADDED to whatever the player already
@@ -27,6 +29,8 @@ local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
 local SkillTreeService = require(script.Parent:WaitForChild("SkillTreeService"))
 local FruitService = require(script.Parent:WaitForChild("FruitService"))
 local DailyRewardService = require(script.Parent:WaitForChild("DailyRewardService"))
+local PotionService = require(script.Parent:WaitForChild("PotionService"))
+local IndexService = require(script.Parent:WaitForChild("IndexService"))
 
 local STORE_NAME = "PlayerData"
 local DATA_VERSION = 1
@@ -55,6 +59,10 @@ export type SaveData = {
 	Fruits: { [string]: number }?, -- fruit id -> copies owned
 	PadFruits: { [string]: string }?, -- slot index (as text) -> fruit id on that pad
 	Daily: { Unlocked: number, Claimed: number, LastAt: number? }?, -- 7 Day Login Rewards (DailyRewardService)
+	Potions: { [string]: number }?, -- potion id -> owned (PotionService)
+	PotionTime: { [string]: number }?, -- potion id -> seconds left on the active one
+	IndexFound: { string }?, -- Index stacks found (IndexService)
+	IndexClaimed: { [string]: number }?, -- zone (as text) -> claimed milestone mask
 }
 
 local DataService = {}
@@ -171,6 +179,8 @@ local function collect(player: Player): SaveData
 	local unlockedZones = player:GetAttribute("UnlockedZones")
 	local currentZone = player:GetAttribute("CurrentZone")
 	local fertilizer, fruits = FruitService.GetSaveData(player)
+	local potions, potionTime = PotionService.GetSaveData(player)
+	local indexFound, indexClaimed = IndexService.GetSaveData(player)
 	return {
 		Version = DATA_VERSION,
 		SavedAt = os.time(),
@@ -194,6 +204,10 @@ local function collect(player: Player): SaveData
 		Fruits = fruits,
 		PadFruits = padFruitsNow(player) or padFruitsCache[player],
 		Daily = DailyRewardService.GetSaveData(player),
+		Potions = potions,
+		PotionTime = potionTime,
+		IndexFound = indexFound,
+		IndexClaimed = indexClaimed,
 	}
 end
 
@@ -271,6 +285,8 @@ local function apply(player: Player, data: SaveData)
 	end
 	FruitService.ApplySaved(player, data.Fertilizer, data.Fruits)
 	DailyRewardService.ApplySaved(player, data.Daily)
+	PotionService.ApplySaved(player, data.Potions, data.PotionTime)
+	IndexService.ApplySaved(player, data.IndexFound, data.IndexClaimed)
 	if typeof(data.PadFruits) == "table" then
 		local padFruits: { [number]: string } = {}
 		for index, id in data.PadFruits do

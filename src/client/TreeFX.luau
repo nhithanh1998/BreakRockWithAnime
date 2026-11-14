@@ -441,9 +441,9 @@ end
 -- outlines and the shadow offset follow the number's on-screen size.
 
 local DAMAGE_FONT = Enum.Font.LuckiestGuy
-local DAMAGE_TOP = Color3.fromRGB(255, 190, 70) -- orange
-local DAMAGE_MID = Color3.fromRGB(255, 120, 35)
-local DAMAGE_BOTTOM = Color3.fromRGB(235, 45, 35) -- red
+local DAMAGE_TOP = Color3.fromRGB(255, 110, 100) -- light red
+local DAMAGE_MID = Color3.fromRGB(240, 40, 40)
+local DAMAGE_BOTTOM = Color3.fromRGB(170, 10, 15) -- deep red
 local DAMAGE_OUTLINE = Color3.fromRGB(60, 8, 10)
 local DAMAGE_STUDS = Vector2.new(4.6, 1.9) -- size of a number in the world
 local DAMAGE_REF_HEIGHT = 78 -- on-screen height (px) the stroke thicknesses below are made for

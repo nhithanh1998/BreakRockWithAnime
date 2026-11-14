@@ -598,35 +598,7 @@ local function axesUsedElsewhere(slot: Model): { [string]: number }
 	return used
 end
 
-local function axeViewport(view: ViewportFrame, model: string)
-	if view:GetAttribute("Axe") == model then
-		return
-	end
-	view:ClearAllChildren()
-	view:SetAttribute("Axe", model)
-	if ItemDisplay.ShowAxeImage(view, model) then
-		return
-	end
-	local axes = ReplicatedStorage:FindFirstChild("Axes")
-	local source = axes and axes:FindFirstChild(model)
-	if not source or not source:IsA("Model") then
-		return
-	end
-	local m = source:Clone()
-	for _, d in m:GetDescendants() do
-		if d:IsA("LayerCollector") then
-			d:Destroy()
-		end
-	end
-	local bbox, size = m:GetBoundingBox()
-	m:PivotTo(CFrame.Angles(0, 0, math.rad(-28)) * bbox:ToObjectSpace(m:GetPivot()))
-	m.Parent = view
-	local fov = 40
-	local reach = math.max(size.X, size.Y) * 0.45
-	local camera = new("Camera", { FieldOfView = fov, Parent = view })
-	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0.2, reach / math.tan(math.rad(fov / 2))), Vector3.new(0, 0.2, 0))
-	view.CurrentCamera = camera
-end
+local axeViewport = ItemDisplay.FillAxeViewport
 
 -- Drawing ----------------------------------------------------------------------------------------
 

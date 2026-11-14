@@ -2,7 +2,7 @@
 --
 --   Announcement  when a weather starts: big "⛈️ THUNDERSTORM!" in the weather's colour, its
 --                 description and buffs, popping in for a few seconds in the middle of the screen.
---   Icon          a round badge right under the money strip (MoneyGui.Strip) with the weather's
+--   Icon          a round badge in the bottom-right corner of the screen with the weather's
 --                 emoji and a countdown below it (time left, red in the last 30 s; or, with SHOW_NEXT,
 --                 time until the next random weather while the sky is clear).
 --                 Hover (tap on touch screens) shows a tooltip: name, description, buffs, time.
@@ -90,11 +90,11 @@ local iconScale = new("UIScale", { Parent = iconButton })
 local iconEmoji = new("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.68, 0.68), Font = FONT, TextScaled = true, Text = CLEAR_ICON, Parent = iconButton })
 local countdown = label({ Name = "Time", Text = "", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.fromScale(1.7, 0.27), StrokeThickness = 2, Parent = widget })
 
--- Tooltip: opens to the left of the icon.
+-- Tooltip: opens to the left of the icon, growing upwards (the icon sits in the bottom-right corner).
 local tooltip = new("Frame", {
 	Name = "Tooltip",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(0, -10, 0, 0),
+	AnchorPoint = Vector2.new(1, 1),
+	Position = UDim2.new(0, -10, 1, 0),
 	Size = UDim2.fromOffset(250, 0),
 	AutomaticSize = Enum.AutomaticSize.Y,
 	BackgroundColor3 = PANEL,
@@ -153,23 +153,20 @@ iconButton.Activated:Connect(function() -- touch screens have no hover: tap togg
 	end
 end)
 
--- Follow the money strip: the icon sits right under it, right-aligned with the "$" amount.
-task.spawn(function()
-	local moneyGui = player:WaitForChild("PlayerGui"):WaitForChild("MoneyGui", 15)
-	local strip = if moneyGui then moneyGui:WaitForChild("Strip", 5) :: Frame? else nil
-	if not strip then
-		return -- keep the fallback position
-	end
-	local function place()
-		local pos, size = strip.AbsolutePosition, strip.AbsoluteSize
-		local s = math.clamp(size.Y * 1.05, 42, 72)
-		widget.Size = UDim2.fromOffset(s, s * 1.37)
-		widget.Position = UDim2.fromOffset(pos.X + size.X - 14, pos.Y + size.Y + 6)
-	end
-	strip:GetPropertyChangedSignal("AbsolutePosition"):Connect(place)
-	strip:GetPropertyChangedSignal("AbsoluteSize"):Connect(place)
-	place()
-end)
+-- Bottom-right corner of the screen (a bit smaller on phones). PotionUI lines its active potions up
+-- to the left of this widget (WeatherGui.Weather).
+local function placeWidget()
+	local camera = workspace.CurrentCamera
+	local view = if camera then camera.ViewportSize else Vector2.new(1280, 720)
+	local s = math.clamp(view.Y * 0.075, 44, 64)
+	widget.Size = UDim2.fromOffset(s, s * 1.37)
+	widget.Position = UDim2.new(1, -16, 1, -16)
+end
+widget.AnchorPoint = Vector2.new(1, 1)
+placeWidget()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(placeWidget)
+end
 
 local function pop()
 	iconScale.Scale = 0.5

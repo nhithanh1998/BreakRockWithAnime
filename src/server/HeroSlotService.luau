@@ -168,7 +168,8 @@ local function drawPad(slot: Model, locked: boolean)
 end
 
 -- Each pad has two billboards: Pad.Empty.BillboardGui ("EmptyText") for an empty or locked pad, and
--- Pad.HeroInfo.BillboardGui (HeroName / Level / Rarity / Power) for a pad with a hero on it.
+-- Pad.HeroInfo.BillboardGui (HeroName / Level / Power) for a pad with a hero on it. The name is drawn
+-- in its rarity's moving gradient; the template's "Rarity" line is hidden.
 -- Only one of them is shown at a time; their positions are set in Studio.
 local function billboard(pad: Instance, attachment: string): BillboardGui?
 	local a = pad:FindFirstChild(attachment)
@@ -257,6 +258,7 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 			local nameLabel = info:FindFirstChild("HeroName") :: TextLabel?
 			if nameLabel then
 				nameLabel.Text = HeroConfig.DisplayName(def) -- the size is on its own badge above
+				HeroConfig.PaintRarityGradient(nameLabel, def.Rarity)
 			end
 			local levelLabel = info:FindFirstChild("Level") :: TextLabel?
 			if levelLabel then
@@ -265,7 +267,7 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 			end
 			local rarityLabel = info:FindFirstChild("Rarity") :: TextLabel?
 			if rarityLabel then
-				HeroConfig.PaintRarity(rarityLabel, def.Rarity)
+				rarityLabel.Visible = false
 			end
 			local powerLabel = info:FindFirstChild("Power") :: TextLabel?
 			if powerLabel then

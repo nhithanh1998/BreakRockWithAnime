@@ -4,7 +4,9 @@
 -- Shows everything the player owns:
 --   heroes    - player.Heroes (IntValue per hero = how many owned); count shown = copies not on a pad
 --   materials - player.Inventory (IntValue per TreeConfig.Materials key)
--- Tabs: Panel.Tabs.All / Heroes / Materials. Panel.Search.Box filters by name.
+--   other     - potions (player.Potions, PotionConfig) and axes (player.Axes, "Copies" attribute)
+-- Tabs: Panel.Tabs.All / Heroes / Materials / Other. Panel.Search.Box filters by name.
+-- Clicking a potion opens a small card with what it does and a DRINK button (Remotes.PotionAction).
 -- Cards are clones of InventoryGui.Templates.ItemSlot, drawn with ItemDisplay.
 -- Panel.EquipBest fills the hero pads with the strongest heroes and axes (HeroSlotService).
 --
@@ -15,6 +17,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
+local PotionConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PotionConfig"))
+local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
 
 local player = Players.LocalPlayer
@@ -49,8 +53,11 @@ local SCREEN_FILL_Y = 0.86
 local commas = ItemDisplay.Commas
 local abbreviate = ItemDisplay.Abbreviate
 
-type Tab = "All" | "Heroes" | "Materials"
-type Entry = { stack: string, info: ItemDisplay.ItemInfo, amount: number, onPad: number }
+type Tab = "All" | "Heroes" | "Materials" | "Other"
+type Kind = "Hero" | "Material" | "Potion" | "Axe"
+type Entry = { stack: string, info: ItemDisplay.ItemInfo, amount: number, onPad: number, kind: Kind, id: string? }
+
+local KIND_ORDER = { Hero = 1, Material = 2, Potion = 3, Axe = 4 }
 
 local currentTab: Tab = "All"
 local isOpen = false
@@ -87,7 +94,7 @@ end
 
 local function entries(): { Entry }
 	local list: { Entry } = {}
-	if currentTab ~= "Materials" then
+	if currentTab == "All" or currentTab == "Heroes" then
 		local heroes = player:FindFirstChild("Heroes")
 		local placed = placedCounts()
 		for _, v in if heroes then heroes:GetChildren() else {} do
@@ -96,16 +103,47 @@ local function entries(): { Entry }
 				local available = v.Value - math.min(v.Value, placed[v.Name] or 0)
 				if available > 0 then
 					local stack = ItemDisplay.HeroStack(v.Name)
-					table.insert(list, { stack = stack, info = ItemDisplay.Info(stack), amount = available, onPad = 0 })
+					table.insert(list, { stack = stack, info = ItemDisplay.Info(stack), amount = available, onPad = 0, kind = "Hero" })
 				end
 			end
 		end
 	end
-	if currentTab ~= "Heroes" then
+	if currentTab == "All" or currentTab == "Materials" then
 		local inventory = player:FindFirstChild("Inventory")
 		for _, v in if inventory then inventory:GetChildren() else {} do
 			if v:IsA("IntValue") and v.Value > 0 and TreeConfig.Materials[v.Name] then
-				table.insert(list, { stack = v.Name, info = ItemDisplay.Info(v.Name), amount = v.Value, onPad = 0 })
+				table.insert(list, { stack = v.Name, info = ItemDisplay.Info(v.Name), amount = v.Value, onPad = 0, kind = "Material" })
+			end
+		end
+	end
+	if currentTab == "All" or currentTab == "Other" then
+		local potions = player:FindFirstChild("Potions")
+		for _, v in if potions then potions:GetChildren() else {} do
+			local def = v:IsA("IntValue") and v.Value > 0 and PotionConfig.Get(v.Name)
+			if def then
+				table.insert(list, {
+					stack = "Potion:" .. def.Id,
+					info = { name = def.Name, rarity = def.Rarity, isHero = false, value = 0 },
+					amount = v.Value,
+					onPad = 0,
+					kind = "Potion",
+					id = def.Id,
+				})
+			end
+		end
+		local axes = player:FindFirstChild("Axes")
+		for _, v in if axes then axes:GetChildren() else {} do
+			local def = v:IsA("BoolValue") and v.Value and ShopConfig.GetAxe(v.Name)
+			if def then
+				local copies = v:GetAttribute("Copies")
+				table.insert(list, {
+					stack = "Axe:" .. def.Model,
+					info = { name = def.Name, rarity = def.Rarity, isHero = false, value = def.HeroBoost },
+					amount = if typeof(copies) == "number" then math.max(1, copies) else 1,
+					onPad = 0,
+					kind = "Axe",
+					id = def.Model,
+				})
 			end
 		end
 	end
@@ -121,10 +159,10 @@ local function entries(): { Entry }
 		list = filtered
 	end
 
-	-- Heroes first, then materials; rarest first, then most valuable / powerful, then by name.
+	-- Heroes first, then materials, potions, axes; rarest first, then most valuable / powerful, then by name.
 	table.sort(list, function(a, b)
-		if a.info.isHero ~= b.info.isHero then
-			return a.info.isHero
+		if a.kind ~= b.kind then
+			return KIND_ORDER[a.kind] < KIND_ORDER[b.kind]
 		end
 		local ra = TreeConfig.RarityOrder[a.info.rarity] or 99
 		local rb = TreeConfig.RarityOrder[b.info.rarity] or 99
@@ -158,8 +196,186 @@ local function drawCard(card: TextButton, e: Entry)
 	if equipped then
 		equipped.Visible = false
 	end
+	if e.kind == "Potion" or e.kind == "Axe" then
+		-- Drawn in the lower "View" box, under the name (cached per card: the Fill* functions skip a repeat).
+		for _, name in { "HeroView", "Icon", "Image" } do
+			local child = card:FindFirstChild(name) :: GuiObject?
+			if child then
+				child.Visible = false
+			end
+		end
+		local view = (card:FindFirstChild("View") or card:FindFirstChild("HeroView")) :: ViewportFrame?
+		if view and e.id then
+			view.Visible = true
+			if e.kind == "Potion" then
+				ItemDisplay.FillPotionViewport(view, e.id)
+			else
+				ItemDisplay.FillAxeViewport(view, e.id)
+			end
+		end
+		-- A running potion shows its time left under the name.
+		if e.kind == "Potion" and e.id then
+			local left = PotionConfig.TimeLeft(player, e.id)
+			if left > 0 then
+				count.Text = ("x%s  •  %s"):format(commas(e.amount), PotionConfig.Clock(left))
+			end
+		end
+		return
+	end
 	ItemDisplay.SetPicture(card, info)
 end
+
+-- Potion card: what it does and DRINK -----------------------------------------------------------------
+
+local PotionAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("PotionAction", 10) :: RemoteFunction?
+local FONT = Enum.Font.FredokaOne
+
+local function uiText(props: { [string]: any }): TextLabel
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Font = FONT
+	l.TextScaled = true
+	l.TextColor3 = Color3.new(1, 1, 1)
+	for k, v in props do
+		(l :: any)[k] = v
+	end
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Color = Color3.fromRGB(20, 20, 26)
+	stroke.Parent = l
+	return l
+end
+
+local potionCard = Instance.new("Frame")
+potionCard.Name = "PotionCard"
+potionCard.AnchorPoint = Vector2.new(0.5, 0.5)
+potionCard.Position = UDim2.fromScale(0.5, 0.55)
+potionCard.Size = UDim2.fromOffset(440, 250)
+potionCard.BackgroundColor3 = Color3.fromRGB(34, 36, 46)
+potionCard.Visible = false
+potionCard.ZIndex = 20
+potionCard.Parent = panel
+do
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 16)
+	c.Parent = potionCard
+	local st = Instance.new("UIStroke")
+	st.Thickness = 4
+	st.Color = Color3.fromRGB(255, 255, 255)
+	st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	st.Parent = potionCard
+end
+local potionView = Instance.new("ViewportFrame")
+potionView.BackgroundTransparency = 1
+potionView.Position = UDim2.fromOffset(16, 30)
+potionView.Size = UDim2.fromOffset(150, 150)
+potionView.ZIndex = 21
+potionView.Parent = potionCard
+local potionName = uiText({ Position = UDim2.fromOffset(180, 22), Size = UDim2.fromOffset(196, 40), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 21, Parent = potionCard })
+local potionDesc = uiText({ Position = UDim2.fromOffset(180, 66), Size = UDim2.fromOffset(244, 30), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(110, 255, 120), ZIndex = 21, Parent = potionCard })
+local potionInfo = uiText({ Position = UDim2.fromOffset(180, 98), Size = UDim2.fromOffset(244, 76), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextScaled = false, TextSize = 18, TextWrapped = true, TextColor3 = Color3.fromRGB(220, 222, 235), ZIndex = 21, Parent = potionCard })
+local drinkButton = Instance.new("TextButton")
+drinkButton.Name = "Drink"
+drinkButton.AutoButtonColor = true
+drinkButton.Position = UDim2.fromOffset(180, 180)
+drinkButton.Size = UDim2.fromOffset(150, 52)
+drinkButton.BackgroundColor3 = Color3.fromRGB(45, 180, 60)
+drinkButton.Text = ""
+drinkButton.ZIndex = 21
+drinkButton.Parent = potionCard
+do
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 12)
+	c.Parent = drinkButton
+	local st = Instance.new("UIStroke")
+	st.Thickness = 3
+	st.Color = Color3.fromRGB(25, 110, 35)
+	st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	st.Parent = drinkButton
+end
+local drinkLabel = uiText({ Size = UDim2.fromScale(1, 1), Text = "DRINK", ZIndex = 22, Parent = drinkButton })
+local closeCard = Instance.new("TextButton")
+closeCard.Name = "Close"
+closeCard.AnchorPoint = Vector2.new(1, 0)
+closeCard.Position = UDim2.new(1, -12, 0, 12)
+closeCard.Size = UDim2.fromOffset(40, 40)
+closeCard.BackgroundColor3 = Color3.fromRGB(220, 70, 60)
+closeCard.Text = ""
+closeCard.ZIndex = 21
+closeCard.Parent = potionCard
+do
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 10)
+	c.Parent = closeCard
+end
+uiText({ Size = UDim2.fromScale(1, 1), Text = "X", ZIndex = 22, Parent = closeCard })
+local cardMessage = uiText({ Position = UDim2.fromOffset(16, 200), Size = UDim2.fromOffset(150, 30), Text = "", TextColor3 = Color3.fromRGB(255, 220, 120), ZIndex = 21, Parent = potionCard })
+
+local shownPotion: string? = nil
+
+local function drawPotionCard()
+	local def = shownPotion and PotionConfig.Get(shownPotion)
+	if not def then
+		potionCard.Visible = false
+		return
+	end
+	local stroke = potionCard:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = def.Color
+	end
+	ItemDisplay.FillPotionViewport(potionView, def.Id)
+	potionName.Text = def.Name
+	potionDesc.Text = def.Desc
+	local owned = 0
+	local folder = player:FindFirstChild("Potions")
+	local v = folder and folder:FindFirstChild(def.Id)
+	if v and v:IsA("IntValue") then
+		owned = v.Value
+	end
+	local left = PotionConfig.TimeLeft(player, def.Id)
+	potionInfo.Text = ("Lasts %s each (drinking more adds time)\nOwned: %d%s"):format(
+		PotionConfig.Clock(def.Duration),
+		owned,
+		if left > 0 then ("   •   Active: %s"):format(PotionConfig.Clock(left)) else ""
+	)
+	drinkButton.Active = owned > 0
+	drinkButton.BackgroundColor3 = if owned > 0 then Color3.fromRGB(45, 180, 60) else Color3.fromRGB(90, 92, 102)
+end
+
+local function openPotion(id: string)
+	shownPotion = id
+	cardMessage.Text = ""
+	potionCard.Visible = true
+	drawPotionCard()
+end
+
+closeCard.Activated:Connect(function()
+	shownPotion = nil
+	potionCard.Visible = false
+end)
+
+local drinking = false
+drinkButton.Activated:Connect(function()
+	local id = shownPotion
+	if drinking or not id or not PotionAction then
+		return
+	end
+	drinking = true
+	drinkLabel.Text = "..."
+	local ok, result = pcall((PotionAction :: RemoteFunction).InvokeServer, PotionAction, "Use", id)
+	drinkLabel.Text = "DRINK"
+	if ok and typeof(result) == "table" and result.ok then
+		cardMessage.TextColor3 = Color3.fromRGB(110, 255, 120)
+		cardMessage.Text = "Active!"
+	else
+		cardMessage.TextColor3 = Color3.fromRGB(255, 130, 130)
+		cardMessage.Text = if ok and typeof(result) == "table" and result.message then result.message else "Try again"
+	end
+	drawPotionCard()
+	drinking = false
+end)
+
+local entryByStack: { [string]: Entry } = {}
 
 local function render()
 	renderQueued = false
@@ -168,8 +384,10 @@ local function render()
 	end
 	local list = entries()
 	local keep: { [string]: boolean } = {}
+	table.clear(entryByStack)
 	for i, e in list do
 		keep[e.stack] = true
+		entryByStack[e.stack] = e
 		local card = cards[e.stack]
 		if not card then
 			card = slotTemplate:Clone()
@@ -177,6 +395,14 @@ local function render()
 			card.Visible = true
 			cards[e.stack] = card
 			card.Parent = grid
+			local stack = e.stack
+			card.Activated:Connect(function()
+				local entry = entryByStack[stack]
+				if entry and entry.kind == "Potion" and entry.id then
+					press(card)
+					openPotion(entry.id)
+				end
+			end)
 		end
 		card.LayoutOrder = i
 		drawCard(card, e)
@@ -213,9 +439,13 @@ local function styleTabs()
 	end
 end
 
-for _, name in { "All", "Heroes", "Materials" } do
+-- Four tabs have to fit the Tabs frame (it was laid out for three; "Other" starts hidden in Studio).
+local TAB_WIDTHS = { All = 100, Heroes = 140, Materials = 170, Other = 130 }
+for _, name in { "All", "Heroes", "Materials", "Other" } do
 	local tab = tabsFrame:FindFirstChild(name) :: GuiButton?
 	if tab then
+		tab.Visible = true
+		tab.Size = UDim2.new(0, TAB_WIDTHS[name], tab.Size.Y.Scale, tab.Size.Y.Offset)
 		tab.Activated:Connect(function()
 			press(tab)
 			if currentTab ~= name then
@@ -333,8 +563,9 @@ local function watchFolder(folder: Instance)
 	local conns: { RBXScriptConnection } = {}
 	watched[folder] = conns
 	local function hook(v: Instance)
-		if v:IsA("IntValue") then
+		if v:IsA("IntValue") or v:IsA("BoolValue") then
 			table.insert(conns, v.Changed:Connect(queueRender))
+			table.insert(conns, v:GetAttributeChangedSignal("Copies"):Connect(queueRender))
 		end
 	end
 	for _, v in folder:GetChildren() do
@@ -355,7 +586,7 @@ local function watchFolder(folder: Instance)
 end
 
 local function maybeWatch(c: Instance)
-	if c.Name == "Heroes" or c.Name == "Inventory" then
+	if c.Name == "Heroes" or c.Name == "Inventory" or c.Name == "Potions" or c.Name == "Axes" then
 		watchFolder(c)
 	end
 end
@@ -404,6 +635,31 @@ task.spawn(function()
 		watchPlot(plot)
 	end
 	plots.ChildAdded:Connect(watchPlot)
+end)
+
+-- Running potions count down on their cards (and on the open potion card) once a second.
+task.spawn(function()
+	while true do
+		task.wait(1)
+		if isOpen then
+			local anyActive = false
+			for _, def in PotionConfig.Potions do
+				if PotionConfig.TimeLeft(player, def.Id) > 0 then
+					anyActive = true
+					break
+				end
+			end
+			if anyActive and (currentTab == "All" or currentTab == "Other") then
+				queueRender()
+			end
+			if potionCard.Visible then
+				drawPotionCard()
+			end
+		elseif potionCard.Visible then
+			shownPotion = nil
+			potionCard.Visible = false
+		end
+	end
 end)
 
 panel.Visible = false

@@ -52,8 +52,8 @@ local function animId(animate: Instance?, child: string): string?
 	return if anim and anim.AnimationId ~= "" then anim.AnimationId else nil
 end
 
--- Sparkles in the mutation's colour around a mutated hero (Rainbow cycles through its palette), and
--- the name on its bar tinted the same. Particles instead of a Highlight: a client can only show 31
+-- Sparkles in the mutation's colour around a mutated hero (Rainbow cycles through its palette). The
+-- name on its bar keeps its rarity gradient (the mutation is part of its text). Particles instead of a Highlight: a client can only show 31
 -- Highlights at once and a plot can have many mutated heroes.
 function HeroModels.AddMutationFX(model: Model, root: BasePart, heroName: string)
 	local def = HeroConfig.Get(heroName)
@@ -85,14 +85,6 @@ function HeroModels.AddMutationFX(model: Model, root: BasePart, heroName: string
 	sparkles.Speed = NumberRange.new(0.5, 1.5)
 	sparkles.SpreadAngle = Vector2.new(180, 180)
 	sparkles.Parent = root
-
-	local attachment = root:FindFirstChild("InfoAttachment")
-	local bar = attachment and attachment:FindFirstChild("HeroBar")
-	local container = bar and bar:FindFirstChild("Container")
-	local nameLabel = container and container:FindFirstChild("HeroName")
-	if nameLabel and nameLabel:IsA("TextLabel") then
-		nameLabel.TextColor3 = mutation.Color
-	end
 end
 
 -- The size badge ("HUGE", ...) of a sized hero, just above the top line of its HeroBar. The bar's
@@ -138,46 +130,35 @@ local function headTopAbove(model: Model, root: BasePart): number
 	return if top > -math.huge then top - root.Position.Y else 2
 end
 
--- A template that has the bar (HumanoidRootPart.InfoAttachment.HeroBar), to copy onto heroes
--- whose model was imported without one. Cached: { attachment, height above the head }.
-local barSource: { attachment: Attachment, aboveHead: number }? = nil
-
-local function findBarSource(): { attachment: Attachment, aboveHead: number }?
-	if barSource and barSource.attachment.Parent then
-		return barSource
+-- Every hero gets its bar from ONE shared template, ReplicatedStorage.InfoBars.HeroBar (edit it there,
+-- not on the hero models): a new "InfoAttachment" is made on the HumanoidRootPart,
+-- HeroConfig.BarAboveHead studs above the top of the head, and the bar is cloned into it.
+local function addBar(model: Model, root: BasePart)
+	local old = root:FindFirstChild("InfoAttachment")
+	if old then
+		old:Destroy() -- a leftover copy on an old model; the shared one wins
 	end
-	local folder = ReplicatedStorage:FindFirstChild(HeroConfig.TemplateFolder)
-	for _, template in if folder then folder:GetChildren() else {} do
-		local root = template:FindFirstChild("HumanoidRootPart")
-		local attachment = root and root:FindFirstChild("InfoAttachment")
-		if template:IsA("Model") and attachment and attachment:IsA("Attachment") and attachment:FindFirstChild("HeroBar") then
-			barSource = {
-				attachment = attachment,
-				aboveHead = attachment.Position.Y - headTopAbove(template, root :: BasePart),
-			}
-			return barSource
-		end
+	local folder = ReplicatedStorage:FindFirstChild(HeroConfig.BarFolder)
+	local template = folder and folder:FindFirstChild("HeroBar")
+	if not template or not template:IsA("BillboardGui") then
+		warn(("[HeroModels] ReplicatedStorage.%s.HeroBar is missing; %s gets no bar"):format(HeroConfig.BarFolder, model.Name))
+		return
 	end
-	return nil
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "InfoAttachment"
+	attachment.Position = Vector3.new(0, headTopAbove(model, root) + HeroConfig.BarAboveHead, 0)
+	attachment.Parent = root
+	template:Clone().Parent = attachment
 end
 
--- Gives a hero model the bar above its head when its template has none (e.g. TaijutsuNinja).
-local function ensureBar(model: Model, root: BasePart)
-	local attachment = root:FindFirstChild("InfoAttachment")
-	if attachment and attachment:FindFirstChild("HeroBar") then
-		return
+-- Puts the bar back BarAboveHead studs over the head (Model:ScaleTo scales the attachment's offset
+-- too, which would make the gap smaller on small heroes and bigger on huge ones).
+local function placeBar(model: Model)
+	local root = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+	local attachment = root and root:FindFirstChild("InfoAttachment")
+	if root and root:IsA("BasePart") and attachment and attachment:IsA("Attachment") then
+		attachment.Position = Vector3.new(0, headTopAbove(model, root) + HeroConfig.BarAboveHead, 0)
 	end
-	local source = findBarSource()
-	if not source then
-		warn(("[HeroModels] %s has no HeroBar and no template to copy one from"):format(model.Name))
-		return
-	end
-	if attachment then
-		attachment:Destroy()
-	end
-	local copy = source.attachment:Clone()
-	copy.Position = Vector3.new(0, headTopAbove(model, root) + source.aboveHead, 0)
-	copy.Parent = root
 end
 
 function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
@@ -207,8 +188,7 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 	model:SetAttribute("Hero", heroName)
 
 	-- The bar above the hero (HumanoidRootPart.InfoAttachment.HeroBar): name, rarity, power.
-	-- Templates imported without one get a copy (ensureBar).
-	ensureBar(model, root)
+	addBar(model, root)
 	local def = HeroConfig.Get(heroName)
 	local container = def and root:FindFirstChild("InfoAttachment")
 	container = container and container:FindFirstChild("HeroBar")
@@ -217,14 +197,16 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 		local nameLabel = container:FindFirstChild("HeroName")
 		if nameLabel and nameLabel:IsA("TextLabel") then
 			nameLabel.Text = HeroConfig.DisplayName(def) -- the size goes on its own badge (drawSizeBadge)
+			HeroConfig.PaintRarityGradient(nameLabel, def.Rarity) -- the name carries the rarity colours
 		end
 		local levelLabel = container:FindFirstChild("Level")
 		if levelLabel and levelLabel:IsA("TextLabel") then
 			levelLabel.Text = "Level 1" -- workers overwrite this with their pad's Damage level (HeroWorkerService)
 		end
+		-- No separate rarity line: the name's gradient shows it.
 		local rarityLabel = container:FindFirstChild("Rarity")
-		if rarityLabel and rarityLabel:IsA("TextLabel") then
-			HeroConfig.PaintRarity(rarityLabel, def.Rarity)
+		if rarityLabel and rarityLabel:IsA("GuiObject") then
+			rarityLabel.Visible = false
 		end
 		local power = container:FindFirstChild("Power")
 		local powerLabel = power and power:FindFirstChildOfClass("TextLabel")
@@ -338,6 +320,7 @@ function HeroModels.ScaleToHeight(model: Model, height: number): number
 	end
 	local before = model:GetScale()
 	if pcall(model.ScaleTo, model, before * height / current) then
+		placeBar(model)
 		return model:GetScale() / before
 	end
 	return 1

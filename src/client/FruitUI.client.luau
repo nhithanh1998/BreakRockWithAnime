@@ -7,8 +7,10 @@
 --   Cutscene GROW -> the window, the other GUIs, the planter's sign / "Grow" prompt, the greenhouse's
 --            front wall and your character hide; the camera goes into the greenhouse:
 --            seed flies into the soil > fertilizer pours > green sprout > it grows into the Old Oak
---            (copy of ReplicatedStorage.Trees.Map1.OldOakTree) > a fruit swells under the crown >
---            it drops > zoom on the fruit, white flash > reveal. SKIP jumps straight to the reveal.
+--            (copy of ReplicatedStorage.Trees.Map1.OldOakTree) > a MYSTERY fruit (black silhouette with a
+--            "?", neutral glow, so nothing gives the roll away) swells under the crown > it drops >
+--            zoom in, it trembles faster and faster > burst: the real fruit + its name and rarity
+--            colour > white flash > reveal. SKIP jumps straight to the reveal.
 --            Everything hidden comes back once the reveal closes.
 --   Reveal   "NEW FRUIT!", name, rarity, skill, boost, the fruit spinning. EQUIP puts it on your best
 --            pad (FruitAction "Equip"), CONTINUE goes back to the window.
@@ -603,7 +605,7 @@ end
 local function hideForCutscene(garden: Model): () -> ()
 	local undo: { () -> () } = {}
 	for _, d in garden:GetDescendants() do
-		if d:IsA("BillboardGui") and d.Enabled then
+		if (d:IsA("BillboardGui") or d:IsA("SurfaceGui")) and d.Enabled then
 			d.Enabled = false
 			table.insert(undo, function()
 				d.Enabled = true
@@ -691,6 +693,23 @@ local function playCutscene(def: FruitConfig.FruitDef, garden: Model, onDone: ()
 	local FRUIT_SIZE = 1.8
 	local fruit = FruitModels.Fruit(def, FRUIT_SIZE)
 	new("Highlight", { FillTransparency = 1, OutlineColor = def.Swirl:Lerp(Color3.new(0, 0, 0), 0.55), OutlineTransparency = 0, DepthMode = Enum.HighlightDepthMode.Occluded, Parent = fruit })
+	-- The mystery fruit shown until the reveal: same shape (every fruit shares it), all black, with a "?".
+	local MYSTERY = Color3.fromRGB(200, 170, 255)
+	local mystery = FruitModels.Fruit(def, FRUIT_SIZE)
+	for _, d in mystery:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Color = Color3.fromRGB(22, 16, 30)
+			d.Material = Enum.Material.SmoothPlastic
+		end
+	end
+	new("Highlight", { FillTransparency = 1, OutlineColor = MYSTERY, OutlineTransparency = 0.2, DepthMode = Enum.HighlightDepthMode.Occluded, Parent = mystery })
+	local qGui = new("BillboardGui", { Name = "Mystery", Size = UDim2.fromScale(FRUIT_SIZE, FRUIT_SIZE), LightInfluence = 0, AlwaysOnTop = true, Parent = mystery.PrimaryPart })
+	local qLabel = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Font = FONT, TextScaled = true, Text = "?", TextColor3 = Color3.new(1, 1, 1), Parent = qGui })
+	outline(Color3.fromRGB(60, 30, 100), 3).Parent = qLabel
+	local function sizeQuestion(scale: number)
+		local q = FRUIT_SIZE * 0.9 * scale
+		qGui.Size = UDim2.fromScale(q, q)
+	end
 	-- The fruit hangs under the front edge of the crown, and lands on the soil in front of the trunk.
 	local fruitSpot = ground.Position + front * treeInfo.crownRadius * 0.55 + side * 0.8 + up * (treeInfo.crownBottom - FRUIT_SIZE * 0.45)
 	local landSpot = ground.Position + front * 3.2 + side * 0.8 + up * (FRUIT_SIZE * 0.55)
@@ -701,15 +720,19 @@ local function playCutscene(def: FruitConfig.FruitDef, garden: Model, onDone: ()
 	-- Glowing patch spreading over the soil when the fertilizer soaks in.
 	local patch = prop({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, 0.5, 0.5), Color = Color3.fromRGB(170, 90, 240), Material = Enum.Material.Neon, Transparency = 1, CastShadow = false, CFrame = CFrame.new(Vector3.new(soil.X, bedTop + 0.06, soil.Z)) * CFrame.Angles(0, 0, math.rad(90)), Parent = scene })
 
-	local glow = prop({ Shape = Enum.PartType.Ball, Size = Vector3.one, Color = rarityColor, Material = Enum.Material.Neon, Transparency = 1, CastShadow = false, CFrame = CFrame.new(fruitSpot) })
-	local light = new("PointLight", { Color = rarityColor, Range = 16, Brightness = 0, Parent = glow })
-	local sparkle = emitter(glow, SPARKLE, rarityColor, { Speed = NumberRange.new(2, 6) })
+	-- Neutral glow until the reveal, then it turns the rarity colour.
+	local glow = prop({ Shape = Enum.PartType.Ball, Size = Vector3.one, Color = MYSTERY, Material = Enum.Material.Neon, Transparency = 1, CastShadow = false, CFrame = CFrame.new(fruitSpot) })
+	local light = new("PointLight", { Color = MYSTERY, Range = 16, Brightness = 0, Parent = glow })
+	local sparkle = emitter(glow, SPARKLE, MYSTERY, { Speed = NumberRange.new(2, 6) })
 
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.FieldOfView = 55
 
 	-- Timeline (seconds): each stage starts at its time.
-	local T_SEED, T_FERT, T_SPROUT, T_TREE, T_FRUIT, T_DROP, T_ZOOM, T_END = 0.5, 1.8, 3.6, 4.6, 7.2, 8.7, 9.6, 11.2
+	local T_SEED, T_FERT, T_SPROUT, T_TREE, T_FRUIT, T_DROP, T_ZOOM, T_END = 0.5, 1.8, 3.6, 4.6, 7.2, 8.7, 9.6, 13.4
+	local REVEAL_AT = 0.52 -- share of the zoom stage spent trembling before the burst
+	local revealed = false
+	local nameCard: Frame? = nil
 	local t = 0
 	local skipped = false
 	local stage = 0
@@ -862,25 +885,27 @@ local function playCutscene(def: FruitConfig.FruitDef, garden: Model, onDone: ()
 			local height = treeInfo.height * grow
 			cam(ground.Position + front * (7 + k * 9) + up * (1.5 + k * 3), ground.Position + up * height * 0.55, dt, 3)
 		elseif t < T_DROP then
-			-- 5. A fruit swells under the crown, glowing in its rarity colour.
+			-- 5. A mystery fruit (black, "?") swells under the crown with a neutral glow.
 			if enter(5) then
 				tree:ScaleTo(1)
 				for _, l in leaves do
 					l.part.Transparency = 0
 				end
-				fruit:ScaleTo(0.05)
-				fruit.Parent = scene
+				mystery:ScaleTo(0.05)
+				mystery.Parent = scene
 				glow.Parent = scene
 				sparkle.Rate = 25
 			end
 			local k = (t - T_FRUIT) / (T_DROP - T_FRUIT)
-			fruit:ScaleTo(math.max(0.05, backOut(k / 0.6)))
-			fruit:PivotTo(CFrame.new(fruitSpot) * rot * CFrame.Angles(0, math.sin(t * 2) * 0.3, math.sin(t * 3) * 0.08))
+			local grown = math.max(0.05, backOut(k / 0.6))
+			mystery:ScaleTo(grown)
+			sizeQuestion(grown * (1 + 0.08 * math.sin(t * 5)))
+			mystery:PivotTo(CFrame.new(fruitSpot) * rot * CFrame.Angles(0, math.sin(t * 2) * 0.3, math.sin(t * 3) * 0.08))
 			local pulse = 0.5 + 0.5 * math.sin(t * 9)
 			glow.CFrame = CFrame.new(fruitSpot)
 			glow.Size = Vector3.one * (FRUIT_SIZE * 1.6 + pulse * 0.6) * math.clamp(k * 2, 0, 1)
-			glow.Transparency = 0.7 + pulse * 0.15
-			light.Brightness = 2 + pulse * 2
+			glow.Transparency = 0.9 + pulse * 0.05 -- faint aura, the black silhouette must read
+			light.Brightness = 0.8 + pulse * 0.7
 			cam(fruitSpot + front * 6.5 + up * -1.2, fruitSpot, dt, 3)
 		elseif t < T_ZOOM then
 			-- 6. It drops to the soil and bounces.
@@ -902,24 +927,77 @@ local function playCutscene(def: FruitConfig.FruitDef, garden: Model, onDone: ()
 				fruitPos = Vector3.new(fruitPos.X, floor, fruitPos.Z)
 			end
 			fruitPos = Vector3.new(horizontal.X, fruitPos.Y, horizontal.Z)
-			fruit:PivotTo(CFrame.new(fruitPos) * rot * CFrame.Angles(0, (t - T_DROP) * 4, 0))
+			mystery:ScaleTo(1)
+			sizeQuestion(1)
+			mystery:PivotTo(CFrame.new(fruitPos) * rot * CFrame.Angles(0, (t - T_DROP) * 4, 0))
 			glow.CFrame = CFrame.new(fruitPos)
 			cam(landSpot + front * 7 + up * 3.5, fruitPos:Lerp(landSpot, 0.5), dt, 3)
 		elseif t < T_END then
-			-- 7. Zoom in on the fruit; it lifts, spins and shines, then a white flash.
+			-- 7. Zoom in on the mystery fruit: it lifts and trembles faster and faster, the "?" throbs...
+			--    then a burst reveals the real fruit, its name and rarity colour; then a white flash.
 			if enter(7) then
-				sparkle.Rate = 60
+				sparkle.Rate = 40
 			end
 			local k = (t - T_ZOOM) / (T_END - T_ZOOM)
-			local at = landSpot + up * smooth(k) * 1.2
-			fruit:PivotTo(CFrame.new(at) * rot * CFrame.Angles(0, (t - T_ZOOM) * (3 + k * 10), 0))
-			glow.CFrame = CFrame.new(at)
-			glow.Size = Vector3.one * (FRUIT_SIZE * 1.6 + k * 3)
-			glow.Transparency = 0.75 - k * 0.35
-			light.Brightness = 3 + k * 6
-			camera.FieldOfView = 55 - smooth(k) * 22
-			cam(at + front * (4.5 - k * 1.5) + up * 0.6, at, dt, 5)
-			flash.BackgroundTransparency = 1 - smooth((k - 0.65) / 0.35)
+			local at = landSpot + up * smooth(k / REVEAL_AT) * 1.2
+			if k < REVEAL_AT then
+				local s = k / REVEAL_AT
+				local amount = s * s * 0.14
+				local jitter = Vector3.new((math.random() - 0.5) * amount, (math.random() - 0.5) * amount, (math.random() - 0.5) * amount)
+				mystery:PivotTo(CFrame.new(at + jitter) * rot * CFrame.Angles(0, (t - T_ZOOM) * (2 + s * 14), 0))
+				local pulse = 0.5 + 0.5 * math.sin(t * (6 + s * 22))
+				sizeQuestion(1 + pulse * (0.1 + s * 0.2))
+				qLabel.TextColor3 = Color3.new(1, 1, 1):Lerp(MYSTERY, pulse * s)
+				glow.CFrame = CFrame.new(at)
+				glow.Size = Vector3.one * (FRUIT_SIZE * 1.5 + pulse * 0.5 + s * 1.5)
+				glow.Transparency = 0.92 - s * 0.2
+				light.Brightness = 1 + s * 3 + pulse
+				if math.random() < s * 0.5 then
+					magic:Emit(1)
+				end
+				shakeLeft = math.max(shakeLeft, s * 0.1)
+				camera.FieldOfView = 55 - smooth(s) * 18
+				cam(at + front * (4.6 - s * 1.1) + up * 0.6, at, dt, 5)
+			else
+				if not revealed then
+					revealed = true
+					-- Burst: swap in the real fruit, the glow takes the rarity colour.
+					mystery.Parent = nil
+					fruit:ScaleTo(1)
+					fruit.Parent = scene
+					glow.Color = rarityColor
+					light.Color = rarityColor
+					sparkle.Color = ColorSequence.new(rarityColor)
+					sparkle:Emit(70)
+					magic:Emit(30)
+					shakeLeft = 0.6
+					flash.BackgroundColor3 = Color3.new(1, 1, 1)
+					flash.BackgroundTransparency = 0.1
+					tween(flash, 0.45, { BackgroundTransparency = 1 })
+					-- Name + rarity popping in under the fruit.
+					local card = new("Frame", { Name = "FruitName", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.76), Size = UDim2.fromScale(0.6, 0.14), ZIndex = 8, Parent = cutGui })
+					local nameLabel = label({ Text = def.Name, Size = UDim2.fromScale(1, 0.62), StrokeThickness = 4, ZIndex = 8, Parent = card })
+					new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), rarityColor), Rotation = 90, Parent = nameLabel })
+					local rarityLabel = label({ Text = def.Rarity, Position = UDim2.fromScale(0, 0.62), Size = UDim2.fromScale(1, 0.38), StrokeThickness = 3, ZIndex = 8, Parent = card })
+					HeroConfig.PaintRarity(rarityLabel, def.Rarity)
+					local pop = new("UIScale", { Scale = 0.3, Parent = card })
+					tween(pop, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+					nameCard = card
+				end
+				local s = (k - REVEAL_AT) / (1 - REVEAL_AT)
+				fruit:PivotTo(CFrame.new(at) * rot * CFrame.Angles(0, (t - T_ZOOM) * 2.5, 0))
+				glow.CFrame = CFrame.new(at)
+				glow.Size = Vector3.one * (FRUIT_SIZE * 1.8 + s * 2 + 0.3 * math.sin(t * 6))
+				glow.Transparency = 0.55 + 0.1 * math.sin(t * 6)
+				light.Brightness = 6 + s * 3
+				-- Pull back a little so the fruit and its name are both in frame.
+				camera.FieldOfView = 37 + smooth(s / 0.4) * 6
+				cam(at + front * 4.6 + up * 0.9, at + up * -0.25, dt, 4)
+				if s > 0.78 then
+					flash.BackgroundColor3 = Color3.new(1, 1, 1)
+					flash.BackgroundTransparency = 1 - smooth((s - 0.78) / 0.22)
+				end
+			end
 		elseif not doneRunning then
 			doneRunning = true
 			conn:Disconnect()
@@ -929,7 +1007,10 @@ local function playCutscene(def: FruitConfig.FruitDef, garden: Model, onDone: ()
 			flash.BackgroundColor3 = Color3.fromRGB(20, 12, 34)
 			scene:Destroy()
 			glow:Destroy()
-			for _, p in { seed, bag, sprout, tree, fruit } :: { Instance } do
+			if nameCard then
+				nameCard:Destroy()
+			end
+			for _, p in { seed, bag, sprout, tree, fruit, mystery } :: { Instance } do
 				p:Destroy()
 			end
 			-- Reveal over a dim backdrop; the sign / prompt / your character come back after it.
@@ -983,4 +1064,56 @@ growButton.Activated:Connect(function()
 			openWindow()
 		end
 	end)
+end)
+
+-- Greenhouse doors -------------------------------------------------------------------------------------
+-- The double door of every greenhouse (FruitModels.Greenhouse: models "DoorLeft" / "DoorRight" with
+-- an OpenDir attribute, pivot = hinge) swings open locally when your character comes close.
+
+local DOOR_RANGE = 13
+local DOOR_ANGLE = math.rad(105)
+-- `closed` is read once the hinge has streamed in (and forgotten again if it streams out).
+local doors: { [Model]: { closed: CFrame?, dir: number, open: number } } = {}
+
+local function trackDoor(leaf: Instance)
+	if leaf:IsA("Model") and (leaf.Name == "DoorLeft" or leaf.Name == "DoorRight") and not doors[leaf] then
+		local dir = leaf:GetAttribute("OpenDir")
+		if typeof(dir) == "number" then
+			doors[leaf] = { closed = nil, dir = dir, open = 0 }
+		end
+	end
+end
+
+local plotsFolder = workspace:WaitForChild("Plots", 10)
+if plotsFolder then
+	for _, d in plotsFolder:GetDescendants() do
+		trackDoor(d)
+	end
+	plotsFolder.DescendantAdded:Connect(trackDoor)
+end
+
+RunService.Heartbeat:Connect(function(dt)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	for leaf, state in doors do
+		if not leaf:IsDescendantOf(workspace) then
+			doors[leaf] = nil
+			continue
+		end
+		if not leaf.PrimaryPart then
+			state.closed = nil
+			state.open = 0
+			continue
+		end
+		if not state.closed then
+			state.closed = leaf:GetPivot()
+		end
+		local closed = state.closed :: CFrame
+		local near = root ~= nil and (root.Position - closed.Position).Magnitude < DOOR_RANGE
+		local target = if near then 1 else 0
+		if state.open ~= target then
+			state.open = if target > state.open then math.min(1, state.open + dt * 2.2) else math.max(0, state.open - dt * 1.4)
+			leaf:PivotTo(closed * CFrame.Angles(0, DOOR_ANGLE * smooth(state.open) * state.dir, 0))
+		end
+	end
 end)

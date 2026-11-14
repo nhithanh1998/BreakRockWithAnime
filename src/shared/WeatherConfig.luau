@@ -10,8 +10,9 @@
 --   Desc     = one line shown in the announcement
 --   Buffs    = { Stat = multiplier }   stats: see WeatherConfig.Stats below
 --   Mutation = { MutationName = multiplier }  extra chance for that one hero mutation (HeroConfig)
---   Visual   = client effects (WeatherFX): Particles ("Rain" | "Snow" | "Sand" | "Gold" | "Ember" |
---              "Aurora" | "Rainbow"), Tint, Brightness, Saturation, Haze, Night, Lightning
+--   Visual   = client effects: Particles ("Rain" | "Snow" | "Sand" | "Gold" | "Ember" | "Aurora" |
+--              "Rainbow") and Lightning (WeatherFX); Lighting = preset name in LightingPresets
+--              (LightingController; default = the weather's Id)
 --
 -- State (replicated): ReplicatedStorage attributes "Weather" (Id or ""), "WeatherEnds" and
 -- "WeatherNext" (workspace:GetServerTimeNow() times). WeatherConfig.Mult(stat) reads them, so the
@@ -22,12 +23,7 @@ local RunService = game:GetService("RunService")
 
 export type Visual = {
 	Particles: string?,
-	Tint: Color3?,
-	Brightness: number?,
-	Saturation: number?,
-	Haze: number?, -- 0..1 extra fog
-	HazeColor: Color3?,
-	Night: boolean?,
+	Lighting: string?, -- LightingPresets name
 	Lightning: boolean?,
 }
 
@@ -70,52 +66,52 @@ WeatherConfig.Weathers = {
 		Id = "Rain", Name = "Rain", Icon = "🌧️", Color = Color3.fromRGB(90, 160, 255), Weight = 30,
 		Desc = "Soft wet wood: heroes chop faster and trees drop more!",
 		Buffs = { HeroSpeed = 1.25, DropLuck = 1.5 },
-		Visual = { Particles = "Rain", Tint = Color3.fromRGB(200, 215, 240), Brightness = -0.05, Saturation = -0.2, Haze = 0.25, HazeColor = Color3.fromRGB(150, 165, 190) },
+		Visual = { Particles = "Rain", Lighting = "Rain" },
 	},
 	{
 		Id = "Thunder", Name = "Thunderstorm", Icon = "⛈️", Color = Color3.fromRGB(170, 140, 255), Weight = 20,
 		Desc = "Charged heroes hit harder and mutations spark up!",
 		Buffs = { HeroDamage = 1.5, MutationLuck = 2 },
-		Visual = { Particles = "Rain", Tint = Color3.fromRGB(175, 180, 215), Brightness = -0.12, Saturation = -0.35, Haze = 0.4, HazeColor = Color3.fromRGB(95, 100, 125), Lightning = true },
+		Visual = { Particles = "Rain", Lighting = "Storm", Lightning = true },
 	},
 	{
 		Id = "Snow", Name = "Snowfall", Icon = "❄️", Color = Color3.fromRGB(190, 235, 255), Weight = 18,
 		Desc = "Frozen heroes: Diamond mutations x3 and bigger sizes!",
 		Buffs = { SizeLuck = 1.5 },
 		Mutation = { Diamond = 3 },
-		Visual = { Particles = "Snow", Tint = Color3.fromRGB(225, 240, 255), Brightness = 0.05, Saturation = -0.15, Haze = 0.3, HazeColor = Color3.fromRGB(220, 235, 250) },
+		Visual = { Particles = "Snow", Lighting = "Snow" },
 	},
 	{
 		Id = "Sandstorm", Name = "Sandstorm", Icon = "🌪️", Color = Color3.fromRGB(235, 195, 110), Weight = 12,
 		Desc = "The wind carries heroes: Huge sizes x2 and faster walking!",
 		Buffs = { SizeLuck = 2, HeroWalk = 1.3 },
-		Visual = { Particles = "Sand", Tint = Color3.fromRGB(255, 225, 175), Saturation = -0.1, Haze = 0.55, HazeColor = Color3.fromRGB(215, 175, 110) },
+		Visual = { Particles = "Sand", Lighting = "Sandstorm" },
 	},
 	{
 		Id = "Golden", Name = "Golden Hour", Icon = "☀️", Color = Color3.fromRGB(255, 205, 60), Weight = 10,
 		Desc = "Everything shines: sell for x2 and your axe hits x2!",
 		Buffs = { SellBonus = 2, ClickDamage = 2 },
-		Visual = { Particles = "Gold", Tint = Color3.fromRGB(255, 225, 160), Brightness = 0.06, Saturation = 0.2 },
+		Visual = { Particles = "Gold", Lighting = "Golden" },
 	},
 	{
 		Id = "BloodMoon", Name = "Blood Moon", Icon = "🌕", Color = Color3.fromRGB(255, 70, 70), Weight = 6,
 		Desc = "Heroes go berserk: x2 damage and x2 hero luck!",
 		Buffs = { HeroDamage = 2, HeroLuck = 2 },
-		Visual = { Particles = "Ember", Night = true, Tint = Color3.fromRGB(255, 140, 140), Saturation = 0.1, Haze = 0.3, HazeColor = Color3.fromRGB(120, 20, 25) },
+		Visual = { Particles = "Ember", Lighting = "BloodMoon" },
 	},
 	{
 		Id = "Aurora", Name = "Aurora", Icon = "🌌", Color = Color3.fromRGB(110, 255, 200), Weight = 3,
 		Desc = "Magic skies: Emerald mutations x3, mutation luck x3!",
 		Buffs = { MutationLuck = 3, HeroLuck = 1.5 },
 		Mutation = { Emerald = 3 },
-		Visual = { Particles = "Aurora", Night = true, Tint = Color3.fromRGB(190, 255, 235), Saturation = 0.25 },
+		Visual = { Particles = "Aurora", Lighting = "Aurora" },
 	},
 	{
 		Id = "Rainbow", Name = "Rainbow Storm", Icon = "🌈", Color = Color3.fromRGB(255, 120, 220), Weight = 1,
 		Desc = "LEGENDARY WEATHER! Rainbow mutations x5 and everything boosted!",
 		Buffs = { MutationLuck = 2, HeroLuck = 2, HeroDamage = 1.5, HeroSpeed = 1.25, SellBonus = 1.5 },
 		Mutation = { Rainbow = 5 },
-		Visual = { Particles = "Rainbow", Tint = Color3.fromRGB(255, 235, 250), Brightness = 0.05, Saturation = 0.45 },
+		Visual = { Particles = "Rainbow", Lighting = "Rainbow" },
 	},
 } :: { WeatherDef }
 

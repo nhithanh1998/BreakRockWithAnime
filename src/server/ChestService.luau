@@ -186,8 +186,16 @@ local function getFolder(player: Player, name: string): Folder
 	return folder :: Folder
 end
 
+-- Called after every AddItem with (player, folderName, itemName); IndexService sets it to mark the
+-- item as found in the Index (a hook, so ChestService doesn't depend on IndexService).
+ChestService.ItemAddedHook = nil :: ((Player, string, string) -> ())?
+
 -- Returns true when the player did not own any of this item before ("New!" popup).
 function ChestService.AddItem(player: Player, folderName: string, itemName: string, amount: number): boolean
+	local hook = ChestService.ItemAddedHook
+	if hook and amount > 0 then
+		hook(player, folderName, itemName)
+	end
 	local folder = getFolder(player, folderName)
 	local value = folder:FindFirstChild(itemName) :: IntValue?
 	local isNew = value == nil or value.Value <= 0

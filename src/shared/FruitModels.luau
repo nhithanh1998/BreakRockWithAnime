@@ -3,7 +3,8 @@
 --   FruitModels.Fruit(def, size)   -> Model: Devil Fruit of 6 ridged lobes (alternating shades of
 --                                     def.Color) with a curled def.Swirl line on each, a curled stem
 --                                     and two leaves. Pivot = its center. ~95 parts.
---   FruitModels.Greenhouse(w, h)   -> Model: wooden frame + glass walls / pitched roof around the
+--   FruitModels.Greenhouse(w, d, h) -> Model: walk-in studded-wood greenhouse (glass walls / roof,
+--                                     double door, sign, lanterns, plants, fireflies) around the
 --                                     planter (FruitService adds it to every DevilGarden).
 --   FruitModels.Garden(size?)      -> Model "DevilGarden" (size = outer width in studs, default 14): voxel planter (frame, posts with glowing
 --                                     caps, soil "Bed", dirt mound) + sign. Pivot = ground center,
@@ -301,100 +302,334 @@ function FruitModels.Garden(size: number?): Model
 	return model
 end
 
--- Greenhouse (around the planter) ---------------------------------------------------------------------
+-- Greenhouse (walk-in, around the planter) -------------------------------------------------------------
 
-local WOOD = Color3.fromRGB(205, 140, 75)
-local WOOD_DARK = Color3.fromRGB(165, 105, 55)
-local GLASS = Color3.fromRGB(205, 240, 255)
+local WOOD = Color3.fromRGB(214, 128, 58) -- warm natural pine, studded
+local WOOD_DARK = Color3.fromRGB(160, 92, 45)
+local WOOD_BROWN = Color3.fromRGB(115, 75, 50) -- planter boxes / pots
+local GLASS = Color3.fromRGB(195, 232, 248) -- milky light-blue panes
+local TILE = Color3.fromRGB(196, 122, 92) -- terracotta floor
+local LEAF = Color3.fromRGB(70, 175, 95)
+local LEAF_LIGHT = Color3.fromRGB(110, 200, 110)
+local BUD = Color3.fromRGB(235, 255, 170) -- soft glowing buds
+local WARM = Color3.fromRGB(255, 205, 140) -- lantern light
+local IRON = Color3.fromRGB(45, 45, 50)
 
--- Model "Greenhouse": wooden frame with glass walls and a pitched glass roof. `width` = outer size,
--- `height` = wall height (the roof ridge is `height + width * 0.3`). Pivot = ground center, front = -Z.
--- Parts of the front wall have the attribute Front = true (the cutscene hides them locally).
-function FruitModels.Greenhouse(width: number, height: number): Model
+local function studsAll(p: BasePart)
+	p.TopSurface = Enum.SurfaceType.Studs
+	p.FrontSurface = Enum.SurfaceType.Studs
+	p.BackSurface = Enum.SurfaceType.Studs
+	p.LeftSurface = Enum.SurfaceType.Studs
+	p.RightSurface = Enum.SurfaceType.Studs
+end
+
+-- Model "Greenhouse": a walk-in studded-wood greenhouse with milky glass walls, a pitched glass roof
+-- (ridge along Z, so the front is a tall gable), a double door that opens (models "DoorLeft" /
+-- "DoorRight", see FruitUI), a "DEVIL GARDEN" board with two lanterns, planter boxes and steps out
+-- front, vine columns, hanging pots, a tiled floor and a few fireflies.
+-- `width` = outer X, `depth` = outer Z, `height` = wall height (ridge = height + width * 0.32).
+-- Pivot = floor center (floor top = 0, the ground outside is expected ~1 stud lower), front = -Z.
+-- Front-side parts have the attribute Front = true (the cutscene hides them locally).
+-- Attribute RoofTop = height of the ridge above the pivot.
+function FruitModels.Greenhouse(width: number, depth: number, height: number): Model
 	local model = Instance.new("Model")
 	model.Name = "Greenhouse"
-	local W, H = width, height
-	local P = 1.2 -- post / beam thickness
-	local R = W * 0.3 -- roof rise
-	local half = W / 2
+	local W, D, H = width, depth, height
+	local P = 1.4 -- post / beam thickness
+	local R = W * 0.32 -- roof rise
+	local hx, hz = W / 2, D / 2
+	local DW, DH = 8, 10.5 -- door opening
 	local root = part({ Name = "Root", Size = Vector3.one * 0.2, Transparency = 1, CFrame = CFrame.new(), Parent = model })
 	model.PrimaryPart = root
+	model:SetAttribute("RoofTop", H + R)
 
-	local function wood(name: string, size: Vector3, cf: CFrame, front: boolean?, dark: boolean?)
-		local p = part({ Name = name, Size = size, CFrame = cf, Color = if dark then WOOD_DARK else WOOD, Material = Enum.Material.WoodPlanks, CanCollide = true, Parent = model })
-		studs(p)
+	local function mark(p: Instance, front: boolean?)
 		if front then
 			p:SetAttribute("Front", true)
 		end
+	end
+	local function block(name: string, size: Vector3, cf: CFrame, color: Color3, props: { [string]: any }?, front: boolean?, parent: Instance?): BasePart
+		local p = part({ Name = name, Size = size, CFrame = cf, Color = color, Material = Enum.Material.SmoothPlastic, Parent = parent or model })
+		studsAll(p)
+		for k, v in props or {} do
+			(p :: any)[k] = v
+		end
+		mark(p, front)
 		return p
 	end
-	local function glass(name: string, size: Vector3, cf: CFrame, front: boolean?, className: string?)
+	local function wood(name: string, size: Vector3, cf: CFrame, front: boolean?, dark: boolean?): BasePart
+		return block(name, size, cf, if dark then WOOD_DARK else WOOD, { CanCollide = true }, front)
+	end
+	local function glass(name: string, size: Vector3, cf: CFrame, front: boolean?, className: string?): BasePart
 		local p = part({
 			Name = name,
 			ClassName = className,
 			Size = size,
 			CFrame = cf,
 			Color = GLASS,
-			Material = Enum.Material.Glass,
-			Transparency = 0.72,
-			Reflectance = 0.1,
+			Material = Enum.Material.SmoothPlastic,
+			Transparency = 0.55,
+			Reflectance = 0.08,
 			CastShadow = false,
 			CanCollide = true,
 			Parent = model,
 		})
-		if front then
-			p:SetAttribute("Front", true)
-		end
+		studsAll(p)
+		mark(p, front)
 		return p
 	end
+	-- Roof height above the floor at a given x (under the slopes).
+	local function roofAt(x: number): number
+		return H + R * (1 - math.abs(x) / hx)
+	end
 
-	-- Posts: corners + the middle of every wall.
-	local inner = half - P / 2
-	for _, c in { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 }, { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } } do
-		wood("Post", Vector3.new(P, H, P), CFrame.new(c[1] * inner, H / 2, c[2] * inner), c[2] == -1 and c[1] == 0, c[1] ~= 0 and c[2] ~= 0)
-	end
-	-- Walls: bottom + top beams and two glass panes each. Side = which wall (front = -Z).
-	for _, side in { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } } do
-		local alongX = side[1] == 0
-		local front = side[2] == -1
-		local offset = Vector3.new(side[1] * inner, 0, side[2] * inner)
-		local beamSize = if alongX then Vector3.new(W, P * 0.8, P) else Vector3.new(P, P * 0.8, W)
-		wood("Beam", beamSize, CFrame.new(offset + Vector3.new(0, P * 0.4, 0)), front, true)
-		wood("Beam", beamSize, CFrame.new(offset + Vector3.new(0, H - P * 0.4, 0)), front)
-		wood("Beam", beamSize * Vector3.new(if alongX then 1 else 0.6, 0.5, if alongX then 0.6 else 1), CFrame.new(offset + Vector3.new(0, H * 0.55, 0)), front, true)
-		local paneW = half - P * 1.5
-		for k = -1, 1, 2 do
-			local along = (half / 2) * k
-			local pos = offset + (if alongX then Vector3.new(along, H / 2, 0) else Vector3.new(0, H / 2, along))
-			glass("Glass", if alongX then Vector3.new(paneW, H - P, 0.2) else Vector3.new(0.2, H - P, paneW), CFrame.new(pos), front)
+	-- Floor: terracotta tiles (top = 0) + one wooden step out the front door.
+	block("Floor", Vector3.new(W, 1, D), CFrame.new(0, -0.55, 0), TILE, { CanCollide = true })
+	block("Step", Vector3.new(DW + 3, 0.5, 2.4), CFrame.new(0, -0.8, -hz - 1.2), WOOD_DARK, { CanCollide = true }, true)
+
+	-- Walls: posts at `stops` along one side, a bottom + top beam, glass panes between the posts
+	-- (the bay between door[1] and door[2] is left open for the door).
+	local function wallRun(alongX: boolean, fixed: number, stops: { number }, front: boolean, door: { number }?)
+		local function at(s: number, y: number): Vector3
+			return if alongX then Vector3.new(s, y, fixed) else Vector3.new(fixed, y, s)
+		end
+		local function sized(len: number, y: number, thick: number): Vector3
+			return if alongX then Vector3.new(len, y, thick) else Vector3.new(thick, y, len)
+		end
+		for _, s in stops do
+			wood("Post", Vector3.new(P, H, P), CFrame.new(at(s, H / 2)), front)
+		end
+		local first, last = stops[1], stops[#stops]
+		wood("Beam", sized(last - first + P, P, P), CFrame.new(at((first + last) / 2, H - P / 2)), front)
+		for i = 1, #stops - 1 do
+			local a, b = stops[i], stops[i + 1]
+			local len = b - a - P
+			local mid = (a + b) / 2
+			if door and a == door[1] and b == door[2] then
+				-- Lintel + glass transom over the door.
+				wood("Lintel", sized(len, P, P), CFrame.new(at(mid, DH + P / 2)), front)
+				glass("Transom", sized(len, H - P - DH - P, 0.3), CFrame.new(at(mid, (DH + P + H - P) / 2)), front)
+			else
+				wood("Sill", sized(len, P, P), CFrame.new(at(mid, P / 2)), front, true)
+				glass("Glass", sized(len, H - P * 2, 0.3), CFrame.new(at(mid, H / 2)), front)
+			end
 		end
 	end
-	-- Roof: ridge along X, two glass slopes with rafters, glass gables at the ends.
-	local slope = math.sqrt(half * half + R * R)
-	local tilt = math.atan2(R, half)
-	wood("Ridge", Vector3.new(W + P, P, P), CFrame.new(0, H + R, 0))
+	local ix, iz = hx - P / 2, hz - P / 2 -- post centerlines
+	local doorX = DW / 2 + P / 2
+	wallRun(true, -iz, { -ix, -(ix + doorX) / 2, -doorX, doorX, (ix + doorX) / 2, ix }, true, { -doorX, doorX })
+	wallRun(true, iz, { -ix, -ix / 2, 0, ix / 2, ix }, false)
+	local sideStops = { -iz, -iz / 3, iz / 3, iz }
+	wallRun(false, -ix, sideStops, false)
+	wallRun(false, ix, sideStops, false)
+
+	-- Roof: ridge along Z, two glass slopes with rafters over every post line, glass gables front & back.
+	local slopeLen = math.sqrt(hx * hx + R * R) + 1
+	local tilt = math.atan2(R, hx)
+	wood("Ridge", Vector3.new(P, P, D + 1.6), CFrame.new(0, H + R, 0))
 	for _, dir in { -1, 1 } do
-		-- Slope center halfway between the wall top (z = dir * half) and the ridge (z = 0).
-		local cf = CFrame.new(0, H + R / 2, dir * half / 2) * CFrame.Angles(dir * tilt, 0, 0)
-		glass("RoofGlass", Vector3.new(W, 0.2, slope), cf)
-		for _, x in { -inner, -half / 2, 0, half / 2, inner } do
-			wood("Rafter", Vector3.new(P * 0.7, P * 0.7, slope + P * 0.5), cf * CFrame.new(x, 0.3, 0))
+		local cf = CFrame.new(dir * hx / 2, H + R / 2, 0) * CFrame.Angles(0, 0, -dir * tilt) * CFrame.new(dir * 0.5, 0, 0)
+		glass("RoofGlass", Vector3.new(slopeLen, 0.3, D), cf)
+		for _, z in { -iz - 0.4, -iz / 3, iz / 3, iz + 0.4 } do
+			wood("Rafter", Vector3.new(slopeLen, P, P), cf * CFrame.new(0, 0.5, z), z < -iz + 0.1)
 		end
 	end
-	for _, x in { -inner, inner } do
-		-- Two wedges per gable, each rising towards the ridge.
-		glass("Gable", Vector3.new(0.2, R, half), CFrame.new(x, H + R / 2, -half / 2), false, "WedgePart")
-		glass("Gable", Vector3.new(0.2, R, half), CFrame.new(x, H + R / 2, half / 2) * CFrame.Angles(0, math.pi, 0), false, "WedgePart")
+	for _, zSide in { -1, 1 } do
+		local z = zSide * iz
+		local front = zSide == -1
+		glass("Gable", Vector3.new(0.3, R, hx), CFrame.new(-hx / 2, H + R / 2, z) * CFrame.Angles(0, math.rad(90), 0), front, "WedgePart")
+		glass("Gable", Vector3.new(0.3, R, hx), CFrame.new(hx / 2, H + R / 2, z) * CFrame.Angles(0, math.rad(-90), 0), front, "WedgePart")
+		-- Two studs in the gable, over the door posts.
+		for _, x in { -doorX, doorX } do
+			local top = roofAt(x)
+			wood("GableStud", Vector3.new(P, top - H, P), CFrame.new(x, (H + top) / 2, z), front)
+		end
 	end
-	-- Glowing lamps hanging under the ridge.
-	for _, x in { -half / 2, half / 2 } do
-		local lamp = part({ Name = "Lamp", Size = Vector3.new(0.9, 0.9, 0.9), Color = GLOW, Material = Enum.Material.Neon, CFrame = CFrame.new(x, H + R - 1.2, 0) * CFrame.Angles(0, math.rad(45), 0), Parent = model })
+	-- Ridge finials.
+	for _, zSide in { -1, 1 } do
+		wood("Finial", Vector3.new(1.6, 1.6, 1.6), CFrame.new(0, H + R + 1, zSide * (hz + 0.4)) * CFrame.Angles(0, math.rad(45), 0), zSide == -1, true)
+	end
+
+	-- Board over the door: "DEVIL GARDEN".
+	local boardCf = CFrame.new(0, H + 1.4, -hz - 0.3)
+	wood("BoardFrame", Vector3.new(15, 4, 0.5), boardCf * CFrame.new(0, 0, 0.3), true, true)
+	local board = block("Board", Vector3.new(14, 3.2, 0.4), boardCf, Color3.fromRGB(40, 62, 70), nil, true)
+	local surface = Instance.new("SurfaceGui")
+	surface.Name = "BoardText"
+	surface.Face = Enum.NormalId.Front
+	surface.LightInfluence = 0
+	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	surface.PixelsPerStud = 40
+	surface.Parent = board
+	local text = Instance.new("TextLabel")
+	text.BackgroundTransparency = 1
+	text.Size = UDim2.fromScale(1, 1)
+	text.Font = Enum.Font.FredokaOne
+	text.TextSize = 86
+	text.Text = "DEVIL GARDEN"
+	text.TextColor3 = Color3.new(1, 1, 1)
+	text.Parent = surface
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 225, 255))
+	grad.Rotation = 90
+	grad.Parent = text
+	local textStroke = Instance.new("UIStroke")
+	textStroke.Color = Color3.fromRGB(15, 35, 55)
+	textStroke.Thickness = 4
+	textStroke.Parent = text
+
+	-- Two lanterns hanging under the board.
+	for _, x in { -2.8, 2.8 } do
+		local top = H - P
+		part({ Name = "Chain", Size = Vector3.new(0.2, 1.6, 0.2), Color = IRON, Material = Enum.Material.Metal, CFrame = CFrame.new(x, top - 0.8, -iz - 0.9), Parent = model }):SetAttribute("Front", true)
+		local lcf = CFrame.new(x, top - 2.7, -iz - 0.9)
+		block("LanternCap", Vector3.new(1.6, 0.4, 1.6), lcf * CFrame.new(0, 1.3, 0), IRON, nil, true)
+		block("LanternBase", Vector3.new(1.4, 0.4, 1.4), lcf * CFrame.new(0, -1.3, 0), IRON, nil, true)
+		for _, c in { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } } do
+			part({ Name = "LanternBar", Size = Vector3.new(0.2, 2.3, 0.2), Color = IRON, Material = Enum.Material.Metal, CFrame = lcf * CFrame.new(c[1] * 0.6, 0, c[2] * 0.6), Parent = model }):SetAttribute("Front", true)
+		end
+		local flame = part({ Name = "LanternLight", Size = Vector3.new(1, 2, 1), Color = WARM, Material = Enum.Material.Neon, Transparency = 0.1, CastShadow = false, CFrame = lcf, Parent = model })
+		flame:SetAttribute("Front", true)
 		local light = Instance.new("PointLight")
-		light.Color = GLOW
-		light.Range = 12
-		light.Brightness = 0.8
-		light.Parent = lamp
+		light.Color = WARM
+		light.Range = 14
+		light.Brightness = 1.2
+		light.Parent = flame
 	end
+
+	-- Double door (hinged on the door posts, opens outwards). FruitUI swings it open when you come close.
+	local inner = DW / 2 - 0.05
+	local leafW, leafH, leafT = inner - 0.1, DH - 0.2, 0.4
+	for _, side in { -1, 1 } do
+		local leaf = Instance.new("Model")
+		leaf.Name = if side == -1 then "DoorLeft" else "DoorRight"
+		local hingeCf = CFrame.new(side * inner, 0, -iz)
+		local hinge = part({ Name = "Hinge", Size = Vector3.one * 0.2, Transparency = 1, CFrame = hingeCf, Parent = leaf })
+		leaf.PrimaryPart = hinge
+		leaf:SetAttribute("OpenDir", -side) -- +1 = turn left leaf so it swings out (towards -Z)
+		mark(leaf, true)
+		local out = -side -- leaf extends from the hinge towards the middle
+		local function lp(name: string, size: Vector3, x: number, y: number, color: Color3, isGlass: boolean?)
+			local p = block(name, size, hingeCf * CFrame.new(out * x, y, 0), color, if isGlass then { Transparency = 0.5, CastShadow = false } else nil, true, leaf)
+			return p
+		end
+		lp("Stile", Vector3.new(0.8, leafH, leafT), 0.4, leafH / 2 + 0.1, WOOD)
+		lp("Stile", Vector3.new(0.8, leafH, leafT), leafW - 0.4, leafH / 2 + 0.1, WOOD)
+		lp("Rail", Vector3.new(leafW - 1.6, 0.8, leafT), leafW / 2, 0.5, WOOD)
+		lp("Rail", Vector3.new(leafW - 1.6, 0.8, leafT), leafW / 2, leafH * 0.4, WOOD)
+		lp("Rail", Vector3.new(leafW - 1.6, 0.8, leafT), leafW / 2, leafH - 0.3, WOOD)
+		lp("Panel", Vector3.new(leafW - 1.6, leafH * 0.4 - 1.2, leafT * 0.6), leafW / 2, leafH * 0.2 + 0.3, WOOD_DARK)
+		lp("DoorGlass", Vector3.new(leafW - 1.6, leafH * 0.6 - 1.3, 0.2), leafW / 2, leafH * 0.7 - 0.05, GLASS, true)
+		local handle = lp("Handle", Vector3.new(0.25, 1.2, 0.35), leafW - 1.1, leafH * 0.45, IRON)
+		handle.CFrame = handle.CFrame * CFrame.new(0, 0, -0.35)
+		for _, d in leaf:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.CanCollide = false
+			end
+		end
+		leaf.Parent = model
+	end
+
+	-- Planter boxes either side of the step, with little sprouts (a few with glowing buds).
+	local function sprout(at: CFrame, tall: number, glow: boolean, front: boolean, parent: Instance?)
+		for k = 0, tall - 1 do
+			block("Sprout", Vector3.new(0.8, 0.8, 0.8), at * CFrame.new(0, 0.4 + k * 0.8, 0) * CFrame.Angles(0, math.rad(k * 20), 0), if k % 2 == 0 then LEAF else LEAF_LIGHT, nil, front, parent)
+		end
+		local top = at * CFrame.new(0, tall * 0.8 + 0.3, 0)
+		if glow then
+			local b = part({ Name = "Bud", Size = Vector3.new(0.7, 0.7, 0.7), Color = BUD, Material = Enum.Material.Neon, CastShadow = false, CFrame = top, Parent = parent or model })
+			mark(b, front)
+		else
+			block("SproutLeaf", Vector3.new(1.3, 0.4, 1.3), top * CFrame.Angles(0, math.rad(45), 0), LEAF_LIGHT, nil, front, parent)
+		end
+	end
+	for _, side in { -1, 1 } do
+		local boxLen = hx - doorX - 2.6
+		local cx = side * (doorX + 1.6 + boxLen / 2)
+		local boxCf = CFrame.new(cx, -0.1, -hz - 1.6)
+		block("PlanterBox", Vector3.new(boxLen, 1.8, 2.4), boxCf, WOOD_BROWN, { CanCollide = true }, true)
+		block("PlanterSoil", Vector3.new(boxLen - 0.6, 0.2, 1.8), boxCf * CFrame.new(0, 0.9, 0), SOIL, nil, true)
+		local count = math.max(2, math.floor(boxLen / 2.2))
+		for i = 1, count do
+			local x = -boxLen / 2 + (i - 0.5) * boxLen / count
+			sprout(boxCf * CFrame.new(x, 0.9, 0), if i % 2 == 0 then 2 else 1, i % 3 == 1, true)
+		end
+	end
+
+	-- Vine columns in the four inside corners: a brick pot and a zig-zag stack of leaf cubes.
+	for _, c in { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } } do
+		local base = CFrame.new(c[1] * (hx - 3.2), 0, c[2] * (hz - 3.2))
+		local front = c[2] == -1
+		block("VinePot", Vector3.new(3, 2, 3), base * CFrame.new(0, 1, 0), WOOD_BROWN, { CanCollide = true }, front)
+		block("VineSoil", Vector3.new(2.4, 0.2, 2.4), base * CFrame.new(0, 2.05, 0), SOIL, nil, front)
+		local tall = 7
+		for k = 0, tall - 1 do
+			local wiggle = if k % 2 == 0 then 0.35 else -0.35
+			block("Vine", Vector3.new(1.6, 1.6, 1.6), base * CFrame.new(wiggle * c[1], 2.9 + k * 1.45, wiggle * c[2]) * CFrame.Angles(0, math.rad(k * 15), 0), if k % 2 == 0 then LEAF else LEAF_LIGHT, nil, front)
+			if k == 2 or k == 5 then
+				local b = part({ Name = "Bud", Size = Vector3.new(0.9, 0.9, 0.9), Color = BUD, Material = Enum.Material.Neon, CastShadow = false, CFrame = base * CFrame.new(-wiggle * c[1] * 2.6, 2.9 + k * 1.45, 0.5), Parent = model })
+				mark(b, front)
+				if k == 5 then
+					local light = Instance.new("PointLight")
+					light.Color = BUD
+					light.Range = 9
+					light.Brightness = 0.6
+					light.Parent = b
+				end
+			end
+		end
+	end
+
+	-- Two hanging pots from the roof, leaves drooping over the edge.
+	for _, spot in { Vector2.new(-hx * 0.62, hz * 0.45), Vector2.new(hx * 0.62, -hz * 0.3) } do
+		local top = roofAt(spot.X) - 0.3
+		local potY = H - 3.5
+		part({ Name = "Cord", Size = Vector3.new(0.2, top - potY, 0.2), Color = IRON, Material = Enum.Material.Metal, CFrame = CFrame.new(spot.X, (top + potY) / 2, spot.Y), Parent = model })
+		local pot = CFrame.new(spot.X, potY - 0.9, spot.Y)
+		block("HangingPot", Vector3.new(2, 1.8, 2), pot, WOOD_BROWN)
+		for i = 0, 7 do
+			local a = i / 8 * math.pi * 2
+			local out = Vector3.new(math.cos(a), 0, math.sin(a))
+			block("HangingLeaf", Vector3.new(0.7, 0.7, 1.4), CFrame.lookAt(pot.Position + out * 1.3 + Vector3.new(0, 0.9, 0), pot.Position + out * 2.4 + Vector3.new(0, 0.1, 0)), if i % 2 == 0 then LEAF else LEAF_LIGHT)
+			if i % 2 == 0 then
+				block("Trail", Vector3.new(0.6, 0.6, 0.6), CFrame.new(pot.Position + out * 1.9 + Vector3.new(0, -0.6 - (i % 4) * 0.5, 0)), LEAF)
+			end
+		end
+	end
+
+	-- Doormat on the threshold.
+	part({ Name = "Doormat", Size = Vector3.new(5, 0.1, 2.4), Color = Color3.fromRGB(150, 90, 60), Material = Enum.Material.Fabric, CFrame = CFrame.new(0, 0.05, -hz + 2), Parent = model })
+
+	-- A few fireflies drifting in and around the greenhouse.
+	local volume = part({ Name = "Fireflies", Size = Vector3.new(W + 6, H * 0.75, D + 6), Transparency = 1, CastShadow = false, CFrame = CFrame.new(0, H * 0.45, 0), Parent = model })
+	local flies = Instance.new("ParticleEmitter")
+	flies.Name = "Fireflies"
+	flies.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	flies.Shape = Enum.ParticleEmitterShape.Box
+	flies.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	flies.Rate = 3
+	flies.Lifetime = NumberRange.new(4, 7)
+	flies.Speed = NumberRange.new(0.4, 1.2)
+	flies.SpreadAngle = Vector2.new(180, 180)
+	flies.Acceleration = Vector3.new(0, 0.15, 0)
+	flies.Drag = 0.3
+	flies.RotSpeed = NumberRange.new(-40, 40)
+	flies.LightEmission = 1
+	flies.Brightness = 2
+	flies.Color = ColorSequence.new(Color3.fromRGB(255, 235, 130), Color3.fromRGB(190, 255, 140))
+	flies.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 0.2) })
+	-- Twinkle: fade in, blink a couple of times, fade out.
+	flies.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.12, 0.1),
+		NumberSequenceKeypoint.new(0.3, 0.75),
+		NumberSequenceKeypoint.new(0.45, 0.05),
+		NumberSequenceKeypoint.new(0.65, 0.7),
+		NumberSequenceKeypoint.new(0.8, 0.1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	flies.Parent = volume
+
 	return model
 end
 

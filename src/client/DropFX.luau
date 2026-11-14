@@ -406,7 +406,8 @@ local function buildBlock(drop: Drop): (Part, number)
 	return p, math.max(v.Size.Y, v.Size.Z) / 2
 end
 
--- Name (white) with the chance under it in the rarity colour.
+-- Name with the chance under it in the rarity colour. A hero's name is drawn without its size, in its
+-- rarity's moving gradient; a sized hero gets the size ("HUGE") on a line of its own above the name.
 -- The billboard is sized in studs, so it shrinks with distance. Inside, the text is laid out in
 -- pixels at a fixed design size (name LABEL_NAME_SIZE, chance LABEL_CHANCE_SIZE: always the same
 -- ratio, whatever the text length) and a UIScale fits that layout to the billboard's size on screen.
@@ -417,20 +418,27 @@ local LABEL_HEIGHT = LABEL_NAME_SIZE + LABEL_CHANCE_SIZE + 8 -- design height in
 local LABEL_STUDS = 2 -- real height in the world (heroes: LABEL_STUDS_HERO)
 local LABEL_STUDS_HERO = 2.3
 local LABEL_FONT = Enum.Font.FredokaOne
+local LABEL_SIZE_ROW = 20 -- design height of the size line ("HUGE") over a sized hero's name
 
 local function buildLabel(drop: Drop, adornee: BasePart, yOffset: number): BillboardGui
 	local isHero = drop.Kind == "Anime"
-	local titleText = if isHero and drop.Amount <= 1 then drop.Name else ("%s (x%d)"):format(drop.Name, drop.Amount)
+	local hero = if isHero then HeroConfig.Get(drop.Name) else nil
+	local shownName = if hero then HeroConfig.DisplayName(hero) else drop.Name
+	local titleText = if isHero and drop.Amount <= 1 then shownName else ("%s (x%d)"):format(shownName, drop.Amount)
 	local chanceText = formatChance(drop.Chance)
+	local size = if hero and hero.Size and HeroConfig.SizeBadgeFX[hero.Size] then hero.Size else nil
+	local sizeText = if size then string.upper(size) else nil
+	local top = if size then LABEL_SIZE_ROW else 0 -- the name / chance rows start under the size line
+	local height = LABEL_HEIGHT + top
 	local function width(text: string, size: number): number
 		return TextService:GetTextSize(text, size, LABEL_FONT, Vector2.new(4000, 200)).X
 	end
 	local designWidth = math.max(width(titleText, LABEL_NAME_SIZE), width(chanceText, LABEL_CHANCE_SIZE), 80) + LABEL_PAD * 2
-	local studs = if isHero then LABEL_STUDS_HERO else LABEL_STUDS
+	local studs = (if isHero then LABEL_STUDS_HERO else LABEL_STUDS) * height / LABEL_HEIGHT
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Label"
-	gui.Size = UDim2.fromScale(designWidth / LABEL_HEIGHT * studs, studs)
+	gui.Size = UDim2.fromScale(designWidth / height * studs, studs)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, yOffset, 0)
 	gui.AlwaysOnTop = true
 	gui.LightInfluence = 0
@@ -442,24 +450,43 @@ local function buildLabel(drop: Drop, adornee: BasePart, yOffset: number): Billb
 	root.BackgroundTransparency = 1
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
 	root.Position = UDim2.fromScale(0.5, 0.5)
-	root.Size = UDim2.fromOffset(designWidth, LABEL_HEIGHT)
+	root.Size = UDim2.fromOffset(designWidth, height)
 	root.Parent = gui
+
+	if sizeText and size then
+		local sizeLabel = Instance.new("TextLabel")
+		sizeLabel.Name = "Size"
+		sizeLabel.BackgroundTransparency = 1
+		sizeLabel.Size = UDim2.new(1, 0, 0, LABEL_SIZE_ROW)
+		sizeLabel.Font = LABEL_FONT
+		sizeLabel.TextSize = LABEL_SIZE_ROW - 2
+		sizeLabel.Text = sizeText
+		sizeLabel.Parent = root
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.5
+		stroke.Parent = sizeLabel
+		HeroConfig.PaintRarityGradient(sizeLabel, size) -- SizeBadgeFX colours, animated
+	end
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
+	title.Position = UDim2.fromOffset(0, top)
 	title.Size = UDim2.new(1, 0, 0, LABEL_NAME_SIZE + 4)
 	title.Font = LABEL_FONT
 	title.TextSize = LABEL_NAME_SIZE
 	title.TextColor3 = Color3.new(1, 1, 1)
 	title.Text = titleText
 	title.Parent = root
+	if hero then
+		HeroConfig.PaintRarityGradient(title, hero.Rarity)
+	end
 	local s1 = Instance.new("UIStroke")
 	s1.Thickness = 2
 	s1.Parent = title
 
 	local chance = Instance.new("TextLabel")
 	chance.BackgroundTransparency = 1
-	chance.Position = UDim2.fromOffset(0, LABEL_NAME_SIZE + 4)
+	chance.Position = UDim2.fromOffset(0, top + LABEL_NAME_SIZE + 4)
 	chance.Size = UDim2.new(1, 0, 0, LABEL_CHANCE_SIZE + 4)
 	chance.Font = LABEL_FONT
 	chance.TextSize = LABEL_CHANCE_SIZE
@@ -477,7 +504,7 @@ local function buildLabel(drop: Drop, adornee: BasePart, yOffset: number): Billb
 	local pop = Instance.new("NumberValue")
 	pop.Value = 0
 	local function update()
-		scale.Scale = gui.AbsoluteSize.Y / LABEL_HEIGHT * pop.Value
+		scale.Scale = gui.AbsoluteSize.Y / height * pop.Value
 	end
 	-- Every frame: the billboard's on-screen size changes as the camera moves.
 	local stepped = RunService.RenderStepped:Connect(update)

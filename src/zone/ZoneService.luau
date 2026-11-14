@@ -16,12 +16,12 @@
 --   At runtime it replaces the copy in ZoneLayouts, so you never have to drag it back.
 -- Optional template attributes: ZoneName, FloorColor, FloorMaterial (Enum.Material name), FloorTileColor,
 --   ClockTime, Ambient, OutdoorAmbient, AtmosphereColor, AtmosphereDecay, AtmosphereDensity, AtmosphereHaze
--- A zone without an attribute gets the Ground's / Lighting's original value back.
+-- A zone without an attribute gets the Ground's original value / the Clear lighting preset back.
+-- The lighting ones are only used while there's no weather (LightingController, LightingPresets).
 
 local ServerStorage = game:GetService("ServerStorage")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 
 local MIN_ZONE, MAX_ZONE = 1, 10
 local CHOP_FOLDER = "ChopGround" -- plot folder holding the current zone's chop-area decor
@@ -51,16 +51,6 @@ local ZoneService = {}
 
 -- Original Ground look per plot, so zones that don't set something fall back to it.
 local groundDefaults = {}
-local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-local lightingDefaults = {
-	ClockTime = Lighting.ClockTime,
-	Ambient = Lighting.Ambient,
-	OutdoorAmbient = Lighting.OutdoorAmbient,
-	AtmosphereColor = atmosphere and atmosphere.Color,
-	AtmosphereDecay = atmosphere and atmosphere.Decay,
-	AtmosphereDensity = atmosphere and atmosphere.Density,
-	AtmosphereHaze = atmosphere and atmosphere.Haze,
-}
 
 local function getFolder(plot, name)
 	local f = plot:FindFirstChild(name)
@@ -155,20 +145,15 @@ local function applyGround(plot, template, surface)
 	end
 end
 
+-- The zone's lighting goes onto Lighting as "Zone<Attr>" attributes (nil = preset default);
+-- LightingController (client) owns the real Lighting properties and tweens to them when the
+-- weather is clear, so zones and weathers never fight over Lighting.
+local ZONE_LIGHT_ATTRS = { "ClockTime", "Ambient", "OutdoorAmbient", "AtmosphereColor", "AtmosphereDecay", "AtmosphereDensity", "AtmosphereHaze" }
+
 local function applyLighting(template)
-	local function set(obj, prop, attr)
-		if not obj then return end
-		local v = template:GetAttribute(attr)
-		if v == nil then v = lightingDefaults[attr] end
-		if v ~= nil then obj[prop] = v end
+	for _, attr in ipairs(ZONE_LIGHT_ATTRS) do
+		Lighting:SetAttribute("Zone" .. attr, template:GetAttribute(attr))
 	end
-	set(Lighting, "ClockTime", "ClockTime")
-	set(Lighting, "Ambient", "Ambient")
-	set(Lighting, "OutdoorAmbient", "OutdoorAmbient")
-	set(atmosphere, "Color", "AtmosphereColor")
-	set(atmosphere, "Decay", "AtmosphereDecay")
-	set(atmosphere, "Density", "AtmosphereDensity")
-	set(atmosphere, "Haze", "AtmosphereHaze")
 end
 
 -- Moves a cloned layout's folder contents into the plot folder (cleared first).
@@ -250,7 +235,6 @@ local OUT_TIME = 0.9
 local HERO_WAIT_MAX = 3 -- extra seconds the floor waits for heroes to get back into the gate
 local FLOOR_MIN_TIME, FLOOR_PER_STUD, FLOOR_MAX_TIME = 0.6, 0.06, 2
 local IN_TIME = 1.6
-local LIGHT_TIME = 1.5
 
 local tokens = {}
 
@@ -260,27 +244,6 @@ end
 
 local function serverNow()
 	return workspace:GetServerTimeNow()
-end
-
-local function tweenLighting(template)
-	local function goal(attr)
-		local v = template:GetAttribute(attr)
-		if v == nil then v = lightingDefaults[attr] end
-		return v
-	end
-	local info = TweenInfo.new(LIGHT_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-	local light = {}
-	for _, attr in ipairs({ "ClockTime", "Ambient", "OutdoorAmbient" }) do
-		light[attr] = goal(attr)
-	end
-	TweenService:Create(Lighting, info, light):Play()
-	if atmosphere then
-		local atm = {}
-		for attr, prop in pairs({ AtmosphereColor = "Color", AtmosphereDecay = "Decay", AtmosphereDensity = "Density", AtmosphereHaze = "Haze" }) do
-			atm[prop] = goal(attr)
-		end
-		TweenService:Create(atmosphere, info, atm):Play()
-	end
 end
 
 local function clearFolder(plot, name)
@@ -319,7 +282,7 @@ function ZoneService.Transition(plot)
 	clearFolder(plot, MAP_FOLDER)
 
 	-- 2. Floor
-	tweenLighting(info.template)
+	applyLighting(info.template) -- clients tween to it (LightingController)
 	local fromY = ground.Position.Y
 	local toY = defaults.CFrame.Position.Y - info.depth
 	local dist = math.abs(toY - fromY)

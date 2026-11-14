@@ -24,13 +24,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local DailyRewardConfig = require(Shared:WaitForChild("DailyRewardConfig"))
-local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
-local FruitConfig = require(Shared:WaitForChild("FruitConfig"))
-local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
-local ChestService = require(script.Parent:WaitForChild("ChestService"))
-local FruitService = require(script.Parent:WaitForChild("FruitService"))
-
-local HERO_PREFIX = "Anime:"
+local Rewards = require(script.Parent:WaitForChild("Rewards"))
 local CHECK_INTERVAL = 15 -- seconds between day roll-over checks for players in the game
 local STUDIO_NO_DATA_WAIT = 8
 
@@ -109,30 +103,9 @@ end
 
 -- Rewards -------------------------------------------------------------------------------------------
 
+-- One reward (shared with the Index rewards: server/Rewards.luau, which also knows "Potion").
 local function give(player: Player, reward: Reward, popups: { any })
-	local amount = math.max(1, math.floor(reward.Amount or 1))
-	if reward.Kind == "Money" then
-		ChestService.AddMoney(player, amount)
-	elseif reward.Kind == "Hero" and reward.Name then
-		local name = HeroConfig.CurrentName(reward.Name)
-		if TreeConfig.GetHero(name) then
-			local isNew = ChestService.AddItem(player, "Heroes", name, amount)
-			table.insert(popups, { Stack = HERO_PREFIX .. name, Amount = amount, New = isNew })
-		else
-			warn("[DailyRewardService] unknown hero " .. tostring(reward.Name))
-		end
-	elseif reward.Kind == "Fertilizer" then
-		FruitService.AddFertilizer(player, amount)
-	elseif reward.Kind == "Fruit" and reward.Id then
-		if FruitConfig.Get(reward.Id) then
-			FruitService.AddFruit(player, reward.Id, amount)
-		else
-			warn("[DailyRewardService] unknown fruit " .. tostring(reward.Id))
-		end
-	elseif reward.Kind == "Material" and reward.Key then
-		local isNew = ChestService.AddItem(player, "Inventory", reward.Key, amount)
-		table.insert(popups, { Stack = reward.Key, Amount = amount, New = isNew })
-	end
+	Rewards.Give(player, reward, popups)
 end
 
 local function claimDays(player: Player, days: { number }): Result

@@ -175,6 +175,8 @@ local function drawReward(holder: Frame, reward: Reward, zIndex: number)
 		ItemDisplay.FillHeroViewport(view, reward.Name)
 	elseif reward.Kind == "Fruit" and reward.Id then
 		ItemDisplay.FillFruitViewport(view, reward.Id)
+	elseif reward.Kind == "Potion" and reward.Id then
+		ItemDisplay.FillPotionViewport(view, reward.Id)
 	elseif reward.Kind == "Material" and reward.Key then
 		local info = ItemDisplay.Info(reward.Key)
 		if info.image then

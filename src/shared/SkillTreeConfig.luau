@@ -75,6 +75,7 @@ local TreeConfig = require(script.Parent:WaitForChild("TreeConfig"))
 local ZoneDrops = require(script.Parent:WaitForChild("ZoneDrops"))
 local ZoneConfig = require(script.Parent:WaitForChild("ZoneConfig"))
 local WeatherConfig = require(script.Parent:WaitForChild("WeatherConfig"))
+local PotionConfig = require(script.Parent:WaitForChild("PotionConfig"))
 
 local SkillTreeConfig = {}
 
@@ -436,6 +437,7 @@ function SkillTreeConfig.MaterialValue(player: Player, kind: string): number
 	local zone = ZoneDrops.MaterialZone(kind)
 	local mult = if zone then SkillTreeConfig.PlayerStat(player, "DropValue", zone) else 1
 	mult *= WeatherConfig.Mult("SellBonus") -- weather (Golden Hour ...)
+	mult *= PotionConfig.Mult(player, "SellBonus") -- Money Potion
 	return math.floor(def.Value * mult + 0.5)
 end
 

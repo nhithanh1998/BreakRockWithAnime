@@ -1,8 +1,10 @@
 -- TreeService: keeps an owned plot's floor stocked with choppable trees.
 --
--- Templates: ReplicatedStorage.Trees.Map<Zone> (falls back to Map1). Each template is a Model with
---   an HP bar (its "HP"/"MaxHP" are set on spawn from TreeConfig.TreeHP, by level and zone) (InfoAttachment.TreeBar ... HPFill); the bar is drawn by
---   the client (TreeClient). An old-style "Info" BillboardGui (HPBar.Fill/TextLabel) still works.
+-- Templates: ReplicatedStorage.Trees.Map<Zone> (falls back to Map1). Each template is a Model; its
+--   "HP"/"MaxHP" are set on spawn from TreeConfig.TreeHP, by level and zone. The HP bar is ONE shared
+--   template, ReplicatedStorage.InfoBars.TreeBar, cloned onto each tree on spawn (addBar: trunk
+--   InfoAttachment 2 studs above the tree, "Lv N. Name"); the client (TreeClient) draws it.
+--   An old-style "Info" BillboardGui (HPBar.Fill/TextLabel) still works.
 --   Optional template attribute "SpawnWeight" (default 1) makes a tree more or less common.
 --   Only templates listed in the zone's ZoneDrops Trees are spawned.
 -- Zone base stats (ZoneConfig Base) + the owner's zone skill tree: MaxTrees, RespawnTime,
@@ -31,6 +33,7 @@ local CONFIG = {
 	MinSpacing = 9, -- studs between tree centers
 	MaxAttempts = 30, -- random spots tried per tree
 	ModelScale = 1.2, -- spawned trees are this much bigger than their template (1 = template size)
+	BarAboveTop = 2, -- studs between the top of the tree and the centre of its HP bar
 }
 
 local TreeService = {}
@@ -215,6 +218,42 @@ local function findSpot(state: PlotState, template: Model): Vector3?
 	return nil
 end
 
+-- "OldOakTree" -> "Old Oak Tree"
+local function displayName(name: string): string
+	return (name:gsub("(%l)(%u)", "%1 %2"))
+end
+
+-- Every tree gets its HP bar from ONE shared template, ReplicatedStorage.InfoBars.TreeBar (edit it
+-- there, not on the tree models): an "InfoAttachment" on the trunk (PrimaryPart), CONFIG.BarAboveTop
+-- studs above the top of the tree, with the bar cloned into it and "Lv N. Name" written on it.
+-- Call after the tree is scaled and placed.
+local function addBar(tree: Model, template: Model, level: number)
+	for _, d in tree:GetDescendants() do
+		if d.Name == "InfoAttachment" and d:IsA("Attachment") then
+			d:Destroy() -- a leftover copy on an old template; the shared one wins
+		end
+	end
+	local folder = ReplicatedStorage:FindFirstChild(HeroConfig.BarFolder)
+	local source = folder and folder:FindFirstChild("TreeBar")
+	local trunk = tree.PrimaryPart or tree:FindFirstChildWhichIsA("BasePart", true)
+	if not source or not source:IsA("BillboardGui") or not trunk then
+		warn(("[TreeService] ReplicatedStorage.%s.TreeBar or a trunk is missing; %s gets no HP bar"):format(HeroConfig.BarFolder, tree.Name))
+		return
+	end
+	local cf, size = tree:GetBoundingBox()
+	local above = Vector3.new(cf.X, cf.Y + size.Y / 2 + CONFIG.BarAboveTop, cf.Z)
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "InfoAttachment"
+	attachment.Position = trunk.CFrame:PointToObjectSpace(above)
+	attachment.Parent = trunk
+	local bar = source:Clone()
+	local nameLabel = bar:FindFirstChild("TreeName", true)
+	if nameLabel and nameLabel:IsA("TextLabel") then
+		nameLabel.Text = ("Lv%d. %s"):format(level, displayName(template.Name))
+	end
+	bar.Parent = attachment
+end
+
 local function updateInfo(tree: Model)
 	local info = tree:FindFirstChild("Info")
 	if not info then
@@ -274,7 +313,8 @@ local function spawnTree(state: PlotState): boolean
 	end
 	-- HP from TreeConfig.TreeHP, by the tree's level and the plot's zone.
 	local zone = state.plot:GetAttribute("Zone")
-	local maxHp = TreeConfig.MaxHP(zone, ZoneDrops.GetLevel(zone, template.Name))
+	local level = ZoneDrops.GetLevel(zone, template.Name)
+	local maxHp = TreeConfig.MaxHP(zone, level)
 	-- Owner's zone skill tree: TreeHP multiplies (Hardwood / Ironwood), HPCut takes a share off.
 	local hpMult = ownerStat(state.plot, "TreeHP") * math.max(0.05, 1 - ownerStat(state.plot, "HPCut"))
 	maxHp = math.max(1, math.floor(maxHp * hpMult))
@@ -282,6 +322,7 @@ local function spawnTree(state: PlotState): boolean
 	tree:SetAttribute("HP", maxHp)
 	tree:SetAttribute("TreeType", template.Name)
 	tree:PivotTo(CFrame.new(pos + Vector3.new(0, bottomOffset(template), 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
+	addBar(tree, template, level)
 
 	tree:GetAttributeChangedSignal("HP"):Connect(function()
 		updateInfo(tree)

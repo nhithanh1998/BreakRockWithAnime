@@ -51,6 +51,11 @@ local HeroConfig = {}
 HeroConfig.TemplateFolder = "Heros"
 -- Model used when a hero's Template is not in the folder yet (so every hero can still work a slot).
 HeroConfig.FallbackTemplate = "UzumakiShounen"
+-- The bars above heroes and trees are shared templates in ReplicatedStorage.<BarFolder>:
+-- HeroBar (name / rarity / level / power, HeroModels) and TreeBar (name / HP, TreeService).
+-- Edit them there; every hero / tree gets a clone on spawn.
+HeroConfig.BarFolder = "InfoBars"
+HeroConfig.BarAboveHead = 2 -- studs between the top of the head and the bar's centre
 
 -- Heroes placed on a plot's HeroSlots walk out of the HeroGate and chop trees (HeroWorkerService).
 HeroConfig.Worker = {
@@ -154,6 +159,12 @@ HeroConfig.RarityGradientFX = {
 -- Sets a rarity label's text and gradient (its UIGradient child, made if missing).
 function HeroConfig.PaintRarity(label: TextLabel, rarity: string)
 	label.Text = rarity
+	HeroConfig.PaintRarityGradient(label, rarity)
+end
+
+-- Gives any label (e.g. a hero's name) the moving gradient of `rarity`, keeping its text. Hero
+-- billboards show the rarity this way instead of a separate "Rarity" line.
+function HeroConfig.PaintRarityGradient(label: TextLabel, rarity: string)
 	label.TextColor3 = Color3.new(1, 1, 1) -- the gradient multiplies this
 	local g = label:FindFirstChildOfClass("UIGradient")
 	if not g then
@@ -786,39 +797,19 @@ function HeroConfig.WalkMultiplier(name: string): number
 	return if def and def.WalkMult then def.WalkMult else 1
 end
 
--- Old hero names -> their current name, so saves made before a rename keep their heroes
--- (DataService maps saved Heroes / Placed / chest heroes through HeroConfig.CurrentName).
--- Chains are followed (Sling Pirate -> Kabuto Boy -> Sling Scout). A name that is a hero in
--- HERO_LIST right now is never renamed, so an old name can be reused for a new hero safely
--- ("Uzumaki Kid" was Uzumaki Shounen's first name and is now a zone 2 hero).
-HeroConfig.RenamedHeroes = {
-	["Sling Pirate"] = "Kabuto Boy",
-	["Kabuto Boy"] = "Sling Scout",
-	["Taijutsu Ninja"] = "Taijutsu Shounen",
-	["Uzumaki Shounen"] = "Dragon Kid",
-	["Copy Ninja"] = "Copy Sensei",
-	["Perfect Bioform"] = "Green Beetle",
-} :: { [string]: string }
-
 -- Mutations that were taken out of the game: a saved "Gold Huge Sling Scout" loads as "Huge Sling Scout".
+-- (DataService maps saved Heroes / Placed / chest heroes through HeroConfig.CurrentName.)
 HeroConfig.RemovedMutations = { "Gold", "Ruby" } :: { string }
 
 function HeroConfig.CurrentName(name: string): string
 	if not byName[name] then
 		for _, id in HeroConfig.RemovedMutations do
 			if name:sub(1, #id + 1) == id .. " " then
-				name = name:sub(#id + 2)
-				break
+				return name:sub(#id + 2)
 			end
 		end
 	end
-	local base, mutation, size = HeroConfig.SplitVariant(name)
-	local seen = 0
-	while not byName[base] and HeroConfig.RenamedHeroes[base] and seen < 10 do
-		base = HeroConfig.RenamedHeroes[base]
-		seen += 1
-	end
-	return HeroConfig.VariantName(base, mutation, size)
+	return name
 end
 
 -- The hero's model from ReplicatedStorage.Heros (not cloned), or nil if it is not there.

@@ -15,10 +15,11 @@
 --   { Kind = "Fertilizer", Amount = n }              Devil Fertilizer bags (FruitService)
 --   { Kind = "Fruit", Id = "<FruitConfig Id>", Amount = n? }
 --   { Kind = "Material", Key = "<TreeConfig.Materials key>", Amount = n }
+--   { Kind = "Potion", Id = "<PotionConfig Id>", Amount = n? }
 -- The FIRST reward of a day is the big picture on its card; the rest are small icons under it.
 
 export type Reward = {
-	Kind: "Money" | "Hero" | "Fertilizer" | "Fruit" | "Material",
+	Kind: "Money" | "Hero" | "Fertilizer" | "Fruit" | "Material" | "Potion",
 	Amount: number?,
 	Name: string?,
 	Id: string?,

@@ -128,7 +128,10 @@ FruitConfig.StudioTestFertilizer = 10
 FruitConfig.GardenOffset = Vector3.new(70.55, 0, 80.05)
 FruitConfig.GardenYaw = 90 -- degrees the garden turns relative to the plot (its front faces the pads)
 FruitConfig.GardenSize = 16 -- outer width in studs
-FruitConfig.GreenhouseHeight = 15 -- wall height of the glass greenhouse around the planter (roof goes higher)
+-- Walk-in greenhouse around the planter (FruitModels.Greenhouse), centered on the garden's pivot:
+-- X = width (across the front), Y = wall height (the roof goes higher), Z = depth (front to back).
+-- A garden that already has a "Greenhouse" model (e.g. built into the place) keeps it.
+FruitConfig.GreenhouseSize = Vector3.new(33, 14, 24)
 FruitConfig.PromptDistance = 12
 FruitConfig.CloseDistance = 22 -- the Devil Tree window closes when you walk this far away
 FruitConfig.GrowCooldown = 1 -- seconds between grows (server)

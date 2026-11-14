@@ -16,11 +16,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local TreeService = require(script.Parent:WaitForChild("TreeService"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
+local IndexService = require(script.Parent:WaitForChild("IndexService"))
 local ZoneDrops = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneDrops"))
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local SkillTreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SkillTreeConfig"))
 local ZoneConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneConfig"))
 local WeatherConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeatherConfig"))
+local PotionConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PotionConfig"))
 
 type Drop = TreeConfig.Drop
 
@@ -52,10 +54,11 @@ local function statIn(player: Player?, stat: string, zone: number?, default: num
 	return SkillTreeConfig.PlayerStat(player, stat, zone or 1)
 end
 
--- A player luck attribute (skill trees) times the weather's buff for it (WeatherConfig).
+-- A player luck attribute (skill trees) times the weather's buff for it (WeatherConfig) and the
+-- player's active potions (PotionConfig).
 local function luckOf(player: Player?, stat: string): number
 	local value = player and player:GetAttribute(stat)
-	return (if typeof(value) == "number" then value else 1) * WeatherConfig.Mult(stat)
+	return (if typeof(value) == "number" then value else 1) * WeatherConfig.Mult(stat) * PotionConfig.Mult(player, stat)
 end
 
 -- A hero drop of `heroName`: rolls its mutation and size (HeroConfig.RollVariant, boosted by the
@@ -127,6 +130,9 @@ local function rollDrops(zone: number?, treeType: string?, player: Player?): { D
 			local def = TreeConfig.Materials[entry.Item]
 			if def and guaranteed then
 				amount += yield
+			end
+			if def then
+				amount = math.max(1, math.floor(amount * PotionConfig.Mult(player, "MaterialDrop"))) -- Material Potion
 			end
 			local hero = not def and TreeConfig.GetHero(entry.Item)
 			if def then
@@ -215,6 +221,7 @@ local function applyHit(player: Player, model: Model, damage: number, hitPos: an
 	if felled then
 		local plot = plotOf(model)
 		local drops = rollDrops(plot and plot:GetAttribute("Zone"), model:GetAttribute("TreeType"), player)
+		IndexService.DiscoverDrops(player, drops) -- found in the Index (even if auto-sold right away)
 		local chest = ChestService.GetChest(plot)
 		local groundY = cf.Position.Y - size.Y / 2
 		if not chest then
@@ -254,7 +261,9 @@ local function onHit(player: Player, tree: any, hitPos: any)
 	end
 	lastHit[player] = now
 
-	local damage = math.floor((player:GetAttribute("ClickDamage") or TreeConfig.ClickDamage) * WeatherConfig.Mult("ClickDamage"))
+	local damage = math.floor(
+		(player:GetAttribute("ClickDamage") or TreeConfig.ClickDamage) * WeatherConfig.Mult("ClickDamage") * PotionConfig.Mult(player, "ClickDamage")
+	)
 	applyHit(player, tree :: Model, damage, hitPos, player, nil)
 end
 
