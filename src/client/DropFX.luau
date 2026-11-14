@@ -120,6 +120,9 @@ local function buildHero(drop: Drop, scale: number?): HeroVisual?
 			d.CanTouch = false
 			d.Massless = true
 			d.Anchored = d == root
+			pcall(function()
+				d.CollisionGroup = "Heroes" -- never collides with players (server CollisionGroups)
+			end)
 		elseif d:IsA("LuaSourceContainer") then
 			d:Destroy()
 		end

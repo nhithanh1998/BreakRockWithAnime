@@ -42,6 +42,7 @@ export type Drop = {
 	Sold: boolean?, -- auto-sold on the spot (ChestService auto sell): flies to the player, not the chest
 	Mutation: string?, -- heroes only: rolled mutation (HeroConfig.Mutations), nil = none
 	Size: string?, -- heroes only: rolled size (HeroConfig.Sizes), nil = Normal
+	New: boolean?, -- heroes only: the player had never found this hero before (not owned, not in the Index)
 }
 
 local TreeConfig = {}
@@ -180,10 +181,13 @@ TreeConfig.RarityColors = {
 -- Rarities that get a burst effect when they drop.
 TreeConfig.FancyRarities = { Rare = true, Epic = true, Legendary = true, Mythic = true } :: { [string]: boolean }
 
--- Heroes of these rarities get a cinematic cutscene when they drop (client/HeroCutscene.luau).
-TreeConfig.CutsceneRarities = { Epic = true, Legendary = true, Mythic = true } :: { [string]: boolean }
+-- Heroes of these rarities get a cinematic cutscene when they drop (client/HeroCutscene.luau),
+-- but only the first time the player gets that hero (Drop.New): duplicates never get one.
+TreeConfig.CutsceneRarities = { Legendary = true, Mythic = true } :: { [string]: boolean }
 -- Optional sound ids ("rbxassetid://...") for the cutscene; empty = silent.
-TreeConfig.CutsceneSounds = { Charge = "", Reveal = "" } :: { [string]: string }
+--   Charge = the pillar of light starts     Step = every rarity tier of the climb (pitched up per tier)
+--   Lock   = rarity locked, the hero lands  Reveal = the silhouette turns into the hero
+TreeConfig.CutsceneSounds = { Charge = "", Step = "", Lock = "", Reveal = "" } :: { [string]: string }
 
 TreeConfig.Materials = {
 	-- Zone 1 (Green Wood) - Oak Tree

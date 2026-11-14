@@ -2,7 +2,8 @@
 -- "Added!" / "New!" frames that pop up above it after taking items out of the chest.
 --
 -- Hotbar: the player's heroes (player.Heroes, one IntValue per hero = how many they own), highest
--- MinePower (HeroConfig) first, in 10 numbered slots. Keys 1-9 and 0 or a click select a slot; the selection is
+-- MinePower (HeroConfig) first, in 9 numbered slots (1-9) plus the Backpack button: 10 cells, nothing
+-- else (Roblox's default backpack bar is turned off). Keys 1-9 or a click select a slot; the selection is
 -- sent to the server (Remotes.HeroSlot "Select") so E at an empty hero pad places that hero, and the
 -- server shows the selected hero held in the player's hands (HeroSlotService). Hovering a
 -- slot shows a tooltip.
@@ -41,7 +42,7 @@ slotTemplate:SetAttribute("PreviewHero", nil)
 local popupTemplate = templates:WaitForChild("Popup") :: Frame
 local moreTemplate = templates:WaitForChild("More") :: Frame
 
-local SLOT_COUNT = 10
+local SLOT_COUNT = 9 -- slots 1-9; the 10th cell of the bar is the Backpack button
 local MAX_POPUPS = 7
 local POPUP_TIME = 6 -- seconds the popups stay before hiding
 local POPUP_STAGGER = 0.07
@@ -62,7 +63,6 @@ local KEYS = {
 	[Enum.KeyCode.Seven] = 7,
 	[Enum.KeyCode.Eight] = 8,
 	[Enum.KeyCode.Nine] = 9,
-	[Enum.KeyCode.Zero] = 10,
 	[Enum.KeyCode.KeypadOne] = 1,
 	[Enum.KeyCode.KeypadTwo] = 2,
 	[Enum.KeyCode.KeypadThree] = 3,
@@ -72,7 +72,6 @@ local KEYS = {
 	[Enum.KeyCode.KeypadSeven] = 7,
 	[Enum.KeyCode.KeypadEight] = 8,
 	[Enum.KeyCode.KeypadNine] = 9,
-	[Enum.KeyCode.KeypadZero] = 10,
 }
 
 -- Our bar replaces Roblox's default tool backpack (the game has no tools).
@@ -192,8 +191,8 @@ local function drawSlot(slot: Slot)
 	local countLabel = button:FindFirstChild("Count") :: TextLabel
 	local gradient = button:FindFirstChildOfClass("UIGradient")
 	local hero = slot.hero
-	-- Empty slots are hidden (heroes fill the bar from the left).
-	button.Visible = hero ~= nil
+	-- All 9 slots always show (empty ones dimmed); heroes fill them from the left.
+	button.Visible = true
 
 	if not hero then
 		button.BackgroundColor3 = EMPTY_COLOR
@@ -301,7 +300,7 @@ for i = 1, SLOT_COUNT do
 	local button = slotTemplate:Clone()
 	button.Name = "Slot" .. i
 	button.LayoutOrder = i;
-	(button:FindFirstChild("Key") :: TextLabel).Text = tostring(i % 10) -- slot 10 is key 0
+	(button:FindFirstChild("Key") :: TextLabel).Text = tostring(i)
 	local slot: Slot = { button = button, hero = nil }
 	slots[i] = slot
 	button.MouseEnter:Connect(function()

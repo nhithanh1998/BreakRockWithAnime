@@ -10,13 +10,15 @@
 --
 -- The template's "Animate" LocalScript is removed (it never runs on an NPC); its idle / walk / toolnone
 -- ids are kept as attributes on the Humanoid. Every part is made non-collidable and non-queryable so
--- heroes never block players or their clicks on trees.
+-- heroes never block players or their clicks on trees; they also go in the "Heroes" collision group
+-- (CollisionGroups), since the Humanoid turns collision back on for the torso / head by itself.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local KeyframeSequenceProvider = game:GetService("KeyframeSequenceProvider")
 
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
+local CollisionGroups = require(script.Parent:WaitForChild("CollisionGroups"))
 
 local AXE_NAME = "WoodenAxe"
 
@@ -258,6 +260,7 @@ function HeroModels.Clone(heroName: string): (Model?, Humanoid?, BasePart?)
 			d:Destroy()
 		end
 	end
+	CollisionGroups.SetHero(model) -- players walk through heroes
 	return model, humanoid, root
 end
 

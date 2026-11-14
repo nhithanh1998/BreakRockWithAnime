@@ -37,11 +37,11 @@
         "Size": {
           "UDim2": [
             [
-              0.68,
+              0.77,
               0
             ],
             [
-              0.1,
+              0.125,
               0
             ]
           ]
@@ -52,7 +52,7 @@
           "Name": "UIAspectRatioConstraint",
           "ClassName": "UIAspectRatioConstraint",
           "Properties": {
-            "AspectRatio": 11.95
+            "AspectRatio": 10.83
           }
         },
         {
@@ -61,14 +61,14 @@
           "Properties": {
             "MaxSize": {
               "Vector2": [
-                1330,
-                112
+                1516,
+                140
               ]
             },
             "MinSize": {
               "Vector2": [
-                420,
-                40
+                541,
+                50
               ]
             }
           }
@@ -107,7 +107,7 @@
                 },
                 "Padding": {
                   "UDim": [
-                    0.0077,
+                    0.0085,
                     0
                   ]
                 },
@@ -138,7 +138,7 @@
                 "Size": {
                   "UDim2": [
                     [
-                      0.0838,
+                      0.0923,
                       0
                     ],
                     [
@@ -257,7 +257,7 @@
                 "Size": {
                   "UDim2": [
                     [
-                      0.0838,
+                      0.0923,
                       0
                     ],
                     [

@@ -7,8 +7,10 @@
 --
 -- Workers live in plot.HeroWorkers as "Slot<index>" (attributes Hero, OwnerUserId, Slot).
 -- Spawn point: plot.HeroGate.HeroSpawn; they first walk to HeroGate.HeroExit.
--- Walking uses Movement (anchored root, CFrame every Heartbeat on plot.Floor / plot.HeroGate),
--- not Humanoid:MoveTo, so heroes glide smoothly instead of stuttering between waypoints.
+-- Walking uses Movement (anchored root on plot.Floor / plot.HeroGate), not Humanoid:MoveTo. Movement runs
+-- ClientRendered: the server only keeps each hero's logical position (posOf) and publishes its path as
+-- attributes; every client draws the motion itself each frame (client HeroMotion), so heroes glide
+-- smoothly for all players. The real root part on the server is only written when a hero stops.
 -- A hero chops once it is within ATTACK_RANGE studs of the trunk (measured from the trunk's center).
 -- Models / axe / default animations come from HeroModels. Swing: HeroModels.ChopAnimationId(),
 -- played at the hero's ChopSpeed; its ChopPower (HeroConfig.ChopDamage) lands on the animation's "Hit"
@@ -153,6 +155,12 @@ local function drawBarLevel(w: Worker)
 	HeroModels.DrawBar(w.model, levelOf(w.plot, w.slot, "Damage"), statOf(w, "Damage"))
 end
 
+-- Where the hero is now. Read this instead of w.root.Position: while a hero walks, the server keeps its
+-- position in Movement and only writes the real part when it stops.
+local function posOf(w: Worker): Vector3
+	return if w.movement then w.movement:GetPosition() else w.root.Position
+end
+
 local function isAlive(w: Worker): boolean
 	return w.alive and w.model.Parent ~= nil and w.owner.Parent ~= nil and w.humanoid.Health > 0
 end
@@ -262,7 +270,7 @@ local function walkTo(w: Worker, pos: Vector3, range: number, abort: (() -> bool
 	movement:MoveTo(pos, range)
 	setWalking(w, true)
 
-	local lastPos, lastMove = w.root.Position, os.clock()
+	local lastPos, lastMove = posOf(w), os.clock()
 	local ok = false
 	while isAlive(w) do
 		if not movement:IsMoving() then
@@ -273,7 +281,7 @@ local function walkTo(w: Worker, pos: Vector3, range: number, abort: (() -> bool
 			break
 		end
 		task.wait()
-		local p = w.root.Position
+		local p = posOf(w)
 		if (p - lastPos).Magnitude > 0.2 then
 			lastPos, lastMove = p, os.clock()
 		elseif os.clock() - lastMove > STUCK_TIME then
@@ -314,7 +322,7 @@ local function trunkOf(w: Worker, tree: Model): (Vector3, number)
 	local trunk = tree:FindFirstChild("Trunk")
 	local center = if trunk and trunk:IsA("BasePart") then trunk.Position else tree:GetPivot().Position
 	local radius = if trunk and trunk:IsA("BasePart") then math.max(trunk.Size.X, trunk.Size.Z) / 2 else 2
-	return Vector3.new(center.X, w.root.Position.Y, center.Z), radius
+	return Vector3.new(center.X, posOf(w).Y, center.Z), radius
 end
 
 -- Body size multiplier of a hero from its size (HeroConfig.Sizes Scale; 1 = Normal).
@@ -362,8 +370,6 @@ end
 
 -- Devil Fruit skills -------------------------------------------------------------------------------
 
-local burning: { [Model]: number } = {} -- tree -> time its burn ends (a new burn refreshes it)
-
 local function fx(kind: string, pos: Vector3, radius: number?, tree: Model?, hero: Model?)
 	FruitService.FXRemote:FireAllClients(kind, pos, radius, tree, hero)
 end
@@ -385,30 +391,22 @@ local function splash(w: Worker, target: Model, center: Vector3, radius: number,
 		if other ~= target and treeAlive(other) then
 			local pos = other:GetPivot().Position
 			if flatDist(pos, center) <= radius then
-				TreeHitService.HeroHit(w.owner, w.root, other, damage, pos + Vector3.new(0, 2, 0))
+				TreeHitService.HeroHit(w.owner, posOf(w), other, damage, pos + Vector3.new(0, 2, 0))
 			end
 		end
 	end
 end
 
--- The tree burns: `damage` every second until `duration` runs out (refreshed by new burns).
+-- The tree burns: `damage` every second until `duration` runs out (refreshed by new burns). The
+-- ticks come from TreeService's single upkeep scan, not a loop per tree.
 local function burn(w: Worker, tree: Model, damage: number, duration: number, kind: string)
-	local refreshing = burning[tree] ~= nil
-	burning[tree] = os.clock() + duration
-	if refreshing then
-		return
-	end
-	task.spawn(function()
-		while burning[tree] and os.clock() < burning[tree] and treeAlive(tree) and w.owner.Parent do
-			task.wait(1)
-			if not treeAlive(tree) then
-				break
-			end
-			local pos = tree:GetPivot().Position + Vector3.new(0, 2, 0)
-			fx(kind .. "Tick", pos, nil, tree)
-			TreeHitService.HeroHit(w.owner, w.root, tree, damage, pos)
+	TreeService.Burn(tree, duration, function(t: Model)
+		if not w.owner.Parent or not treeAlive(t) then
+			return
 		end
-		burning[tree] = nil
+		local pos = t:GetPivot().Position + Vector3.new(0, 2, 0)
+		fx(kind .. "Tick", pos, nil, t)
+		TreeHitService.HeroHit(w.owner, posOf(w), t, damage, pos)
 	end)
 end
 
@@ -450,7 +448,7 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 		return false
 	end
 
-	local dir = flatDir(center, w.root.Position)
+	local dir = flatDir(center, posOf(w))
 	local hitPos = center + dir * radius + Vector3.new(0, 0.5, 0)
 	local damage = statOf(w, "Damage")
 	if damageMult ~= 1 then
@@ -465,7 +463,7 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 	if triggered and skill and skill.Mult then
 		damage = math.floor(damage * skill.Mult + 0.5)
 	end
-	local felled = TreeHitService.HeroHit(w.owner, w.root, tree, damage, hitPos)
+	local felled = TreeHitService.HeroHit(w.owner, posOf(w), tree, damage, hitPos)
 	-- Always-on skills (only Speed / Walk, e.g. Smoke) still show off now and then.
 	if skill and not skill.Chance and not skill.Every and w.swings % 8 == 0 then
 		fx(skill.FX, hitPos, nil, tree, w.model)
@@ -476,7 +474,7 @@ local function swing(w: Worker, tree: Model, center: Vector3, radius: number): b
 			if felled or not treeAlive(tree) then
 				break
 			end
-			felled = TreeHitService.HeroHit(w.owner, w.root, tree, baseDamage, hitPos)
+			felled = TreeHitService.HeroHit(w.owner, posOf(w), tree, baseDamage, hitPos)
 		end
 		if skill.Radius and skill.Share then
 			splash(w, tree, center, skill.Radius, math.max(1, math.floor(damage * skill.Share)))
@@ -568,7 +566,7 @@ retreat = function(w: Worker)
 	w.model.Parent = workersFolder(w.plot)
 	w.hidden = false
 	if w.movement then
-		w.movement:SnapToGround()
+		w.movement:Resync() -- the model was just placed at the gate: clients put it there at once
 	end
 	countOutside(w.plot)
 	walkOut(w)
@@ -604,8 +602,9 @@ local function run(w: Worker)
 		end
 
 		-- Fell off the map somehow: back to the gate.
-		if w.root.Position.Y < gateSpawn(w).Position.Y - 40 then
+		if posOf(w).Y < gateSpawn(w).Position.Y - 40 then
 			w.model:PivotTo(gateSpawn(w))
+			w.movement:Resync()
 		end
 
 		local tree = pickTree(w)
@@ -617,14 +616,14 @@ local function run(w: Worker)
 		w.target = tree
 
 		local center, radius = trunkOf(w, tree)
-		local range = attackRange(tree, center, radius, w.root.Position, reachOf(w))
+		local range = attackRange(tree, center, radius, posOf(w), reachOf(w))
 		walkTo(w, center, range, function()
 			return not treeAlive(tree) or zoneBusy(w)
 		end)
 
 		center, radius = trunkOf(w, tree)
-		range = attackRange(tree, center, radius, w.root.Position, reachOf(w))
-		if isAlive(w) and treeAlive(tree) and not zoneBusy(w) and flatDist(w.root.Position, center) <= range + RANGE_SLACK then
+		range = attackRange(tree, center, radius, posOf(w), reachOf(w))
+		if isAlive(w) and treeAlive(tree) and not zoneBusy(w) and flatDist(posOf(w), center) <= range + RANGE_SLACK then
 			while isAlive(w) and treeAlive(tree) and not zoneBusy(w) do
 				w.movement:FaceTowards(center)
 				if swing(w, tree, center, radius) then
@@ -755,8 +754,9 @@ function HeroWorkerService.Spawn(plot: Model, slot: number, heroName: string, ow
 	model:SetAttribute("Axe", axe)
 	HeroModels.GiveAxe(model, humanoid, axeScale, axe)
 
-	-- Anchors the root and moves the model by CFrame every Heartbeat; snaps it onto the ground now.
+	-- Anchors the root and snaps it onto the ground now; clients draw the walking (ClientRendered).
 	local movement = Movement.new(model, {
+		ClientRendered = true,
 		Speed = padStat(plot, slot, heroName, "Walk"),
 		GroundInstances = groundOf(plot),
 		GroundRayOffset = GROUND_RAY_OFFSET,

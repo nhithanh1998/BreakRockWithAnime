@@ -1,7 +1,17 @@
 -- Movement: di chuyển model bằng CFrame mỗi Heartbeat (Root Anchored), không dùng Humanoid:MoveTo.
 -- Bám mặt đất bằng raycast; hỗ trợ bay (config.Flying). Dùng cho mob và hero.
+--
+-- config.ClientRendered = true (chỉ cho model đi bộ): server KHÔNG dời part mỗi frame nữa. Server chỉ
+-- giữ vị trí logic (Movement:GetPosition / GetCFrame) và công bố đường đi qua attribute trên model
+-- (MoveRest, MoveTarget, MoveStop, MoveSpeed, MoveTime, MoveSeq, MoveSnap, MoveStand); mỗi client tự vẽ
+-- chuyển động mỗi frame (client HeroMotion, tag "ClientMoved"). Part thật trên server chỉ được ghi khi
+-- dừng / dịch chuyển tức thời. Nhờ vậy model chạy mượt ở mọi client và không tốn băng thông mỗi frame.
 
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+
+local CLIENT_TAG = "ClientMoved"
+local IDLE_SNAP_INTERVAL = 0.5 -- ClientRendered: lúc đứng yên chỉ kiểm tra mặt đất mỗi 0.5s
 
 local Movement = {}
 Movement.__index = Movement
@@ -111,6 +121,12 @@ function Movement.new(model, config)
 
 	self.Root.Anchored = true
 
+	-- Client tự vẽ chuyển động (xem đầu file). Không hỗ trợ khi bay.
+	self.ClientRendered = config.ClientRendered == true and not self.Flying
+	self.CFrame = self.Root.CFrame -- CFrame logic của Root (chỉ dùng khi ClientRendered)
+	self.Seq = 0
+	self.IdleSnap = 0
+
 	-- Snap ngay lúc spawn, tránh model bị treo lơ lửng / lún nếu vị trí spawn ban đầu lệch
 	if self.Flying then
 		self:SnapToHover()
@@ -118,11 +134,86 @@ function Movement.new(model, config)
 		self:SnapToGround()
 	end
 
+	if self.ClientRendered then
+		model:SetAttribute("MoveStand", self.StandOffset)
+		self:Commit()
+		self:Publish(true)
+		CollectionService:AddTag(model, CLIENT_TAG)
+	end
+
 	self.Connection = RunService.Heartbeat:Connect(function(dt)
 		self:Update(dt)
 	end)
 
 	return self
+end
+
+-- CFrame / vị trí hiện tại của Root. Khi ClientRendered đây là vị trí logic trên server
+-- (part thật chỉ được cập nhật lúc dừng), nên code server phải đọc qua đây thay vì Root.Position.
+function Movement:GetCFrame()
+	if self.ClientRendered then
+		return self.CFrame
+	end
+	return self.Root.CFrame
+end
+
+function Movement:GetPosition()
+	return self:GetCFrame().Position
+end
+
+-- Áp CFrame mới cho Root: ClientRendered thì chỉ đổi vị trí logic, còn lại dời model thật.
+function Movement:Apply(cf)
+	if self.ClientRendered then
+		self.CFrame = cf
+	else
+		self:SetRootCFrame(cf)
+	end
+end
+
+-- ClientRendered: ghi vị trí logic vào part thật trên server (lúc dừng / dịch chuyển tức thời).
+function Movement:Commit()
+	if self.ClientRendered and self.Model and self.Root then
+		self:SetRootCFrame(self.CFrame)
+	end
+end
+
+-- ClientRendered: công bố trạng thái cho client. Đang đi: xuất phát từ MoveRest lúc MoveTime, đi thẳng
+-- tới MoveTarget với MoveSpeed, dừng cách MoveStop. Đứng yên (MoveTarget = nil): đứng tại MoveRest.
+-- snap = true: client đặt model ngay vào chỗ mới (dịch chuyển tức thời) thay vì trượt tới.
+-- MoveSeq được ghi sau cùng; client chỉ lắng nghe MoveSeq rồi đọc các attribute còn lại.
+function Movement:Publish(snap)
+	local model = self.Model
+	if not self.ClientRendered or not model then
+		return
+	end
+	self.Seq += 1
+	model:SetAttribute("MoveRest", self.CFrame)
+	model:SetAttribute("MoveTarget", self:GetTargetPosition())
+	model:SetAttribute("MoveStop", self.StopDistance)
+	model:SetAttribute("MoveSpeed", self.Speed)
+	model:SetAttribute("MoveTime", workspace:GetServerTimeNow())
+	if snap then
+		model:SetAttribute("MoveSnap", self.Seq)
+	end
+	model:SetAttribute("MoveSeq", self.Seq)
+end
+
+-- Model vừa bị dời từ bên ngoài (Model:PivotTo...): đọc lại vị trí thật, bám đất và báo client đặt ngay.
+function Movement:Resync()
+	if not self.ClientRendered then
+		self:SnapToGround()
+		return
+	end
+	self.Target = nil
+	self.CFrame = self.Root.CFrame
+	self.BaseRotation = self.CFrame.Rotation
+	local p = self.CFrame.Position
+	local groundY = self:GetGroundY(p.X, p.Z, p.Y)
+	if groundY and math.abs(p.Y - groundY) > SNAP_THRESHOLD then
+		self.CFrame += Vector3.new(0, groundY - p.Y, 0)
+	end
+	self:Commit()
+	self:Publish(true)
 end
 
 -- Đặt CFrame cho Root (cả model đi theo). Pivot của model thường KHÔNG trùng Root
@@ -135,10 +226,16 @@ end
 function Movement:MoveTo(target, stopDistance)
 	self.Target = target
 	self.StopDistance = stopDistance or 1
+	self:Publish()
 end
 
 function Movement:Stop()
+	local wasMoving = self.Target ~= nil
 	self.Target = nil
+	if wasMoving and self.ClientRendered then
+		self:Commit()
+		self:Publish()
+	end
 end
 
 -- true khi đang có target (đang đi tới)
@@ -164,12 +261,22 @@ end
 
 -- Quay mặt về phía một điểm (giữ thẳng đứng), dùng khi đứng yên tấn công
 function Movement:FaceTowards(position)
-	local p = self.Root.Position
+	local p = self:GetPosition()
 	local flat = Vector3.new(position.X - p.X, 0, position.Z - p.Z)
 	if flat.Magnitude < 1e-3 then
 		return
 	end
 	local cf = CFrame.lookAt(p, p + flat)
+	if self.ClientRendered then
+		-- Đã nhìn đúng hướng rồi thì không cần báo lại client (hàm này được gọi trước mỗi nhát chém)
+		if self.CFrame.LookVector:Dot(cf.LookVector) > 0.9999 then
+			return
+		end
+		self.BaseRotation = cf.Rotation
+		self.CFrame = cf
+		self:Publish() -- client tự quay mượt
+		return
+	end
 	self.BaseRotation = cf.Rotation
 	self:SetRootCFrame(cf)
 end
@@ -233,11 +340,15 @@ end
 -- Snap character về ground nếu lệch quá SNAP_THRESHOLD, dù là lún xuống dưới
 -- hay lơ lửng phía trên (Root đang Anchored = true, không có gravity thật).
 function Movement:SnapToGround()
-	local rootPos = self.Root.Position
+	local cf = self:GetCFrame()
+	local rootPos = cf.Position
 	local groundY = self:GetGroundY(rootPos.X, rootPos.Z, rootPos.Y)
 	if groundY and math.abs(rootPos.Y - groundY) > SNAP_THRESHOLD then
-		local currentPivot = self.Model:GetPivot()
-		self.Model:PivotTo(currentPivot + Vector3.new(0, groundY - rootPos.Y, 0))
+		self:Apply(cf + Vector3.new(0, groundY - rootPos.Y, 0))
+		if self.ClientRendered then
+			self:Commit()
+			self:Publish(true)
+		end
 	end
 end
 
@@ -407,6 +518,13 @@ function Movement:SetFlying(flying, flyHeight)
 		return
 	end
 
+	-- Bay không hỗ trợ ClientRendered: quay về cách server dời model mỗi frame.
+	if self.ClientRendered then
+		self:Commit()
+		self.ClientRendered = false
+		CollectionService:RemoveTag(self.Model, CLIENT_TAG)
+	end
+
 	self.Flying = flying
 	self.Roll = 0
 	self.HoldTimer = 0
@@ -449,16 +567,27 @@ function Movement:Update(dt)
 		return
 	end
 
-	-- Always try to snap back to ground if fallen below or floating above
-	self:SnapToGround()
-
 	local targetPosition = self:GetTargetPosition()
+
+	-- Always try to snap back to ground if fallen below or floating above.
+	-- ClientRendered: lúc đang đi thì bước đi đã tự bám đất; lúc đứng yên chỉ kiểm tra thưa.
+	if not self.ClientRendered then
+		self:SnapToGround()
+	elseif not targetPosition then
+		self.IdleSnap += dt
+		if self.IdleSnap >= IDLE_SNAP_INTERVAL then
+			self.IdleSnap = 0
+			self:SnapToGround()
+		end
+	end
+
 	if not targetPosition then
 		return
 	end
 
 	-- Chỉ tính mặt phẳng ngang: Y luôn lấy theo mặt đất bên dưới.
-	local rootPos = self.Root.Position
+	local rootCF = self:GetCFrame()
+	local rootPos = rootCF.Position
 	local offset = Vector3.new(targetPosition.X - rootPos.X, 0, targetPosition.Z - rootPos.Z)
 	local distance = offset.Magnitude
 
@@ -487,15 +616,21 @@ function Movement:Update(dt)
 	local targetCF = CFrame.lookAt(newPosition, lookAt)
 
 	-- Vị trí set chính xác theo ground (không Lerp vị trí), chỉ Lerp phần xoay để quay người mượt.
-	local currentRotation = self.Root.CFrame.Rotation
+	local currentRotation = rootCF.Rotation
 	local newRotation = currentRotation:Lerp(targetCF.Rotation, math.min(1, self.RotationSpeed * dt))
 	self.BaseRotation = newRotation
 
-	self:SetRootCFrame(CFrame.new(newPosition) * newRotation)
+	self:Apply(CFrame.new(newPosition) * newRotation)
 end
 
 function Movement:SetSpeed(speed)
+	if speed == self.Speed then
+		return
+	end
 	self.Speed = speed
+	if self.Target ~= nil then
+		self:Publish() -- đang đi: client đi tiếp từ vị trí hiện tại với tốc độ mới
+	end
 end
 
 function Movement:GetSpeed()
@@ -506,6 +641,11 @@ function Movement:Destroy()
 	if self.Connection then
 		self.Connection:Disconnect()
 		self.Connection = nil
+	end
+
+	if self.ClientRendered and self.Model and self.Model.Parent then
+		self:Commit()
+		CollectionService:RemoveTag(self.Model, CLIENT_TAG)
 	end
 
 	self.Target = nil

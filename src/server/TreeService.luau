@@ -14,6 +14,9 @@
 -- When a tree's HP reaches 0 (TreeService.Damage, or any script setting the "HP" attribute)
 --   it gets the "Dead" attribute, is removed TreeConfig.FellTime later (clients play the fall
 --   animation meanwhile), and a new one grows back after the zone's RespawnTime.
+-- Upkeep: ONE scan loop for every plot (every SCAN_INTERVAL seconds, no Heartbeat, no loop per tree)
+--   grows back felled trees whose RespawnTime is up and ticks burning trees (TreeService.Burn). Big
+--   scans are split into batches of SCAN_BATCH with a task.wait() between them so no frame stalls.
 -- Zone changes: ZoneService sets the plot's "ZoneBusy", removes the old trees, and clears "ZoneBusy" once the
 --   new floor is in place; the new zone's trees grow then.
 
@@ -34,6 +37,8 @@ local CONFIG = {
 	MaxAttempts = 30, -- random spots tried per tree
 	ModelScale = 1.2, -- spawned trees are this much bigger than their template (1 = template size)
 	BarAboveTop = 2, -- studs between the top of the tree and the centre of its HP bar
+	ScanInterval = 1, -- seconds between two upkeep scans (respawns, burns)
+	ScanBatch = 25, -- work items per frame during a scan; the rest waits for the next frame
 }
 
 local TreeService = {}
@@ -48,7 +53,12 @@ type PlotState = {
 	count: number,
 	active: boolean,
 	connections: { RBXScriptConnection },
+	respawnAt: { number }, -- os.clock() times at which a felled tree may grow back
 }
+
+-- A burning tree (TreeService.Burn): `tick` runs once per scan until `ends`.
+type Burn = { ends: number, tick: (tree: Model) -> () }
+local burns: { [Model]: Burn } = {}
 
 local states: { [Model]: PlotState } = {}
 local rng = Random.new()
@@ -283,11 +293,9 @@ local function onTreeGone(state: PlotState, tree: Model)
 	state.alive[tree] = nil
 	state.count -= 1
 	if state.active then
-		task.delay(ZoneConfig.GetBase(state.plot:GetAttribute("Zone"), "RespawnTime") or 4, function()
-			if state.active then
-				fill(state)
-			end
-		end)
+		-- Grown back by the upkeep scan (no timer per tree).
+		local respawnTime = ZoneConfig.GetBase(state.plot:GetAttribute("Zone"), "RespawnTime") or 4
+		table.insert(state.respawnAt, os.clock() + respawnTime)
 	end
 end
 
@@ -391,6 +399,7 @@ function TreeService.StartPlot(plot: Model)
 		count = 0,
 		active = true,
 		connections = {},
+		respawnAt = {},
 	}
 	states[plot] = state
 
@@ -432,6 +441,19 @@ function TreeService.StopPlot(plot: Model)
 	clear(state)
 end
 
+-- Sets a tree on fire: `onTick(tree)` runs once per upkeep scan (every ScanInterval seconds) until
+-- `duration` runs out or the tree dies. Burning an already burning tree only refreshes the end time
+-- (the first burn's onTick keeps running). Returns true if it was refreshed.
+function TreeService.Burn(tree: Model, duration: number, onTick: (tree: Model) -> ()): boolean
+	local burn = burns[tree]
+	if burn then
+		burn.ends = os.clock() + duration
+		return true
+	end
+	burns[tree] = { ends = os.clock() + duration, tick = onTick }
+	return false
+end
+
 -- Deals damage to a tree. Returns true if this hit felled it.
 function TreeService.Damage(tree: Model, amount: number): boolean
 	local hp = tree:GetAttribute("HP")
@@ -453,5 +475,75 @@ function TreeService.GetTrees(plot: Model): { Model }
 	end
 	return list
 end
+
+-- Upkeep scan --------------------------------------------------------------------------------------
+
+local function treeAlive(tree: Model): boolean
+	return tree.Parent ~= nil and not tree:GetAttribute("Dead") and (tree:GetAttribute("HP") or 0) > 0
+end
+
+-- Takes the respawns that are due out of the plot's list; true if at least one was.
+local function takeDueRespawns(state: PlotState, now: number): boolean
+	local due = false
+	for i = #state.respawnAt, 1, -1 do
+		if state.respawnAt[i] <= now then
+			table.remove(state.respawnAt, i)
+			due = true
+		end
+	end
+	return due
+end
+
+local function scan()
+	local now = os.clock()
+	local done = 0
+	local function step()
+		done += 1
+		if done % CONFIG.ScanBatch == 0 then
+			task.wait() -- spread big scans over several frames
+		end
+	end
+
+	-- Plots with trees to grow back. A refill can spawn several trees: one batch item each plot.
+	local plots: { PlotState } = {}
+	for _, state in states do
+		if state.active and takeDueRespawns(state, now) then
+			table.insert(plots, state)
+		end
+	end
+	for _, state in plots do
+		if state.active and states[state.plot] == state then
+			fill(state)
+		end
+		step()
+	end
+
+	-- Burning trees: one tick each, ended ones dropped.
+	local burning: { Model } = {}
+	for tree in burns do
+		table.insert(burning, tree)
+	end
+	for _, tree in burning do
+		local burn = burns[tree]
+		if burn then
+			if not treeAlive(tree) or now >= burn.ends then
+				burns[tree] = nil
+			else
+				task.spawn(burn.tick, tree) -- an error in one tick can't stop the scan
+			end
+		end
+		step()
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(CONFIG.ScanInterval)
+		local ok, err = pcall(scan)
+		if not ok then
+			warn("[TreeService] upkeep scan failed: " .. tostring(err))
+		end
+	end
+end)
 
 return TreeService

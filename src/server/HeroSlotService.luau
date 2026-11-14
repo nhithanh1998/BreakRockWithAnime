@@ -168,8 +168,8 @@ local function drawPad(slot: Model, locked: boolean)
 end
 
 -- Each pad has two billboards: Pad.Empty.BillboardGui ("EmptyText") for an empty or locked pad, and
--- Pad.HeroInfo.BillboardGui (HeroName / Level / Power) for a pad with a hero on it. The name is drawn
--- in its rarity's moving gradient; the template's "Rarity" line is hidden.
+-- Pad.HeroInfo.BillboardGui (HeroName / Power) for a pad with a hero on it. The name line reads
+-- "[Lv 55] Hero Name" in its rarity's moving gradient; the template's "Level" and "Rarity" lines are hidden.
 -- Only one of them is shown at a time; their positions are set in Studio.
 local function billboard(pad: Instance, attachment: string): BillboardGui?
 	local a = pad:FindFirstChild(attachment)
@@ -255,15 +255,19 @@ local function drawGui(slot: Model, hero: string?, locked: boolean?)
 			if nameLabel and nameLabel:IsA("TextLabel") then nameLabel.FontFace else nil
 		)
 		if def then
+			-- "[Lv 55] Hero Name" on one line, in the rarity's gradient (the size is on its own badge above).
 			local nameLabel = info:FindFirstChild("HeroName") :: TextLabel?
 			if nameLabel then
-				nameLabel.Text = HeroConfig.DisplayName(def) -- the size is on its own badge above
+				local level = slot:GetAttribute(HeroConfig.LevelAttribute("Damage"))
+				nameLabel.Text = ("[Lv %d] %s"):format(
+					if typeof(level) == "number" then level else 1,
+					HeroConfig.DisplayName(def)
+				)
 				HeroConfig.PaintRarityGradient(nameLabel, def.Rarity)
 			end
 			local levelLabel = info:FindFirstChild("Level") :: TextLabel?
 			if levelLabel then
-				local level = slot:GetAttribute(HeroConfig.LevelAttribute("Damage"))
-				levelLabel.Text = "Level " .. tostring(if typeof(level) == "number" then level else 1)
+				levelLabel.Visible = false
 			end
 			local rarityLabel = info:FindFirstChild("Rarity") :: TextLabel?
 			if rarityLabel then

@@ -221,6 +221,15 @@ local function applyHit(player: Player, model: Model, damage: number, hitPos: an
 	if felled then
 		local plot = plotOf(model)
 		local drops = rollDrops(plot and plot:GetAttribute("Zone"), model:GetAttribute("TreeType"), player)
+		-- A hero the player never had (not owned, not in the Index) is "New" (client: cutscene). Checked
+		-- before DiscoverDrops marks it found.
+		local owned = player:FindFirstChild("Heroes")
+		for _, drop in drops do
+			if drop.Kind == "Anime" then
+				drop.New = not IndexService.IsFound(player, "Heroes", drop.Name)
+					and not (owned and owned:FindFirstChild(drop.Name))
+			end
+		end
 		IndexService.DiscoverDrops(player, drops) -- found in the Index (even if auto-sold right away)
 		local chest = ChestService.GetChest(plot)
 		local groundY = cf.Position.Y - size.Y / 2
@@ -268,7 +277,8 @@ local function onHit(player: Player, tree: any, hitPos: any)
 end
 
 -- A hero (HeroWorkerService) swings at a tree on its owner's plot. Returns true if it felled the tree.
-function TreeHitService.HeroHit(owner: Player, heroRoot: BasePart, tree: Model, damage: number, hitPos: Vector3): boolean
+-- `heroRoot` = the hero's root part, or its position (workers pass their logical position).
+function TreeHitService.HeroHit(owner: Player, heroRoot: BasePart | Vector3, tree: Model, damage: number, hitPos: Vector3): boolean
 	if not tree.Parent or tree:GetAttribute("Dead") or (tree:GetAttribute("HP") or 0) <= 0 then
 		return false
 	end
@@ -276,7 +286,8 @@ function TreeHitService.HeroHit(owner: Player, heroRoot: BasePart, tree: Model, 
 	if not plot or plot:GetAttribute("OwnerUserId") ~= owner.UserId then
 		return false
 	end
-	return applyHit(owner, tree, damage, hitPos, nil, heroRoot.Position)
+	local from = if typeof(heroRoot) == "Vector3" then heroRoot else (heroRoot :: BasePart).Position
+	return applyHit(owner, tree, damage, hitPos, nil, from)
 end
 
 function TreeHitService.Start()

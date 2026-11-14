@@ -63,6 +63,13 @@ function IndexService.Discover(player: Player, stack: string)
 	end
 end
 
+-- True if the player has found this item before (folder = "Heroes" / "Inventory").
+function IndexService.IsFound(player: Player, folderName: string, itemName: string): boolean
+	local stack = IndexConfig.StackFor(folderName, itemName, plainHero)
+	local folder = player:FindFirstChild(IndexConfig.FoundFolder)
+	return stack ~= nil and folder ~= nil and folder:FindFirstChild(stack) ~= nil
+end
+
 -- Marks the item a player just got (folder = "Heroes" / "Inventory", as in ChestService.AddItem).
 function IndexService.DiscoverItem(player: Player, folderName: string, itemName: string)
 	local stack = IndexConfig.StackFor(folderName, itemName, plainHero)

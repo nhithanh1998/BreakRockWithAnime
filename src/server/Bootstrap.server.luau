@@ -15,6 +15,9 @@ local WeatherService = require(script.Parent:WaitForChild("WeatherService"))
 local DailyRewardService = require(script.Parent:WaitForChild("DailyRewardService"))
 local PotionService = require(script.Parent:WaitForChild("PotionService"))
 local IndexService = require(script.Parent:WaitForChild("IndexService"))
+local CollisionGroups = require(script.Parent:WaitForChild("CollisionGroups"))
+
+CollisionGroups.Start() -- players and heroes never collide
 
 PlotService.PlotClaimed:Connect(function(player, plot)
 	ChestService.ResetPlot(plot)
