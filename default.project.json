@@ -19,16 +19,25 @@
         "TreeDrops": {
           "$className": "RemoteEvent"
         },
-        "ChestAction": {
-          "$className": "RemoteEvent"
-        },
         "ItemsAdded": {
           "$className": "RemoteEvent"
         },
         "HeroSlot": {
           "$className": "RemoteEvent"
         },
+        "StandAction": {
+          "$className": "RemoteFunction"
+        },
+        "StandEvent": {
+          "$className": "RemoteEvent"
+        },
+        "Toast": {
+          "$className": "RemoteEvent"
+        },
         "ShopAction": {
+          "$className": "RemoteFunction"
+        },
+        "InventoryAction": {
           "$className": "RemoteFunction"
         },
         "SkillAction": {
@@ -62,6 +71,13 @@
       },
       "ZoneLoader": {
         "$path": "src/zone/ZoneLoader.server.luau"
+      }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+      "StandTools": {
+        "$path": "tools/stand"
       }
     },
     "StarterGui": {

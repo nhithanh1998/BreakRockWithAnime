@@ -38,6 +38,7 @@ local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 local HeroWorkerService = require(script.Parent:WaitForChild("HeroWorkerService"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local HeldHeroService = require(script.Parent:WaitForChild("HeldHeroService"))
+local HeroPlacement = require(script.Parent:WaitForChild("HeroPlacement"))
 local HeroModels = require(script.Parent:WaitForChild("HeroModels"))
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local FruitConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FruitConfig"))
@@ -86,6 +87,14 @@ local HeroSlotService = {}
 local states: { [Model]: PlotState } = {}
 local selected: { [Player]: string } = {}
 
+-- Fired with (player) when the hero the player holds (hotbar selection) changes. Other pad kinds
+-- (StandService keeper / helper pads) listen to update their prompts.
+local selectionChanged = Instance.new("BindableEvent")
+HeroSlotService.SelectionChanged = selectionChanged.Event
+-- Fired with (owner) after the worker pads were redrawn (a hero placed / taken back, owned counts changed).
+local padsRefreshed = Instance.new("BindableEvent")
+HeroSlotService.PadsRefreshed = padsRefreshed.Event
+
 local function slotIndex(slot: Instance): number?
 	return tonumber(slot.Name:match("^Slot(%d+)$"))
 end
@@ -110,7 +119,7 @@ local function owned(player: Player, hero: string): number
 	return if value then value.Value else 0
 end
 
-local function placedCount(state: PlotState, hero: string): number
+local function workerCount(state: PlotState, hero: string): number
 	local n = 0
 	for _, name in state.placed do
 		if name == hero then
@@ -118,6 +127,16 @@ local function placedCount(state: PlotState, hero: string): number
 		end
 	end
 	return n
+end
+
+-- Copies on the other kinds of pads (Stand Keeper / Helper, see HeroPlacement).
+local function otherPadsCount(state: PlotState, hero: string): number
+	return math.max(0, HeroPlacement.CountPlaced(state.owner, hero) - workerCount(state, hero))
+end
+
+-- Copies on any pad: a copy can only stand on one pad, whatever its kind.
+local function placedCount(state: PlotState, hero: string): number
+	return workerCount(state, hero) + otherPadsCount(state, hero)
 end
 
 -- How many pads (Slot1..SlotN) this player has unlocked.
@@ -404,6 +423,7 @@ local function refresh(state: PlotState)
 			prompt.Enabled = true
 		end
 	end
+	padsRefreshed:Fire(state.owner)
 end
 
 -- Placing ----------------------------------------------------------------------------------------
@@ -468,6 +488,7 @@ local function onPrompt(state: PlotState, index: number, player: Player)
 			selected[player] = nil
 			HeldHeroService.Set(player, nil)
 			remote:FireClient(player, "Deselect", hero)
+			selectionChanged:Fire(player)
 		end
 	end
 	refresh(state)
@@ -679,7 +700,7 @@ local function equipBest(state: PlotState): (boolean, string)
 	local folder = owner:FindFirstChild("Heroes")
 	for _, v in if folder then folder:GetChildren() else {} do
 		if v:IsA("IntValue") and HeroConfig.Get(v.Name) then
-			for _ = 1, v.Value do
+			for _ = 1, v.Value - otherPadsCount(state, v.Name) do
 				table.insert(heroes, v.Name)
 			end
 		end
@@ -1063,7 +1084,42 @@ function HeroSlotService.EquipFruitOnBest(player: Player, id: string): (boolean,
 	return ok, message
 end
 
+-- The hero the player holds (hotbar), or nil.
+function HeroSlotService.GetSelected(player: Player): string?
+	return selected[player]
+end
+
+-- Drops the held hero if it is `hero` (its last free copy went onto another kind of pad).
+function HeroSlotService.Deselect(player: Player, hero: string)
+	if selected[player] == hero then
+		selected[player] = nil
+		HeldHeroService.Set(player, nil)
+		remote:FireClient(player, "Deselect", hero)
+		local state = stateOf(player)
+		if state then
+			refresh(state)
+		end
+		selectionChanged:Fire(player)
+	end
+end
+
+-- Redraws the player's worker pad prompts (copies were placed / freed on another kind of pad).
+function HeroSlotService.RefreshFor(player: Player)
+	local state = stateOf(player)
+	if state then
+		refresh(state)
+	end
+end
+
 function HeroSlotService.Start()
+	HeroPlacement.Register("Worker", function(player: Player)
+		local counts: { [string]: number } = {}
+		local state = stateOf(player)
+		for _, hero in if state then state.placed else {} do
+			counts[hero] = (counts[hero] or 0) + 1
+		end
+		return counts
+	end)
 	HeldHeroService.Start()
 	-- Free plots show the locked pads too, not only claimed ones.
 	local plots = workspace:FindFirstChild("Plots")
@@ -1088,6 +1144,7 @@ function HeroSlotService.Start()
 		if state then
 			refresh(state)
 		end
+		selectionChanged:Fire(player)
 	end)
 	upgradeRemote.OnServerInvoke = function(player, index, stat, lockList)
 		local action = stat

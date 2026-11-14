@@ -1,9 +1,6 @@
 -- ShopUI: the shop windows, opened from the shops' "ShopPrompt" (ShopService / ShopConfig).
 --
--- Sell ("Sell Items!"): a card per stack in player.Inventory (materials) and player.Heroes. Click a
---   card to tick / untick it. Nothing is ticked when the window opens; "Select All" ticks every
---   material (heroes are only sold when you tick them yourself). Heroes standing on a pad are kept,
---   and a hero whose copies are all on pads isn't listed. "Sell for $X" sells every ticked stack.
+-- (Selling moved: materials are sold at the Farm Stand, heroes from the Inventory window.)
 -- Lumber Axe ("Lumber Axe!"): a card per axe (ShopConfig.Axes) with its model, damage and price.
 --   Click to buy (then it is equipped) or to equip one you own. Each axe shows its server-wide stock
 --   (ReplicatedStorage.AxeStock, "Sold Out" at 0) and is locked until the player has unlocked its
@@ -18,7 +15,6 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
-local SkillTreeConfig = require(Shared:WaitForChild("SkillTreeConfig"))
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
@@ -281,7 +277,6 @@ end
 
 local current: { kind: string, prompt: ProximityPrompt?, anchor: BasePart? }? = nil
 
-local sellWindow = makeWindow("Sell", "Sell Items!", ColorSequence.new(Color3.fromRGB(150, 255, 90), Color3.fromRGB(40, 200, 60)), "Sell", "~ Sell your items for cash ~")
 local SOLD_OUT_COLOR = Color3.fromRGB(255, 90, 80)
 local LOCKED_COLOR = Color3.fromRGB(190, 190, 200)
 local STOCK_COLOR = Color3.fromRGB(255, 220, 90)
@@ -498,179 +493,7 @@ local function money(): number
 	return if v and v:IsA("ValueBase") then (v :: any).Value else 0
 end
 
--- Heroes standing on my plot's pads (HeroSlotService writes each slot's "HeroId").
-local function placedHeroes(): { [string]: number }
-	local counts = {}
-	local plots = workspace:FindFirstChild("Plots")
-	for _, plot in if plots then plots:GetChildren() else {} do
-		if plot:GetAttribute("OwnerUserId") == player.UserId then
-			local slots = plot:FindFirstChild("HeroSlots")
-			for _, slot in if slots then slots:GetChildren() else {} do
-				local hero = slot:GetAttribute("HeroId")
-				if typeof(hero) == "string" and hero ~= "" then
-					counts[hero] = (counts[hero] or 0) + 1
-				end
-			end
-		end
-	end
-	return counts
-end
-
--- Sell window ---------------------------------------------------------------------------------------
-
-type SellEntry = { stack: string, isHero: boolean, amount: number, total: number, rarity: string }
-
-local selected: { [string]: boolean } = {}
-local entries: { [string]: SellEntry } = {}
 local busy = false
-
-local function sellEntries(): { SellEntry }
-	local list: { SellEntry } = {}
-	local inventory = folder("Inventory")
-	for _, v in if inventory then inventory:GetChildren() else {} do
-		local def = v:IsA("IntValue") and TreeConfig.Materials[v.Name]
-		if def and (v :: IntValue).Value > 0 then
-			local amount = (v :: IntValue).Value
-			table.insert(list, { stack = v.Name, isHero = false, amount = amount, total = SkillTreeConfig.MaterialValue(player, v.Name) * amount, rarity = def.Rarity })
-		end
-	end
-	local heroes = folder("Heroes")
-	local placed = placedHeroes()
-	for _, v in if heroes then heroes:GetChildren() else {} do
-		local hero = v:IsA("IntValue") and TreeConfig.GetHero(v.Name)
-		local amount = if hero then math.max(0, (v :: IntValue).Value - (placed[v.Name] or 0)) else 0
-		-- Every copy standing on a pad (x0 left): nothing to sell, so not listed.
-		if hero and amount > 0 then
-			table.insert(list, {
-				stack = HERO_PREFIX .. v.Name,
-				isHero = true,
-				amount = amount,
-				total = hero.SellValue * ShopConfig.HeroSellMultiplier * amount,
-				rarity = hero.Rarity,
-			})
-		end
-	end
-	-- Materials first, then heroes; rarest first, then most valuable.
-	table.sort(list, function(a, b)
-		if a.isHero ~= b.isHero then
-			return not a.isHero
-		end
-		local ra, rb = TreeConfig.RarityOrder[a.rarity] or 99, TreeConfig.RarityOrder[b.rarity] or 99
-		if ra ~= rb then
-			return ra < rb
-		end
-		return a.total > b.total
-	end)
-	return list
-end
-
-local function selectedTotal(): number
-	local total = 0
-	for stack in selected do
-		local e = entries[stack]
-		if e then
-			total += e.total
-		end
-	end
-	return total
-end
-
-local function updateSellFooter()
-	local any = next(selected) ~= nil
-	sellWindow.leftButton.Text = if any then "Deselect All" else "Select All"
-	sellWindow.leftButton.BackgroundColor3 = if any then RED_BUTTON else GREEN_BUTTON
-	local total = selectedTotal()
-	sellWindow.rightButton.Text = if total > 0 then ("Sell for $%s"):format(abbreviate(total)) else "Sell"
-	sellWindow.rightButton.BackgroundColor3 = if total > 0 then GREEN_BUTTON else GREY_BUTTON
-end
-
-local function drawCheck(card: Instance, on: boolean)
-	local check = card:FindFirstChild("Check") :: TextLabel?
-	local tint = card:FindFirstChild("Tint") :: Frame?
-	if check then
-		check.Visible = on
-	end
-	if tint then
-		tint.Visible = on
-	end
-end
-
-local function renderSell()
-	for _, c in sellWindow.grid:GetChildren() do
-		if c:IsA("GuiObject") then
-			c:Destroy()
-		end
-	end
-	entries = {}
-	local list = sellEntries()
-	for i, e in list do
-		entries[e.stack] = e
-		local info = ItemDisplay.Info(e.stack)
-		local card = makeCard(sellWindow.grid, i, e.rarity)
-		ItemDisplay.SetPicture(card, info)
-		local sellable = e.amount > 0
-		cardText(card, info.name, if sellable then "$" .. abbreviate(e.total) else "On Pad", if sellable then VALUE_GREEN else Color3.fromRGB(255, 200, 80), "x" .. ItemDisplay.Commas(e.amount))
-		new("Frame", { Name = "Tint", BackgroundColor3 = CHECK_COLOR, BackgroundTransparency = 0.75, Size = UDim2.fromScale(1, 1), ZIndex = 2, Visible = false, Parent = card }, { corner(4) })
-		local check = text({ Name = "Check", Text = "✓", TextColor3 = CHECK_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1.04, -0.08), Size = UDim2.fromScale(0.3, 0.3), ZIndex = 4, Visible = false, StrokeThickness = 2.5, Parent = card })
-		check.Font = Enum.Font.GothamBlack
-		if not sellable then
-			selected[e.stack] = nil
-			card.BackgroundTransparency = 0.4
-		end
-		drawCheck(card, selected[e.stack] == true)
-		card.Activated:Connect(function()
-			if not sellable then
-				return
-			end
-			selected[e.stack] = if selected[e.stack] then nil else true
-			drawCheck(card, selected[e.stack] == true)
-			pop(card)
-			updateSellFooter()
-		end)
-	end
-	-- Drop ticks for stacks that are gone.
-	for stack in selected do
-		if not entries[stack] then
-			selected[stack] = nil
-		end
-	end
-	updateSellFooter()
-end
-
-local function selectAllMaterials()
-	for stack, e in entries do
-		if not e.isHero and e.amount > 0 then
-			selected[stack] = true
-		end
-	end
-end
-
-sellWindow.leftButton.Activated:Connect(function()
-	if next(selected) ~= nil then
-		table.clear(selected)
-	else
-		selectAllMaterials()
-	end
-	renderSell()
-	pop(sellWindow.leftButton)
-end)
-
-sellWindow.rightButton.Activated:Connect(function()
-	if busy or selectedTotal() <= 0 then
-		return
-	end
-	busy = true
-	pop(sellWindow.rightButton)
-	local ok, result = pcall(ShopAction.InvokeServer, ShopAction, "Sell", selected)
-	busy = false
-	if ok and result and result.ok then
-		table.clear(selected)
-		showToast(sellWindow, ("+$%s"):format(abbreviate(result.earned or 0)), VALUE_GREEN)
-	else
-		showToast(sellWindow, if ok and result and result.message then result.message else "Could not sell", Color3.fromRGB(255, 90, 80))
-	end
-	renderSell()
-end)
 
 -- Axe window ----------------------------------------------------------------------------------------
 
@@ -1018,7 +841,7 @@ end
 
 -- Opening / closing ---------------------------------------------------------------------------------
 
-local windows = { Sell = sellWindow, LumberAxe = axeWindow }
+local windows = { LumberAxe = axeWindow }
 local watchers: { RBXScriptConnection } = {}
 
 local function closeAll()
@@ -1062,18 +885,7 @@ local function open(kind: string, prompt: ProximityPrompt?)
 	if prompt then
 		prompt.Enabled = false -- hide it while the window is open
 	end
-	if kind == "Sell" then
-		table.clear(selected)
-		entries = {}
-		renderSell() -- nothing ticked: the player picks, or presses "Select All"
-		local refresh = function()
-			if not busy then
-				renderSell()
-			end
-		end
-		watch(folder("Inventory"), refresh)
-		watch(folder("Heroes"), refresh)
-	else
+	do
 		renderAxes()
 		-- Several values often change together (a restock touches every axe): rebuild once per batch.
 		local queued = false

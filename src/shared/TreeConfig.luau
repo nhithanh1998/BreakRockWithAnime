@@ -184,6 +184,9 @@ TreeConfig.FancyRarities = { Rare = true, Epic = true, Legendary = true, Mythic 
 -- Heroes of these rarities get a cinematic cutscene when they drop (client/HeroCutscene.luau),
 -- but only the first time the player gets that hero (Drop.New): duplicates never get one.
 TreeConfig.CutsceneRarities = { Legendary = true, Mythic = true } :: { [string]: boolean }
+-- Seconds after a fell before the "Added!" / "New!" popup for heroes (they go straight into the
+-- inventory), so it shows once the hero has flown to the player instead of spoiling the drop.
+TreeConfig.HeroPopupDelay = 2.5
 -- Optional sound ids ("rbxassetid://...") for the cutscene; empty = silent.
 --   Charge = the pillar of light starts     Step = every rarity tier of the climb (pitched up per tier)
 --   Lock   = rarity locked, the hero lands  Reveal = the silhouette turns into the hero

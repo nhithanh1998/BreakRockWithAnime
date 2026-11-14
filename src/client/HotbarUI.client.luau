@@ -14,6 +14,7 @@
 --
 -- The layout lives in StarterGui.HotbarGui so it can be tweaked in Studio; this script only fills it.
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
@@ -123,7 +124,8 @@ local function ownedCount(hero: string): number
 	return if v then v.Value else 0
 end
 
--- How many of each hero stand on my plot's pads (HeroSlotService writes each slot's "HeroId").
+-- How many of each hero stand on my plot's pads: worker pads (HeroSlotService writes each slot's
+-- "HeroId") and Farm Stand keeper / helper pads (tag "StandHeroPad", StandService). A copy is on one pad only.
 local function placedCounts(): { [string]: number }
 	local counts = {}
 	local plots = workspace:FindFirstChild("Plots")
@@ -133,6 +135,12 @@ local function placedCounts(): { [string]: number }
 			for _, slot in if pads then pads:GetChildren() else {} do
 				local hero = slot:GetAttribute("HeroId")
 				if typeof(hero) == "string" and hero ~= "" then
+					counts[hero] = (counts[hero] or 0) + 1
+				end
+			end
+			for _, pad in CollectionService:GetTagged("StandHeroPad") do
+				local hero = pad:GetAttribute("HeroId")
+				if typeof(hero) == "string" and hero ~= "" and pad:IsDescendantOf(plot) then
 					counts[hero] = (counts[hero] or 0) + 1
 				end
 			end
@@ -399,6 +407,18 @@ task.spawn(function()
 		watchPlotPart(d)
 	end
 	plots.DescendantAdded:Connect(watchPlotPart)
+	queueRender()
+end)
+
+-- Farm Stand keeper / helper pads (StandService) change what is left too.
+local function watchStandPad(pad: Instance)
+	pad:GetAttributeChangedSignal("HeroId"):Connect(queueRender)
+end
+for _, pad in CollectionService:GetTagged("StandHeroPad") do
+	watchStandPad(pad)
+end
+CollectionService:GetInstanceAddedSignal("StandHeroPad"):Connect(function(pad)
+	watchStandPad(pad)
 	queueRender()
 end)
 render()

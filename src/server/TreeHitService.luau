@@ -4,7 +4,7 @@
 -- Server -> all     Remotes.TreeHit(tree, attacker, damage, hitPosition, felled, fromPosition?)
 --                   (shake / leaves / numbers; attacker is nil and fromPosition is the hero for hero hits)
 -- Heroes working a HeroSlot hit through TreeHitService.HeroHit; their drops go to the slot's owner.
--- Server -> owner   Remotes.TreeDrops(origin, groundY, drops, chest)                (drops fly into the chest)
+-- Server -> owner   Remotes.TreeDrops(origin, groundY, drops, chest)                (materials fly into the chest, heroes to the player)
 --
 -- Drops go into the plot's chest the moment the tree falls (ChestService "Contents"); the player
 -- moves them into "Inventory" / "Heroes" with Take All and sells materials at the Sell shop.
@@ -30,6 +30,9 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local HitTree = Remotes:WaitForChild("HitTree") :: RemoteEvent
 local TreeHit = Remotes:WaitForChild("TreeHit") :: RemoteEvent
 local TreeDrops = Remotes:WaitForChild("TreeDrops") :: RemoteEvent
+local ItemsAdded = Remotes:WaitForChild("ItemsAdded") :: RemoteEvent
+
+local HERO_PREFIX = "Anime:"
 
 local TreeHitService = {}
 
@@ -233,17 +236,36 @@ local function applyHit(player: Player, model: Model, damage: number, hitPos: an
 		IndexService.DiscoverDrops(player, drops) -- found in the Index (even if auto-sold right away)
 		local chest = ChestService.GetChest(plot)
 		local groundY = cf.Position.Y - size.Y / 2
+		-- Heroes always go straight into player.Heroes (with the "Added!" / "New!" popup).
+		local heroes: { Drop } = {}
+		local materials: { Drop } = {}
+		for _, drop in drops do
+			table.insert(if drop.Kind == "Anime" then heroes else materials, drop)
+		end
+		if #heroes > 0 then
+			grantDrops(player, heroes)
+			local popups = {}
+			for _, drop in heroes do
+				table.insert(popups, { Stack = HERO_PREFIX .. drop.Name, Amount = drop.Amount, New = drop.New == true })
+			end
+			-- After the drop has popped out (and its cutscene, if any) so the popup doesn't spoil it.
+			task.delay(TreeConfig.HeroPopupDelay, function()
+				if player.Parent then
+					ItemsAdded:FireClient(player, popups)
+				end
+			end)
+		end
 		if not chest then
-			grantDrops(player, drops)
+			grantDrops(player, materials)
 			TreeDrops:FireClient(player, cf.Position, groundY, drops, nil)
 			return true
 		end
-		-- Every drop (materials too) flies into the chest; the player takes it from there and sells it
-		-- at the Sell shop. Only what fits in the chest is kept.
+		-- Materials fly into the chest (the plot's loot pile); from there they are carried to the
+		-- Farm Stand. Only what fits in the chest is kept.
 		local room = ChestService.GetRoom(chest)
 		local total = 0
 		local kept: { Drop } = {}
-		for _, drop in drops do
+		for _, drop in materials do
 			local amount = math.min(drop.Amount, room - total)
 			if amount > 0 then
 				drop.Amount = amount
@@ -251,11 +273,12 @@ local function applyHit(player: Player, model: Model, damage: number, hitPos: an
 				table.insert(kept, drop)
 			end
 		end
+		for _, drop in heroes do
+			table.insert(kept, drop)
+		end
 		-- Fire before updating Stored so the client knows these items are still in flight.
 		TreeDrops:FireClient(player, cf.Position, groundY, kept, chest)
-		if #kept > 0 then
-			ChestService.AddDrops(chest, kept)
-		end
+		ChestService.AddDrops(chest, kept) -- skips the heroes
 	end
 	return felled
 end

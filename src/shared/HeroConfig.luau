@@ -340,6 +340,12 @@ local UNITS = {
 	{ 1e6, "M" },
 	{ 1e3, "K" },
 }
+-- Rarity rank from low to high: Common = 1 ... Mythic = 6 (0 for an unknown rarity).
+HeroConfig.RarityRanks = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6 } :: { [string]: number }
+function HeroConfig.GetRarityOrder(rarity: string): number
+	return HeroConfig.RarityRanks[rarity] or 0
+end
+
 function HeroConfig.Abbreviate(n: number): string
 	for _, unit in UNITS do
 		if n >= unit[1] then
@@ -474,6 +480,15 @@ local HERO_LIST: { HeroEntry } = {
 	{ Name = "Star Brawler", Rarity = "Legendary", Template = "StarBrawler", Sell = "13K", AnimeImage = "rbxassetid://80282275912995" }, -- 0.7%
 	{ Name = "Marine Grandpa", Rarity = "Mythic", Template = "MarineGrandpa", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" }, -- 0.28%
 	-- Zone 3 (Orchard Valley)
+	{ Name  = "Volleyball Rookie", Rarity = "Mythic", Template = "VolleyballRookie", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+	{ Name = "Titan Lover", Rarity = "Mythic", Template = "TitanLover", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+	{ Name  = "Alchemist Brother", Rarity = "Mythic", Template = "AlchemistBrother", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+	{ Name  = "Explosion Mage", Rarity = "Mythic", Template = "ExplosionMage", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+	{ Name = "Bomb Boy", Rarity = "Mythic", Template = "BombBoy", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+	{ Name = "Loop Hero", Rarity = "Mythic", Template = "LoopHero", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+	{ Name = "Abyssal Knight", Rarity = "Mythic", Template = "AbyssalKnight", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+	{ Name = "Frog Sage", Rarity = "Mythic", Template = "FrogSage", Sell = "33K", AnimeImage = "rbxassetid://89773245024998" },
+
 }
 
 HeroConfig.Heroes = {} :: { HeroDef }

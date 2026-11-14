@@ -757,11 +757,14 @@ end
 -- `waitFor` (optional) blocks until the drops may pop out, e.g. until a HeroCutscene has finished.
 -- The chest's in-flight count is bumped right away, so its counter doesn't jump ahead meanwhile.
 function DropFX.Play(origin: Vector3, groundY: number, drops: { Drop }, chest: Model?, waitFor: (() -> ())?)
-	-- Every drop flies into the chest (never into the player) when there is one.
+	-- Materials fly into the chest when there is one; heroes always fly to the player (they go
+	-- straight into the inventory).
 	if chest then
 		local total = 0
 		for _, drop in drops do
-			total += drop.Amount
+			if drop.Kind ~= "Anime" then
+				total += drop.Amount
+			end
 		end
 		ChestFX.AddInFlight(chest, total)
 	end
@@ -770,7 +773,8 @@ function DropFX.Play(origin: Vector3, groundY: number, drops: { Drop }, chest: M
 			waitFor()
 		end
 		for i, drop in drops do
-			task.delay((i - 1) * 0.07, playDrop, drop, origin, groundY, i, chest)
+			local target = if drop.Kind == "Anime" then nil else chest
+			task.delay((i - 1) * 0.07, playDrop, drop, origin, groundY, i, target)
 		end
 	end)
 end

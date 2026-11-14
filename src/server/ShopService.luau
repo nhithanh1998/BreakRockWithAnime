@@ -1,13 +1,12 @@
--- ShopService: the Sell and Lumber Axe shops (see ShopConfig).
+-- ShopService: the Lumber Axe shop (see ShopConfig). Selling moved: materials at the Farm Stand,
+-- heroes from the Inventory window (InventoryService).
 --
 -- Every plot has its own shops in plot.Shops (Models with a "Shop" attribute), so each player uses
 -- the shops on their own plot. A Workspace.Shops folder still works too (shared by everyone).
 --
--- Each shop model gets a ProximityPrompt "ShopPrompt" (attribute Shop = "Sell" | "LumberAxe") on its
+-- Each shop model gets a ProximityPrompt "ShopPrompt" (attribute Shop = "LumberAxe" | ...) on its
 -- "PromptPart"; the client opens the matching window (ShopUI). The window talks to the server through
 -- Remotes.ShopAction (RemoteFunction), which answers { ok, message?, earned? }:
---   ("Sell", { [stack] = true })   stack = "<Material key>" or "Anime:<Hero name>"; sells the whole
---                                   stack (heroes on a pad are kept). Must stand near the Sell shop.
 --   ("BuyAxe", model)              buys + equips the axe (near the Lumber Axe shop).
 --   ("EquipAxe", model)            equips an owned axe (near the Lumber Axe shop).
 --   ("BuyAxeCopy", model)          buys one more copy of an owned axe (near the shop, uses stock).
@@ -25,16 +24,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
-local TreeConfig = require(Shared:WaitForChild("TreeConfig"))
-local SkillTreeConfig = require(Shared:WaitForChild("SkillTreeConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
-local WeatherConfig = require(Shared:WaitForChild("WeatherConfig"))
-local PotionConfig = require(Shared:WaitForChild("PotionConfig"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
-local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
 local PlotService = require(script.Parent:WaitForChild("PlotService"))
 
-local HERO_PREFIX = "Anime:"
 local STOCK_FOLDER = "AxeStock"
 local PROMPT_NAME = "ShopPrompt"
 
@@ -98,60 +91,6 @@ local function folderOf(player: Player, name: string): Folder
 		folder.Parent = player
 	end
 	return folder :: Folder
-end
-
--- Selling ------------------------------------------------------------------------------------------
-
-local function placedCount(player: Player, hero: string): number
-	local plot = PlotService.GetPlot(player)
-	local n = 0
-	if plot then
-		for _, name in HeroSlotService.GetPlaced(plot) do
-			if name == hero then
-				n += 1
-			end
-		end
-	end
-	return n
-end
-
-local function sell(player: Player, stacks: any): Result
-	if typeof(stacks) ~= "table" then
-		return { ok = false, message = "Nothing selected" }
-	end
-	local earned = 0
-	local inventory = folderOf(player, "Inventory")
-	local heroes = folderOf(player, "Heroes")
-	for stack, picked in stacks do
-		if typeof(stack) ~= "string" or picked ~= true then
-			continue
-		end
-		if stack:sub(1, #HERO_PREFIX) == HERO_PREFIX then
-			local name = stack:sub(#HERO_PREFIX + 1)
-			local def = HeroConfig.Get(name)
-			local value = heroes:FindFirstChild(name) :: IntValue?
-			if def and value then
-				local amount = math.max(0, value.Value - placedCount(player, name))
-				earned += math.floor(def.SellValue * ShopConfig.HeroSellMultiplier * WeatherConfig.Mult("SellBonus") * PotionConfig.Mult(player, "SellBonus")) * amount
-				value.Value -= amount
-				if value.Value <= 0 then
-					value:Destroy()
-				end
-			end
-		else
-			local def = TreeConfig.Materials[stack]
-			local value = inventory:FindFirstChild(stack) :: IntValue?
-			if def and value and value.Value > 0 then
-				earned += SkillTreeConfig.MaterialValue(player, stack) * value.Value
-				value:Destroy()
-			end
-		end
-	end
-	if earned <= 0 then
-		return { ok = false, message = "Nothing to sell" }
-	end
-	ChestService.AddMoney(player, earned)
-	return { ok = true, earned = earned }
 end
 
 -- Stock --------------------------------------------------------------------------------------------
@@ -289,12 +228,7 @@ end
 -- Wiring -------------------------------------------------------------------------------------------
 
 local function onAction(player: Player, action: any, arg: any): Result
-	if action == "Sell" then
-		if not isNear(player, "Sell") then
-			return { ok = false, message = "Go to the Sell shop" }
-		end
-		return sell(player, arg)
-	elseif action == "BuyAxe" or action == "EquipAxe" or action == "BuyAxeCopy" then
+	if action == "BuyAxe" or action == "EquipAxe" or action == "BuyAxeCopy" then
 		if not isNear(player, "LumberAxe") then
 			return { ok = false, message = "Go to the Lumber Axe shop" }
 		end

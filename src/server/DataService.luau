@@ -2,7 +2,7 @@
 -- key "u_<UserId>").
 --
 -- Saved:  Money (leaderstats.Money), Inventory + Heroes (IntValues), Axes owned + EquippedAxe,
---         UnlockedSlots (bought hero pads), AutoSell, which heroes stand on which pad, each pad's
+--         UnlockedSlots (bought hero pads), which heroes stand on which pad, each pad's
 --         upgrade levels (PadLevels, HeroSlotService), and skill
 --         tree levels (player.Skills, SkillTreeService), UnlockedZones + CurrentZone (Zones board).
 --         The plot's TreasureChest contents (Chest; the shared fallback chest is not saved).
@@ -10,6 +10,8 @@
 --         7 Day Login Rewards streak (Daily, DailyRewardService).
 --         Potions owned + time left on active ones (Potions / PotionTime, PotionService).
 --         Index: found items and claimed zone rewards (IndexFound / IndexClaimed, IndexService).
+--         Farm Stand Keeper / Helper pads: which hero is on which pad (Stands, StandService).
+--         Materials the player carries (Carried, CarryService).
 -- Not saved: trees.
 --
 -- Load: when the player joins (3 tries). Saved amounts are ADDED to whatever the player already
@@ -23,6 +25,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
+local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ChestService = require(script.Parent:WaitForChild("ChestService"))
 local ShopService = require(script.Parent:WaitForChild("ShopService"))
 local HeroSlotService = require(script.Parent:WaitForChild("HeroSlotService"))
@@ -31,6 +34,8 @@ local FruitService = require(script.Parent:WaitForChild("FruitService"))
 local DailyRewardService = require(script.Parent:WaitForChild("DailyRewardService"))
 local PotionService = require(script.Parent:WaitForChild("PotionService"))
 local IndexService = require(script.Parent:WaitForChild("IndexService"))
+local StandService = require(script.Parent:WaitForChild("StandService"))
+local CarryService = require(script.Parent:WaitForChild("CarryService"))
 
 local STORE_NAME = "PlayerData"
 local DATA_VERSION = 1
@@ -48,7 +53,7 @@ export type SaveData = {
 	PadAxes: { [string]: string }?, -- slot index (as text) -> axe model held by that pad's hero
 	EquippedAxe: string?,
 	UnlockedSlots: number?,
-	AutoSell: boolean?,
+	AutoSell: boolean?, -- old saves only (auto sell was removed); ignored
 	Placed: { [string]: string }?, -- slot index (as text) -> hero name
 	PadLevels: { [string]: { [string]: number } }?, -- slot index (as text) -> stat -> level, "Grade<stat>" -> grade position
 	Skills: { [string]: number }?, -- "Tree/Node" -> level
@@ -63,6 +68,8 @@ export type SaveData = {
 	PotionTime: { [string]: number }?, -- potion id -> seconds left on the active one
 	IndexFound: { string }?, -- Index stacks found (IndexService)
 	IndexClaimed: { [string]: number }?, -- zone (as text) -> claimed milestone mask
+	Stands: StandService.SaveStands?, -- stand id -> heroes on its Keeper / Helper pads (StandService)
+	Carried: { [string]: number }?, -- materials the player carries (CarryService)
 }
 
 local DataService = {}
@@ -75,6 +82,7 @@ local levelsCache: { [Player]: { [string]: { [string]: number } } } = {}
 local padAxesCache: { [Player]: { [string]: string } } = {}
 local padFruitsCache: { [Player]: { [string]: string } } = {}
 local chestCache: { [Player]: { [string]: number } } = {}
+local standsCache: { [Player]: StandService.SaveStands } = {}
 
 local function keyFor(player: Player): string
 	return "u_" .. player.UserId
@@ -192,7 +200,6 @@ local function collect(player: Player): SaveData
 		PadAxes = padAxesNow(player) or padAxesCache[player],
 		EquippedAxe = if typeof(equipped) == "string" then equipped else nil,
 		UnlockedSlots = if typeof(unlocked) == "number" then unlocked else nil,
-		AutoSell = player:GetAttribute("AutoSell") == true,
 		Placed = placedNow(player) or placedCache[player],
 		PadLevels = levelsNow(player) or levelsCache[player],
 		Skills = counts(player:FindFirstChild("Skills")),
@@ -208,6 +215,8 @@ local function collect(player: Player): SaveData
 		PotionTime = potionTime,
 		IndexFound = indexFound,
 		IndexClaimed = indexClaimed,
+		Stands = StandService.GetSaveData(player) or standsCache[player],
+		Carried = CarryService.GetSaveData(player),
 	}
 end
 
@@ -217,9 +226,16 @@ local function apply(player: Player, data: SaveData)
 	if typeof(data.Money) == "number" and data.Money > 0 then
 		ChestService.AddMoney(player, data.Money)
 	end
+	-- Materials are no longer kept in the inventory: old saves' materials go back into the plot
+	-- chest (they are sold at the Farm Stand from there). Anything that is not a material stays.
+	local movedToChest: { [string]: number } = {}
 	for name, amount in data.Inventory or {} do
 		if typeof(amount) == "number" and amount > 0 then
-			ChestService.AddItem(player, "Inventory", name, amount)
+			if TreeConfig.Materials[name] then
+				movedToChest[name] = (movedToChest[name] or 0) + math.floor(amount)
+			else
+				ChestService.AddItem(player, "Inventory", name, amount)
+			end
 		end
 	end
 	for name, amount in data.Heroes or {} do
@@ -232,9 +248,6 @@ local function apply(player: Player, data: SaveData)
 		local now = player:GetAttribute("UnlockedSlots")
 		player:SetAttribute("UnlockedSlots", math.max(data.UnlockedSlots, if typeof(now) == "number" then now else 0))
 	end
-	if typeof(data.AutoSell) == "boolean" then
-		player:SetAttribute("AutoSell", data.AutoSell)
-	end
 	if typeof(data.UnlockedZones) == "number" then
 		local now = player:GetAttribute("UnlockedZones")
 		player:SetAttribute("UnlockedZones", math.max(data.UnlockedZones, if typeof(now) == "number" then now else 1))
@@ -243,14 +256,18 @@ local function apply(player: Player, data: SaveData)
 		player:SetAttribute("CurrentZone", data.CurrentZone)
 	end
 	SkillTreeService.ApplySaved(player, data.Skills)
-	if typeof(data.Chest) == "table" then
-		local stacks: { [string]: number } = {}
-		for name, amount in data.Chest do
-			if typeof(name) == "string" and typeof(amount) == "number" and amount > 0 then
-				if name:sub(1, 6) == "Anime:" then
-					name = "Anime:" .. HeroConfig.CurrentName(name:sub(7))
+	do
+		-- The chest only holds materials now: heroes left in an old save's chest go to player.Heroes.
+		local stacks: { [string]: number } = movedToChest
+		if typeof(data.Chest) == "table" then
+			for name, amount in data.Chest do
+				if typeof(name) == "string" and typeof(amount) == "number" and amount > 0 then
+					if name:sub(1, 6) == "Anime:" then
+						ChestService.AddItem(player, "Heroes", HeroConfig.CurrentName(name:sub(7)), math.floor(amount))
+					elseif TreeConfig.Materials[name] then
+						stacks[name] = (stacks[name] or 0) + math.floor(amount)
+					end
 				end
-				stacks[name] = (stacks[name] or 0) + math.floor(amount)
 			end
 		end
 		if next(stacks) then
@@ -306,6 +323,11 @@ local function apply(player: Player, data: SaveData)
 			end
 		end
 		HeroSlotService.RestorePlaced(player, placed)
+	end
+	CarryService.ApplySaved(player, data.Carried)
+	-- After the worker pads, so copies already on them are not placed twice.
+	if data.Stands then
+		StandService.ApplySaved(player, data.Stands)
 	end
 end
 
@@ -376,6 +398,10 @@ function DataService.RememberPlaced(player: Player)
 	if padFruits then
 		padFruitsCache[player] = padFruits
 	end
+	local stands = StandService.GetSaveData(player)
+	if stands then
+		standsCache[player] = stands
+	end
 	-- Keep the first snapshot: a later call (after PlotReleased) would only see the emptied chest.
 	local chest = ChestService.GetContentsFor(player)
 	if chest and not chestCache[player] then
@@ -393,6 +419,7 @@ local function onLeave(player: Player)
 	padAxesCache[player] = nil
 	padFruitsCache[player] = nil
 	chestCache[player] = nil
+	standsCache[player] = nil
 	DailyRewardService.Forget(player)
 end
 

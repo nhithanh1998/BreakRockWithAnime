@@ -3,15 +3,18 @@
 --
 -- Shows everything the player owns:
 --   heroes    - player.Heroes (IntValue per hero = how many owned); count shown = copies not on a pad
---   materials - player.Inventory (IntValue per TreeConfig.Materials key)
+--   materials - player.Carried (IntValue per TreeConfig.Materials key: what the player carries)
 --   other     - potions (player.Potions, PotionConfig) and axes (player.Axes, "Copies" attribute)
 -- Tabs: Panel.Tabs.All / Heroes / Materials / Other. Panel.Search.Box filters by name.
 -- Clicking a potion opens a small card with what it does and a DRINK button (Remotes.PotionAction).
+-- Clicking a hero opens the same card with SELL 1 / SELL ALL (Remotes.InventoryAction "SellHero").
+-- Copies standing on any pad are never sold (the server checks; only free copies are listed).
 -- Cards are clones of InventoryGui.Templates.ItemSlot, drawn with ItemDisplay.
 -- Panel.EquipBest fills the hero pads with the strongest heroes and axes (HeroSlotService).
 --
 -- The layout lives in StarterGui.InventoryGui (edited in Studio); this script only fills it.
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -19,6 +22,7 @@ local TweenService = game:GetService("TweenService")
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local PotionConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PotionConfig"))
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
+local HeroConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HeroConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
 
 local player = Players.LocalPlayer
@@ -74,7 +78,8 @@ end
 
 -- Data -------------------------------------------------------------------------------------------
 
--- How many of each hero stand on my plot's pads (HeroSlotService writes each slot's "HeroId").
+-- How many of each hero stand on my plot's pads: worker pads (HeroSlotService writes each slot's
+-- "HeroId") and Farm Stand keeper / helper pads (tag "StandHeroPad", StandService). A copy is on one pad only.
 local function placedCounts(): { [string]: number }
 	local counts = {}
 	local plots = workspace:FindFirstChild("Plots")
@@ -84,6 +89,12 @@ local function placedCounts(): { [string]: number }
 			for _, slot in if pads then pads:GetChildren() else {} do
 				local hero = slot:GetAttribute("HeroId")
 				if typeof(hero) == "string" and hero ~= "" then
+					counts[hero] = (counts[hero] or 0) + 1
+				end
+			end
+			for _, pad in CollectionService:GetTagged("StandHeroPad") do
+				local hero = pad:GetAttribute("HeroId")
+				if typeof(hero) == "string" and hero ~= "" and pad:IsDescendantOf(plot) then
 					counts[hero] = (counts[hero] or 0) + 1
 				end
 			end
@@ -109,7 +120,8 @@ local function entries(): { Entry }
 		end
 	end
 	if currentTab == "All" or currentTab == "Materials" then
-		local inventory = player:FindFirstChild("Inventory")
+		-- Materials the player carries (picked up on the Loot Pad, CarryService).
+		local inventory = player:FindFirstChild("Carried")
 		for _, v in if inventory then inventory:GetChildren() else {} do
 			if v:IsA("IntValue") and v.Value > 0 and TreeConfig.Materials[v.Name] then
 				table.insert(list, { stack = v.Name, info = ItemDisplay.Info(v.Name), amount = v.Value, onPad = 0, kind = "Material" })
@@ -294,6 +306,16 @@ do
 	st.Parent = drinkButton
 end
 local drinkLabel = uiText({ Size = UDim2.fromScale(1, 1), Text = "DRINK", ZIndex = 22, Parent = drinkButton })
+-- Second button, only for heroes ("SELL ALL").
+local sellAllButton = drinkButton:Clone()
+sellAllButton.Name = "SellAll"
+sellAllButton.Position = UDim2.fromOffset(340, 180)
+sellAllButton.Size = UDim2.fromOffset(88, 52)
+sellAllButton.BackgroundColor3 = Color3.fromRGB(210, 120, 30)
+sellAllButton.Visible = false
+sellAllButton.Parent = potionCard
+local sellAllLabel = sellAllButton:FindFirstChildOfClass("TextLabel") :: TextLabel
+sellAllLabel.Text = "ALL"
 local closeCard = Instance.new("TextButton")
 closeCard.Name = "Close"
 closeCard.AnchorPoint = Vector2.new(1, 0)
@@ -312,8 +334,51 @@ uiText({ Size = UDim2.fromScale(1, 1), Text = "X", ZIndex = 22, Parent = closeCa
 local cardMessage = uiText({ Position = UDim2.fromOffset(16, 200), Size = UDim2.fromOffset(150, 30), Text = "", TextColor3 = Color3.fromRGB(255, 220, 120), ZIndex = 21, Parent = potionCard })
 
 local shownPotion: string? = nil
+local shownHero: string? = nil
+local InventoryAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("InventoryAction", 10) :: RemoteFunction?
+local SELL_COLOR = Color3.fromRGB(45, 180, 60)
+local OFF_COLOR = Color3.fromRGB(90, 92, 102)
+
+local function freeCopies(hero: string): (number, number)
+	local heroes = player:FindFirstChild("Heroes")
+	local v = heroes and heroes:FindFirstChild(hero)
+	local owned = if v and v:IsA("IntValue") then v.Value else 0
+	local onPad = math.min(owned, placedCounts()[hero] or 0)
+	return owned - onPad, onPad
+end
+
+local function drawHeroCard()
+	local def = shownHero and HeroConfig.Get(shownHero)
+	if not def then
+		potionCard.Visible = false
+		return
+	end
+	local stroke = potionCard:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = ItemDisplay.SlotColor(def.Rarity)
+	end
+	ItemDisplay.FillHeroViewport(potionView, def.Name)
+	potionName.Text = def.Name
+	potionDesc.Text = def.Rarity
+	potionDesc.TextColor3 = TreeConfig.RarityColors[def.Rarity] or Color3.new(1, 1, 1)
+	local free, onPad = freeCopies(def.Name)
+	local price = math.floor(def.SellValue * ShopConfig.HeroSellMultiplier)
+	potionInfo.Text = ("Sells for $%s each\nFree: %d%s"):format(abbreviate(price), free, if onPad > 0 then ("   •   On pads: %d"):format(onPad) else "")
+	drinkLabel.Text = "SELL 1"
+	drinkButton.Active = free > 0
+	drinkButton.BackgroundColor3 = if free > 0 then SELL_COLOR else OFF_COLOR
+	sellAllButton.Visible = true
+	sellAllButton.Active = free > 0
+	sellAllButton.BackgroundColor3 = if free > 0 then Color3.fromRGB(210, 120, 30) else OFF_COLOR
+end
 
 local function drawPotionCard()
+	if shownHero then
+		drawHeroCard()
+		return
+	end
+	sellAllButton.Visible = false
+	drinkLabel.Text = "DRINK"
 	local def = shownPotion and PotionConfig.Get(shownPotion)
 	if not def then
 		potionCard.Visible = false
@@ -326,6 +391,7 @@ local function drawPotionCard()
 	ItemDisplay.FillPotionViewport(potionView, def.Id)
 	potionName.Text = def.Name
 	potionDesc.Text = def.Desc
+	potionDesc.TextColor3 = Color3.fromRGB(110, 255, 120)
 	local owned = 0
 	local folder = player:FindFirstChild("Potions")
 	local v = folder and folder:FindFirstChild(def.Id)
@@ -344,18 +410,56 @@ end
 
 local function openPotion(id: string)
 	shownPotion = id
+	shownHero = nil
 	cardMessage.Text = ""
 	potionCard.Visible = true
 	drawPotionCard()
 end
 
+local function openHero(hero: string)
+	shownHero = hero
+	shownPotion = nil
+	cardMessage.Text = ""
+	potionCard.Visible = true
+	drawPotionCard()
+end
+
+local selling = false
+local function sellHero(amount: number | string)
+	local hero = shownHero
+	if selling or not hero or not InventoryAction then
+		return
+	end
+	selling = true
+	local ok, result = pcall((InventoryAction :: RemoteFunction).InvokeServer, InventoryAction, "SellHero", hero, amount)
+	if ok and typeof(result) == "table" and result.ok then
+		cardMessage.TextColor3 = Color3.fromRGB(110, 255, 120)
+		cardMessage.Text = "+$" .. abbreviate(result.earned or 0)
+	else
+		cardMessage.TextColor3 = Color3.fromRGB(255, 130, 130)
+		cardMessage.Text = if ok and typeof(result) == "table" and result.message then result.message else "Try again"
+	end
+	selling = false
+	drawPotionCard()
+end
+
+sellAllButton.Activated:Connect(function()
+	press(sellAllButton)
+	sellHero("All")
+end)
+
 closeCard.Activated:Connect(function()
 	shownPotion = nil
+	shownHero = nil
 	potionCard.Visible = false
 end)
 
 local drinking = false
 drinkButton.Activated:Connect(function()
+	if shownHero then
+		sellHero(1)
+		return
+	end
 	local id = shownPotion
 	if drinking or not id or not PotionAction then
 		return
@@ -401,6 +505,9 @@ local function render()
 				if entry and entry.kind == "Potion" and entry.id then
 					press(card)
 					openPotion(entry.id)
+				elseif entry and entry.kind == "Hero" then
+					press(card)
+					openHero(entry.stack:sub(#ItemDisplay.HERO_PREFIX + 1))
 				end
 			end)
 		end
@@ -414,6 +521,9 @@ local function render()
 		end
 	end
 	emptyLabel.Visible = #list == 0
+	if shownHero and potionCard.Visible then
+		drawPotionCard() -- copies sold / placed meanwhile
+	end
 end
 
 local function queueRender()
@@ -586,7 +696,7 @@ local function watchFolder(folder: Instance)
 end
 
 local function maybeWatch(c: Instance)
-	if c.Name == "Heroes" or c.Name == "Inventory" or c.Name == "Potions" or c.Name == "Axes" then
+	if c.Name == "Heroes" or c.Name == "Carried" or c.Name == "Potions" or c.Name == "Axes" then
 		watchFolder(c)
 	end
 end
@@ -635,6 +745,18 @@ task.spawn(function()
 		watchPlot(plot)
 	end
 	plots.ChildAdded:Connect(watchPlot)
+end)
+
+-- Farm Stand keeper / helper pads (StandService) change what is listed too.
+local function watchStandPad(pad: Instance)
+	pad:GetAttributeChangedSignal("HeroId"):Connect(queueRender)
+end
+for _, pad in CollectionService:GetTagged("StandHeroPad") do
+	watchStandPad(pad)
+end
+CollectionService:GetInstanceAddedSignal("StandHeroPad"):Connect(function(pad)
+	watchStandPad(pad)
+	queueRender()
 end)
 
 -- Running potions count down on their cards (and on the open potion card) once a second.

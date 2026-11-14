@@ -1,8 +1,6 @@
 --!strict
 -- ShopConfig: the shops in each plot's "Shops" folder (Models with a "Shop" attribute, built in Studio; each has
 -- a "PromptPart" where ShopService puts the ProximityPrompt and an "NPCSpot" behind the counter).
---   "Sell"      -> Sell window: sell materials (and heroes you pick yourself) for Money.
---                  "Select All" only selects materials.
 --   "LumberAxe" -> Lumber Axe window: buy / equip axes. The equipped axe sets your click damage.
 --                  Axes have a server-wide stock that refills every RestockInterval seconds, and an
 --                  axe only shows up for sale once the player has unlocked its Zone (ZoneConfig).
@@ -14,7 +12,6 @@ ShopConfig.PromptDistance = 10 -- studs
 ShopConfig.CloseDistance = 24 -- the window closes when you walk this far from the shop
 
 ShopConfig.Shops = {
-	Sell = { ObjectText = "Sell", ActionText = "Sell Items" },
 	LumberAxe = { ObjectText = "Lumber Axe", ActionText = "Buy Axes" },
 	Feedback = { ObjectText = "Feedback", ActionText = "Send Feedback" },
 } :: { [string]: { ObjectText: string, ActionText: string } }
@@ -30,8 +27,8 @@ ShopConfig.Feedback = {
 	MaxPerSession = 5, -- messages a player can send per server visit
 }
 
--- Heroes sold in the Sell window are worth their HeroConfig Sell price * this, each. Heroes standing on a pad
--- can't be sold (take them back first).
+-- Heroes sold from the Inventory window (InventoryService) are worth their HeroConfig Sell price * this,
+-- each. Heroes standing on any pad can't be sold (take them back first).
 ShopConfig.HeroSellMultiplier = 1
 
 export type AxeDef = {

@@ -1,6 +1,7 @@
 -- ChestUI: the "Chest" window (StarterGui.ChestGui). Opens from the chest's ProximityPrompt
 -- ("E  Loot Chest / Open"), lists what is inside the chest (ChestService "Contents"), shows the
--- stored/capacity bar and sends Take All / Auto Sell to the server.
+-- stored/capacity bar. Display only: materials leave the chest on the Loot Pad (carried to the
+-- Farm Stand), heroes never go in it.
 --
 -- The layout lives in StarterGui.ChestGui so it can be tweaked in Studio; this script only fills it.
 
@@ -13,7 +14,6 @@ local UserInputService = game:GetService("UserInputService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
-local ChestAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ChestAction") :: RemoteEvent
 
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui"):WaitForChild("ChestGui") :: ScreenGui
@@ -21,8 +21,6 @@ local panel = gui:WaitForChild("Panel") :: Frame
 local grid = panel:WaitForChild("Grid") :: ScrollingFrame
 local emptyLabel = panel:WaitForChild("Empty") :: TextLabel
 local closeButton = panel:WaitForChild("Close") :: TextButton
-local takeAllButton = panel:WaitForChild("TakeAll") :: TextButton
-local autoSellButton = panel:WaitForChild("AutoSell") :: TextButton
 local progress = panel:WaitForChild("Progress") :: Frame
 local progressFill = progress:WaitForChild("Fill") :: Frame
 local progressText = progress:WaitForChild("Amount") :: TextLabel
@@ -32,8 +30,6 @@ local tooltip = gui:WaitForChild("Tooltip") :: Frame
 
 local HERO_VALUE_COLOR = ItemDisplay.HERO_VALUE_COLOR
 local MATERIAL_VALUE_COLOR = ItemDisplay.MATERIAL_VALUE_COLOR
-local AUTO_SELL_OFF = Color3.fromRGB(150, 112, 26)
-local AUTO_SELL_ON = Color3.fromRGB(205, 160, 30)
 
 local openChest: Model? = nil
 local chestConnections: { RBXScriptConnection } = {}
@@ -370,36 +366,7 @@ end)
 
 -- Buttons ----------------------------------------------------------------------------------------
 
-local function press(button: GuiButton)
-	local scale = button:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
-	scale.Parent = button
-	scale.Scale = 0.9
-	TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-end
-
-local function drawAutoSell()
-	local on = player:GetAttribute("AutoSell") == true
-	autoSellButton.Text = if on then "Auto Sell: ON" else "Auto Sell"
-	autoSellButton.BackgroundColor3 = if on then AUTO_SELL_ON else AUTO_SELL_OFF
-end
-
 closeButton.Activated:Connect(close)
-
-takeAllButton.Activated:Connect(function()
-	press(takeAllButton)
-	if openChest and closingChest ~= openChest then
-		ChestAction:FireServer("TakeAll", openChest)
-		closeAnimated()
-	end
-end)
-
-autoSellButton.Activated:Connect(function()
-	press(autoSellButton)
-	ChestAction:FireServer("SetAutoSell", player:GetAttribute("AutoSell") ~= true, openChest)
-end)
-
-player:GetAttributeChangedSignal("AutoSell"):Connect(drawAutoSell)
-drawAutoSell()
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if not processed and input.KeyCode == Enum.KeyCode.Escape then
