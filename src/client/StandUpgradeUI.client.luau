@@ -3,7 +3,9 @@
 --   Pad card    Standing on one of your stand's upgrade pads (UpgradePad_<Id> marker, within
 --               StandUpgradeConfig.PadReach) opens a card: name, what it does, "Lv 2 -> 3" (or MAX),
 --               the stat before -> after (Remotes.StandAction "UpgradeInfo") and a BUY $X button
---               ("BuyUpgrade"). Walking off the pad closes it.
+--               ("BuyUpgrade"). Walking off the pad closes it. The card is the common UIStyle.Window
+--               (title = upgrade name, red X, Theme colours), sitting low on the screen so the stand
+--               stays visible. Closed with X, it stays closed until you step off the pad.
 --   Pad labels  each pad's floating label shows its name, level / max and next cost (site attributes
 --               "Upgrade_<Id>"), for every stand.
 --   Map props   bought upgrades show on the map: Farm Sign = a roadside sign by each walk-in point
@@ -14,17 +16,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local StandUpgradeConfig = require(Shared:WaitForChild("StandUpgradeConfig"))
 local StandLayoutConfig = require(Shared:WaitForChild("StandLayoutConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
-local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local action = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("StandAction") :: RemoteFunction
 
 local player = Players.LocalPlayer
 local abbreviate = HeroConfig.Abbreviate
-local FONT = Enum.Font.FredokaOne
+local FONT = Theme.Font
+local C = Theme.Color
 
 local STAT_NAMES = {
 	CustomersPerMinute = "Customers / min",
@@ -44,41 +47,77 @@ local function make(class: string, props: { [string]: any }): any
 end
 
 local function text(props: { [string]: any }): TextLabel
-	local l = make("TextLabel", { BackgroundTransparency = 1, Font = FONT, TextScaled = true, TextColor3 = Color3.new(1, 1, 1) })
+	local l = make("TextLabel", { BackgroundTransparency = 1, Font = FONT, TextScaled = true, TextColor3 = C.Text })
 	for k, v in props do
 		(l :: any)[k] = v
 	end
-	make("UIStroke", { Thickness = 2, Color = Color3.fromRGB(15, 15, 20), Parent = l })
+	make("UIStroke", { Thickness = 2, Color = C.Stroke, Parent = l })
 	return l
 end
 
 -- Card ------------------------------------------------------------------------------------------------------
+-- The common window, sat low on the screen (above the hotbar) so the stand and the pad stay in view.
 
-local gui = make("ScreenGui", { Name = "StandUpgradeGui", ResetOnSpawn = false, DisplayOrder = 7, Parent = player:WaitForChild("PlayerGui") })
-local card = make("Frame", {
-	AnchorPoint = Vector2.new(0.5, 1),
-	Position = UDim2.new(0.5, 0, 1, -130),
-	Size = UDim2.fromOffset(380, 196),
-	BackgroundColor3 = Color3.fromRGB(38, 40, 50),
-	Visible = false,
-	Parent = gui,
-})
-make("UICorner", { CornerRadius = UDim.new(0, 14), Parent = card })
-local cardStroke = make("UIStroke", { Thickness = 4, Color = Color3.new(1, 1, 1), ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = card })
-local cardScale = make("UIScale", { Parent = card })
-local title = text({ Position = UDim2.fromOffset(14, 8), Size = UDim2.new(1, -28, 0, 34), TextXAlignment = Enum.TextXAlignment.Left, Parent = card })
-local desc = text({ Position = UDim2.fromOffset(14, 42), Size = UDim2.new(1, -28, 0, 22), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(200, 205, 220), Parent = card })
-local levelText = text({ Position = UDim2.fromOffset(14, 70), Size = UDim2.new(1, -28, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 220, 90), Parent = card })
-local statText = text({ Position = UDim2.fromOffset(14, 98), Size = UDim2.new(1, -28, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(110, 255, 120), Parent = card })
-local buy = make("TextButton", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.new(1, -28, 0, 50), BackgroundColor3 = Color3.fromRGB(45, 180, 60), Text = "", Parent = card })
-make("UICorner", { CornerRadius = UDim.new(0, 10), Parent = buy })
-make("UIStroke", { Thickness = 3, Color = Color3.fromRGB(25, 110, 35), ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = buy })
-UIStyle.Button(buy)
-local buyText = text({ Size = UDim2.fromScale(1, 0.8), Position = UDim2.fromScale(0, 0.1), Text = "BUY", Parent = buy })
+local PAD = Theme.Space.L
+local BODY_H = 164
 
 local openPad: { standId: string, id: string }? = nil
 local info: any = nil
 local busy = false
+-- "<standId>/<id>" of the pad whose card the player closed (X, or another window opened): it stays
+-- closed until they step off that pad.
+local dismissed: string? = nil
+local closingByCode = false -- the close came from walking off, not from the player
+
+local function padKey(pad: { standId: string, id: string }): string
+	return pad.standId .. "/" .. pad.id
+end
+
+local win = UIStyle.Window({
+	Name = "StandUpgradeGui",
+	Title = "UPGRADE",
+	Size = Vector2.new(440, UIStyle.HEADER + BODY_H),
+	PhoneSize = Vector2.new(400, UIStyle.HEADER_PHONE + BODY_H),
+	DisplayOrder = 12,
+	OnClose = function()
+		if closingByCode then
+			closingByCode = false -- walked off: openPad is already cleared (or is a new pad by now)
+			return
+		end
+		if openPad then
+			dismissed = padKey(openPad)
+		end
+		openPad = nil
+		info = nil
+	end,
+})
+win.root.AnchorPoint = Vector2.new(0.5, 1)
+win.root.Position = UDim2.new(0.5, 0, 1, if win.phone then -12 else -130)
+
+local title = win.title
+local headerH = if win.phone then UIStyle.HEADER_PHONE else UIStyle.HEADER
+-- The upgrade's own colour (StandUpgradeConfig Color), as a strip under the title.
+local colorBar = make("Frame", {
+	Name = "ColorBar",
+	AnchorPoint = Vector2.new(0, 1),
+	Position = UDim2.new(0, PAD, 1, -2),
+	Size = UDim2.new(1, -(PAD * 2 + headerH), 0, 4),
+	BorderSizePixel = 0,
+	BackgroundColor3 = C.Accent,
+	Parent = win.header,
+})
+make("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = colorBar })
+
+local body = win.body
+local desc = text({ Position = UDim2.fromOffset(PAD, 6), Size = UDim2.new(1, -PAD * 2, 0, 22), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = C.TextDim, Parent = body })
+local levelText = text({ Position = UDim2.fromOffset(PAD, 32), Size = UDim2.new(1, -PAD * 2, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = C.Accent, Parent = body })
+local statText = text({ Position = UDim2.fromOffset(PAD, 62), Size = UDim2.new(1, -PAD * 2, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = C.Primary, Parent = body })
+local buy = make("TextButton", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -PAD), Size = UDim2.new(1, -PAD * 2, 0, 52), BackgroundColor3 = C.Primary, Text = "", Parent = body })
+make("UICorner", { CornerRadius = UDim.new(0, Theme.Radius.Button), Parent = buy })
+make("UIStroke", { Thickness = 3, Color = C.PrimaryDark, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = buy })
+UIStyle.Button(buy)
+local buyStroke = buy:FindFirstChildOfClass("UIStroke") :: UIStroke
+local buyText = text({ Size = UDim2.fromScale(1, 0.8), Position = UDim2.fromScale(0, 0.1), Text = "BUY", Parent = buy })
 
 local function money(): number
 	local stats = player:FindFirstChild("leaderstats")
@@ -102,20 +141,18 @@ local function drawCard()
 		return
 	end
 	local def = StandUpgradeConfig.Get(info.id)
-	title.Text = info.name
+	title.Text = string.upper(info.name)
 	desc.Text = info.desc
-	cardStroke.Color = if def then def.Color else Color3.new(1, 1, 1)
+	colorBar.BackgroundColor3 = if def then def.Color else C.Accent
 	local maxed = info.level >= info.maxLevel
 	levelText.Text = if maxed then ("Lv %d  (MAX)"):format(info.level) else ("Lv %d  ->  Lv %d"):format(info.level, info.level + 1)
 	local name = STAT_NAMES[info.stat] or info.stat
 	statText.Text = if maxed then ("%s: %s"):format(name, fmt(info.stat, info.before)) else ("%s: %s  ->  %s"):format(name, fmt(info.stat, info.before), fmt(info.stat, info.after))
-	if maxed then
-		buyText.Text = "MAX"
-		buy.BackgroundColor3 = Color3.fromRGB(90, 92, 102)
-	else
-		buyText.Text = ("BUY  $%s"):format(abbreviate(info.cost or 0))
-		buy.BackgroundColor3 = if money() >= (info.cost or 0) then Color3.fromRGB(45, 180, 60) else Color3.fromRGB(90, 92, 102)
-	end
+	-- Buy = Primary green when affordable; MAX / too poor = Disabled grey (Theme).
+	local canBuy = not maxed and money() >= (info.cost or 0)
+	buyText.Text = if maxed then "MAX" else ("BUY  $%s"):format(abbreviate(info.cost or 0))
+	buy.BackgroundColor3 = if canBuy then C.Primary else C.Disabled
+	buyStroke.Color = if canBuy then C.PrimaryDark else C.Stroke
 end
 
 local function openCard(standId: string, id: string)
@@ -126,21 +163,19 @@ local function openCard(standId: string, id: string)
 	end
 	if ok and typeof(result) == "table" and result.ok then
 		info = result
-		card.Visible = true
-		cardScale.Scale = 0.7
-		TweenService:Create(cardScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 		drawCard()
+		win.Open() -- pops in; a no-op when already open (moved to another pad / refreshed)
 	end
 end
 
 local function closeCard()
 	openPad = nil
 	info = nil
-	card.Visible = false
+	if win.IsOpen() then
+		closingByCode = true
+		win.Close()
+	end
 end
-
--- One window at a time; dims the world, hides the HUD on phones (UIManager).
-UIManager.Register("StandUpgrade", card, closeCard)
 
 buy.Activated:Connect(function()
 	if busy or not openPad or not info or info.level >= info.maxLevel then
@@ -152,8 +187,10 @@ buy.Activated:Connect(function()
 	local ok, result = pcall(action.InvokeServer, action, "BuyUpgrade", pad.standId, pad.id)
 	if ok and typeof(result) == "table" and result.ok then
 		info = result
-		cardScale.Scale = 1.08
-		TweenService:Create(cardScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		-- Small pop of the whole card on a successful buy.
+		local s = win.scale.Scale
+		win.scale.Scale = s * 1.06
+		TweenService:Create(win.scale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = s }):Play()
 	end
 	drawCard()
 	busy = false
@@ -205,7 +242,10 @@ task.spawn(function()
 				end
 			end
 		end
-		if found and (not openPad or openPad.id ~= found.id or openPad.standId ~= found.standId) then
+		if not found or padKey(found) ~= dismissed then
+			dismissed = nil -- stepped off (or onto another pad): a closed card may open again
+		end
+		if found and not dismissed and (not openPad or openPad.id ~= found.id or openPad.standId ~= found.standId) then
 			task.spawn(openCard, found.standId, found.id)
 		elseif not found and openPad then
 			closeCard()

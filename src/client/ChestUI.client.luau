@@ -3,7 +3,10 @@
 -- stored/capacity bar. Display only: materials leave the chest on the Loot Pad (carried to the
 -- Farm Stand), heroes never go in it.
 --
--- The layout lives in StarterGui.ChestGui so it can be tweaked in Studio; this script only fills it.
+-- The window is the common UIStyle.Window (header with title + red X, Theme colours, global UIScale,
+-- UIManager). Grid, Empty text, Progress bar and Tooltip still come from the Studio-editable layout
+-- (StarterGui.ChestGui) and are moved into the window at start; the layout's own Panel / Title /
+-- Close are dropped. The window is renamed ChestGui so HotbarUI still finds it.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -14,26 +17,30 @@ local UserInputService = game:GetService("UserInputService")
 
 local TreeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("TreeConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
-local UIManager = require(script.Parent:WaitForChild("UIManager"))
+local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 
 local player = Players.LocalPlayer
-local gui = player:WaitForChild("PlayerGui"):WaitForChild("ChestGui") :: ScreenGui
-local panel = gui:WaitForChild("Panel") :: Frame
-local grid = panel:WaitForChild("Grid") :: ScrollingFrame
-local emptyLabel = panel:WaitForChild("Empty") :: TextLabel
-local closeButton = panel:WaitForChild("Close") :: TextButton
-local progress = panel:WaitForChild("Progress") :: Frame
+local layoutGui = player:WaitForChild("PlayerGui"):WaitForChild("ChestGui") :: ScreenGui
+local layoutPanel = layoutGui:WaitForChild("Panel") :: Frame
+local grid = layoutPanel:WaitForChild("Grid") :: ScrollingFrame
+local emptyLabel = layoutPanel:WaitForChild("Empty") :: TextLabel
+local progress = layoutPanel:WaitForChild("Progress") :: Frame
 local progressFill = progress:WaitForChild("Fill") :: Frame
 local progressText = progress:WaitForChild("Amount") :: TextLabel
-local openScale = panel:WaitForChild("OpenScale") :: UIScale
 local slotTemplate = ReplicatedStorage:WaitForChild("ChestTemplates"):WaitForChild("Slot") :: TextButton
-local tooltip = gui:WaitForChild("Tooltip") :: Frame
+local tooltip = layoutGui:WaitForChild("Tooltip") :: Frame
+local gridLayout = grid:WaitForChild("UIGridLayout") :: UIGridLayout
+
+local C = Theme.Color
+local PAD = Theme.Space.L
 
 local HERO_VALUE_COLOR = ItemDisplay.HERO_VALUE_COLOR
 local MATERIAL_VALUE_COLOR = ItemDisplay.MATERIAL_VALUE_COLOR
-local FILL_OK = Color3.fromRGB(60, 200, 80)
-local FILL_WARN = Color3.fromRGB(255, 160, 30)
-local FILL_FULL = Color3.fromRGB(235, 60, 50)
+-- Bar: green while there is room, gold when it is getting full, red when (nearly) full.
+local FILL_OK = C.Primary
+local FILL_WARN = C.Accent
+local FILL_FULL = C.Danger
 local progressStroke = progress:FindFirstChildOfClass("UIStroke") :: UIStroke
 
 local openChest: Model? = nil
@@ -47,67 +54,92 @@ local commas = ItemDisplay.Commas
 local abbreviate = ItemDisplay.Abbreviate
 local itemInfo = ItemDisplay.Info
 
--- Layout: the panel is sized in code. Width follows the screen; height follows the number of rows
--- (1 to MAX_ROWS, then the grid scrolls), so a nearly empty chest is a small window, not a big
--- empty box. Everything is placed in pixels from the panel width W.
+-- Window -------------------------------------------------------------------------------------------
+-- Drawn at a fixed design width (5 columns); the height follows the number of rows (1 to MAX_ROWS,
+-- then the grid scrolls), so a nearly empty chest is a small window, not a big empty box.
 local COLUMNS = 5
 local MAX_ROWS = 3
-local gridLayout = grid:WaitForChild("UIGridLayout") :: UIGridLayout
-local title = panel:WaitForChild("Title") :: TextLabel
-local closeShadow = panel:FindFirstChild("CloseShadow") :: Frame?
-local shownRows = 1
+local BAR_H = 34
+local DESIGN_W = 620
+local PHONE_W = 560
+local GAP = Theme.Space.S
 
+local release: () -> () -- frees the open chest (defined with open / close below)
+
+local function cellSize(w: number): number
+	local inner = w - PAD * 2 - 14 - grid.ScrollBarThickness -- grid UIPadding left + right
+	return math.floor((inner - GAP * (COLUMNS - 1)) / COLUMNS)
+end
+local function gridHeight(cell: number, rows: number): number
+	return rows * cell + (rows - 1) * GAP + 8 -- grid UIPadding top + bottom
+end
+local function bodyHeight(cell: number, rows: number): number
+	return gridHeight(cell, rows) + PAD + BAR_H + PAD
+end
+
+local cellPC, cellPhone = cellSize(DESIGN_W), cellSize(PHONE_W)
+local win = UIStyle.Window({
+	Name = "ChestGui-Window", -- renamed to ChestGui once the layout gui is gone (HotbarUI)
+	Title = "CHEST",
+	Size = Vector2.new(DESIGN_W, UIStyle.HEADER + bodyHeight(cellPC, MAX_ROWS)),
+	PhoneSize = Vector2.new(PHONE_W, UIStyle.HEADER_PHONE + bodyHeight(cellPhone, MAX_ROWS)),
+	DisplayOrder = 10,
+	OnClose = function()
+		release()
+	end,
+})
+local gui = win.gui
+local panel = win.root
+local headerH = if win.phone then UIStyle.HEADER_PHONE else UIStyle.HEADER
+local designW = if win.phone then PHONE_W else DESIGN_W
+local cell = if win.phone then cellPhone else cellPC
+
+gridLayout.CellPadding = UDim2.fromOffset(GAP, GAP)
+gridLayout.CellSize = UDim2.fromOffset(cell, cell)
+grid.Position = UDim2.fromOffset(PAD, 0)
+grid.ScrollBarImageColor3 = C.TextDim
+grid.Parent = win.body
+
+emptyLabel.TextColor3 = C.TextDim
+emptyLabel.Font = Theme.Font
+emptyLabel.AnchorPoint = Vector2.new(0.5, 0)
+emptyLabel.Parent = win.body
+
+progress.AnchorPoint = Vector2.new(0.5, 1)
+progress.Position = UDim2.new(0.5, 0, 1, -PAD)
+progress.Size = UDim2.new(1, -PAD * 2, 0, BAR_H)
+progress.BackgroundColor3 = C.SurfaceInset
+progressText.Font = Theme.Font
+local amountStroke = progressText:FindFirstChildOfClass("UIStroke")
+if amountStroke then
+	amountStroke.Color = C.Stroke
+end
+progress.Parent = win.body
+
+-- Tooltip follows the mouse, above the window.
+tooltip.BackgroundColor3 = C.SurfaceInset
+local tipStroke = tooltip:FindFirstChildOfClass("UIStroke")
+if tipStroke then
+	tipStroke.Color = C.Stroke
+end
+tooltip.ZIndex = 50
+tooltip.Parent = gui
+
+-- The layout's own panel (title, close button, backdrop) is no longer used.
+layoutGui:Destroy()
+gui.Name = "ChestGui"
+
+local shownRows = 1
 local function layout(itemCount: number?)
 	if itemCount then
 		shownRows = math.clamp(math.ceil(itemCount / COLUMNS), 1, MAX_ROWS)
 	end
-	local screen = gui.AbsoluteSize
-	local w = math.floor(math.clamp(screen.X * 0.445, 330, 760))
-	local pad = math.floor(w * 0.025)
-	local header = math.floor(w * 0.11)
-	local barHeight = math.floor(w * 0.065)
-	local footer = barHeight + pad * 2
-
-	local gridWidth = w - pad * 2
-	local inner = gridWidth - 14 - grid.ScrollBarThickness -- UIPadding left + right
-	local gap = math.max(4, math.floor(inner * 0.016))
-	local cell = math.floor((inner - gap * (COLUMNS - 1)) / COLUMNS)
-	gridLayout.CellPadding = UDim2.fromOffset(gap, gap)
-	gridLayout.CellSize = UDim2.fromOffset(cell, cell)
-
-	-- Fit on screen (leave room for the top bar and the hotbar).
-	local rows = shownRows
-	local function gridHeight(n: number): number
-		return n * cell + (n - 1) * gap + 8 -- UIPadding top + bottom
-	end
-	while rows > 1 and header + gridHeight(rows) + footer > screen.Y * 0.72 do
-		rows -= 1
-	end
-	local gh = gridHeight(rows)
-	local h = header + gh + footer
-
-	panel.Size = UDim2.fromOffset(w, h)
-	title.Position = UDim2.fromOffset(pad + 4, math.floor(w * 0.025))
-	title.Size = UDim2.fromOffset(math.floor(w * 0.4), math.floor(w * 0.065))
-	local closeSize = math.max(40, math.floor(w * 0.075)) -- 40 px min touch target
-	closeButton.Position = UDim2.fromOffset(w - pad, math.floor(w * 0.02))
-	closeButton.Size = UDim2.fromOffset(closeSize, closeSize)
-	if closeShadow then
-		-- Darker copy just below the button: its 3D bottom edge.
-		closeShadow.Position = UDim2.fromOffset(w - pad, math.floor(w * 0.02) + 4)
-		closeShadow.Size = UDim2.fromOffset(closeSize, closeSize)
-	end
-	grid.Position = UDim2.fromOffset(pad, header)
-	grid.Size = UDim2.fromOffset(gridWidth, gh)
-	emptyLabel.Position = UDim2.fromOffset(pad * 4, header + math.floor(gh * 0.15))
-	emptyLabel.Size = UDim2.fromOffset(w - pad * 8, math.floor(gh * 0.7))
-	progress.AnchorPoint = Vector2.new(0.5, 0)
-	progress.Position = UDim2.fromOffset(math.floor(w / 2), header + gh + pad)
-	progress.Size = UDim2.fromOffset(gridWidth - pad * 2, barHeight)
+	local gh = gridHeight(cell, shownRows)
+	panel.Size = UDim2.fromOffset(designW, headerH + bodyHeight(cell, shownRows))
+	grid.Size = UDim2.fromOffset(designW - PAD * 2, gh)
+	emptyLabel.Position = UDim2.new(0.5, 0, 0, math.floor(gh * 0.15))
+	emptyLabel.Size = UDim2.new(0.8, 0, 0, math.floor(gh * 0.7))
 end
-gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-	layout()
-end)
 layout()
 
 -- Tooltip ----------------------------------------------------------------------------------------
@@ -285,52 +317,31 @@ local function watchContents(chest: Model)
 	table.insert(chestConnections, folder.ChildRemoved:Connect(queueRender))
 end
 
-local function close()
-	if not openChest then
-		return
-	end
+-- Frees the open chest right away (no animation): runs after the window's close tween (OnClose)
+-- and when switching straight to another chest.
+release = function()
 	openChest = nil
 	clearChest()
 	hideTip()
-	panel.Visible = false
 	if hiddenPrompt then
 		hiddenPrompt.Enabled = true
 		hiddenPrompt = nil
 	end
 end
 
--- Shrinks the panel away, then closes it (after Take All; HotbarUI waits for the panel to be gone
--- before it shows the "Added!" list).
-local CLOSE_TWEEN = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-local closingChest: Model? = nil
-
-local function closeAnimated()
-	local chest = openChest
-	if not chest or closingChest == chest then
-		return
+-- Animated close (X, Esc, walking away, chest gone, another window opening). HotbarUI waits for the
+-- window to be hidden before it shows the "Added!" list.
+local function close()
+	if openChest then
+		win.Close()
 	end
-	closingChest = chest
-	local tween = TweenService:Create(openScale, CLOSE_TWEEN, { Scale = 0.8 })
-	tween.Completed:Once(function()
-		if closingChest == chest then
-			closingChest = nil
-			if openChest == chest then
-				close()
-			end
-		end
-	end)
-	tween:Play()
 end
 
--- One window at a time; dims the world, hides the HUD on phones (UIManager).
-UIManager.Register("Chest", panel, close)
-
 local function open(chest: Model, prompt: ProximityPrompt?)
-	if openChest == chest and closingChest ~= chest then
+	if openChest == chest and win.IsOpen() then
 		return
 	end
-	closingChest = nil
-	close()
+	release()
 	openChest = chest
 	watchContents(chest)
 	table.insert(chestConnections, chest.ChildAdded:Connect(function(c)
@@ -349,9 +360,7 @@ local function open(chest: Model, prompt: ProximityPrompt?)
 		prompt.Enabled = false
 		hiddenPrompt = prompt
 	end
-	panel.Visible = true
-	openScale.Scale = 0.85
-	TweenService:Create(openScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	win.Open()
 end
 
 -- Close when walking away from the chest.
@@ -425,8 +434,6 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 end)
 
 -- Buttons ----------------------------------------------------------------------------------------
-
-closeButton.Activated:Connect(close)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if not processed and input.KeyCode == Enum.KeyCode.Escape then

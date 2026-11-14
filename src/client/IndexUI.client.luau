@@ -1,8 +1,9 @@
 -- IndexUI: the Index (collection book) window, opened by the sidebar's "Index" button
 -- (StarterGui.LeftSidebar.Buttons.Index). Rules and rewards: Shared.IndexConfig; server: IndexService.
 --
---   Header   "Index", a progress bar of everything found in every zone ("95/346 Found  27%"), X.
---   Tabs     one per zone (green = shown). A red badge = rewards ready to claim in that zone.
+-- The window is the common UIStyle.Window (header, red X, Theme colours, global UIScale, UIManager).
+--   Header   "INDEX", a progress bar of everything found in every zone ("95/346 Found  27%"), X.
+--   Tabs     one per zone (blue = shown). A red badge = rewards ready to claim in that zone.
 --            Zones not unlocked yet show "🔒" but can still be browsed.
 --   Grid     every item the zone's trees drop: materials, then heroes. Found items show their picture,
 --            name and drop chance on their rarity's colour; unknown ones are a dark silhouette with
@@ -22,24 +23,20 @@ local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local PotionConfig = require(Shared:WaitForChild("PotionConfig"))
 local FruitConfig = require(Shared:WaitForChild("FruitConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
-local UIManager = require(script.Parent:WaitForChild("UIManager"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local IndexAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("IndexAction") :: RemoteFunction
 
-local FONT = Enum.Font.FredokaOne
-local STROKE = Color3.fromRGB(20, 20, 26)
-local BG = Color3.fromRGB(38, 38, 44)
-local TAB_ON = Color3.fromRGB(45, 185, 70)
-local TAB_OFF = Color3.fromRGB(78, 80, 92)
-local UNKNOWN_BG = Color3.fromRGB(30, 30, 36)
-local GOLD = Color3.fromRGB(255, 196, 60)
-local WIDTH, HEIGHT = 1000, 680
-local COLS = 6
-local CELL = 146
-local CELL_GAP = 10
+local FONT = Theme.Font
+local C = Theme.Color
+local STROKE = C.Stroke
+local TAB_ON = C.Secondary -- tabs = blue (Theme: navigation)
+local TAB_OFF = C.SurfaceInset
+local UNKNOWN_BG = C.SurfaceInset
+local GOLD = C.Accent
 
 local function new(className: string, props: { [string]: any }, children: { Instance }?): any
 	local inst = Instance.new(className)
@@ -75,7 +72,7 @@ local function label(props: { [string]: any }): TextLabel
 	if props.TextScaled == nil then
 		props.TextScaled = true
 	end
-	props.TextColor3 = props.TextColor3 or Color3.new(1, 1, 1)
+	props.TextColor3 = props.TextColor3 or C.Text
 	local t = props.StrokeThickness or 2
 	props.StrokeThickness = nil
 	local l = new("TextLabel", props)
@@ -111,87 +108,102 @@ end
 
 -- Window ------------------------------------------------------------------------------------------
 
-local gui = new("ScreenGui", { Name = "IndexGui", DisplayOrder = 13, IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Enabled = true, Parent = playerGui })
-local root = new("Frame", {
-	Name = "Window",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(WIDTH, HEIGHT),
-	BackgroundColor3 = BG,
-	BackgroundTransparency = 0.08,
-	Visible = false,
-	Parent = gui,
-}, { corner(14) })
-stroke(Color3.fromRGB(70, 72, 82), 3, true).Parent = root
-UIStyle.Panel(root)
-local openScale = new("UIScale", { Parent = root })
+local drawZone: () -> () -- defined further down (tabs redraw the zone, OnOpen draws)
+local drawTabs: () -> ()
 
-local function fitScale(): number
-	local cam = workspace.CurrentCamera
-	local vp = if cam then cam.ViewportSize else Vector2.new(1280, 720)
-	return math.min(1, (vp.X - 24) / WIDTH, (vp.Y - 24) / HEIGHT)
-end
+local win = UIStyle.Window({
+	Name = "IndexGui",
+	Title = "INDEX",
+	Size = Vector2.new(1000, UIStyle.HEADER + 584),
+	PhoneSize = Vector2.new(760, UIStyle.HEADER_PHONE + 396),
+	DisplayOrder = 13,
+	OnOpen = function()
+		drawTabs()
+		drawZone()
+	end,
+})
+local phone = win.phone
+local headerH = if phone then UIStyle.HEADER_PHONE else UIStyle.HEADER
+local PAD = Theme.Space.L
+local COLS = if phone then 5 else 6
+local CELL_GAP = if phone then 8 else 10
+local TAB_W, TAB_H = if phone then 190 else 240, if phone then 44 else 52
+local MILESTONE_W = if phone then 340 else 380
+local REWARD_W = if phone then 100 else 112
 
-label({ Text = "Index", Position = UDim2.fromOffset(28, 14), Size = UDim2.fromOffset(160, 56), TextXAlignment = Enum.TextXAlignment.Left, StrokeThickness = 3, Parent = root })
-
--- Overall progress bar.
-local bar = new("Frame", { Name = "Progress", Position = UDim2.fromOffset(250, 18), Size = UDim2.fromOffset(600, 50), BackgroundColor3 = Color3.fromRGB(24, 25, 30), Parent = root }, { corner(25) })
-stroke(Color3.fromRGB(110, 230, 110), 3, true).Parent = bar
-local barFill = new("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(110, 225, 90), Parent = bar }, { corner(25) })
-new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(190, 255, 150), Color3.fromRGB(80, 200, 70)), Parent = barFill })
-local barText = label({ Text = "0/0 Found", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.6, 0, 0.66, 0), ZIndex = 3, StrokeThickness = 2.5, Parent = bar })
-local barPct = label({ Text = "0%", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -18, 0.5, 0), Size = UDim2.new(0.16, 0, 0.56, 0), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Parent = bar })
-
-local closeButton = new("TextButton", { Name = "Close", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 16), Size = UDim2.fromOffset(58, 54), BackgroundColor3 = Color3.fromRGB(214, 92, 28), Text = "", AutoButtonColor = true, Parent = root }, { corner(8) })
-stroke(Color3.fromRGB(120, 45, 10), 3, true).Parent = closeButton
-label({ Text = "X", Size = UDim2.fromScale(1, 1), Parent = closeButton })
-UIStyle.Close(closeButton)
+-- Overall progress bar, in the header between the title and X.
+local BAR_X = PAD + (if phone then 90 else 120)
+local bar = new("Frame", {
+	Name = "Progress",
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.new(0, BAR_X, 0.5, 0),
+	Size = UDim2.new(1, -(BAR_X + headerH + PAD), 0, headerH - 16),
+	BackgroundColor3 = C.SurfaceInset,
+	ClipsDescendants = true,
+	Parent = win.header,
+}, { corner(Theme.Radius.Button) })
+stroke(C.PrimaryDark, 2, true).Parent = bar
+local barFill = new("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = C.Primary, Parent = bar }, { corner(Theme.Radius.Button) })
+local barText = label({ Text = "0/0 Found", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.6, 0, 0.7, 0), ZIndex = 3, Parent = bar })
+local barPct = label({ Text = "0%", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -Theme.Space.M, 0.5, 0), Size = UDim2.new(0.16, 0, 0.62, 0), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Parent = bar })
 
 -- Zone tabs (scroll sideways when there are many zones).
 local tabs = new("ScrollingFrame", {
 	Name = "Tabs",
-	Position = UDim2.fromOffset(20, 84),
-	Size = UDim2.new(1, -40, 0, 70),
+	Position = UDim2.fromOffset(PAD, 0),
+	Size = UDim2.new(1, -PAD * 2, 0, TAB_H + 10),
 	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
 	ScrollBarThickness = 4,
+	ScrollBarImageColor3 = C.TextDim,
 	ScrollingDirection = Enum.ScrollingDirection.X,
 	AutomaticCanvasSize = Enum.AutomaticSize.X,
 	CanvasSize = UDim2.new(),
-	Parent = root,
+	Parent = win.body,
 })
-new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center, Parent = tabs })
-new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4), Parent = tabs })
+new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, Theme.Space.S), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center, Parent = tabs })
+new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), Parent = tabs })
 
 -- Content: the item grid, then the rewards.
+local contentTop = TAB_H + 10 + Theme.Space.S
 local content = new("ScrollingFrame", {
 	Name = "Content",
-	Position = UDim2.fromOffset(20, 164),
-	Size = UDim2.new(1, -40, 1, -180),
+	Position = UDim2.fromOffset(PAD, contentTop),
+	Size = UDim2.new(1, -PAD, 1, -contentTop),
 	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
 	ScrollBarThickness = 8,
-	ScrollBarImageColor3 = Color3.fromRGB(150, 150, 160),
+	ScrollBarImageColor3 = C.TextDim,
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	CanvasSize = UDim2.new(),
-	Parent = root,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	Parent = win.body,
 })
-new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 14), HorizontalAlignment = Enum.HorizontalAlignment.Center, Parent = content })
-new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 16), Parent = content })
+new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, Theme.Space.M), HorizontalAlignment = Enum.HorizontalAlignment.Center, Parent = content })
+-- Right padding keeps the cards clear of the scrollbar; bottom padding lets the last row scroll fully in.
+new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 3), PaddingRight = UDim.new(0, PAD), PaddingBottom = UDim.new(0, PAD + 8), Parent = content })
 
-local grid = new("Frame", { Name = "Grid", LayoutOrder = 1, BackgroundTransparency = 1, Size = UDim2.fromOffset(COLS * CELL + (COLS - 1) * CELL_GAP, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = content })
-new("UIGridLayout", { CellSize = UDim2.fromOffset(CELL, CELL), CellPadding = UDim2.fromOffset(CELL_GAP, CELL_GAP), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+local grid = new("Frame", { Name = "Grid", LayoutOrder = 1, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = content })
+local gridLayout = new("UIGridLayout", { CellPadding = UDim2.fromOffset(CELL_GAP, CELL_GAP), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+local function sizeCells()
+	-- AbsoluteSize includes the window's UIScale; cells are in design px.
+	local width = grid.AbsoluteSize.X / math.max(win.scale.Scale, 0.01)
+	local cell = math.max(60, math.floor((width - CELL_GAP * (COLS - 1)) / COLS))
+	gridLayout.CellSize = UDim2.fromOffset(cell, cell)
+end
+grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeCells)
+sizeCells()
 
-new("Frame", { Name = "Divider", LayoutOrder = 2, Size = UDim2.new(1, -24, 0, 4), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = content })
-label({ Name = "RewardsTitle", LayoutOrder = 3, Text = "Rewards", Size = UDim2.fromOffset(300, 54), StrokeThickness = 3, Parent = content })
+new("Frame", { Name = "Divider", LayoutOrder = 2, Size = UDim2.new(1, -24, 0, 3), BackgroundColor3 = C.TextDim, BackgroundTransparency = 0.6, BorderSizePixel = 0, Parent = content })
+label({ Name = "RewardsTitle", LayoutOrder = 3, Text = "REWARDS", Size = UDim2.fromOffset(300, if phone then 36 else 44), Parent = content })
 local rewardsRow = new("Frame", { Name = "Rewards", LayoutOrder = 4, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 230), Parent = content })
-new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 40), SortOrder = Enum.SortOrder.LayoutOrder, Parent = rewardsRow })
+new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, if phone then Theme.Space.L else 40), SortOrder = Enum.SortOrder.LayoutOrder, Parent = rewardsRow })
 
 -- State ---------------------------------------------------------------------------------------------
 
-local drawZone: () -> () -- defined further down (tabs redraw the zone)
 
 local zones = IndexConfig.Zones()
 local currentZone = zones[1] or 1
-local isOpen = false
 local claiming = false
 
 local function unlockedZones(): number
@@ -244,7 +256,7 @@ local function drawProgress()
 	tween(barFill, 0.3, { Size = UDim2.fromScale(math.max(share, if found > 0 then 0.08 else 0), 1) })
 end
 
-local function drawTabs()
+drawTabs = function()
 	for _, c in tabs:GetChildren() do
 		if c:IsA("GuiButton") then
 			c:Destroy()
@@ -257,28 +269,27 @@ local function drawTabs()
 		local tab = new("TextButton", {
 			Name = "Zone" .. zone,
 			LayoutOrder = i,
-			Size = UDim2.fromOffset(250, 60),
+			Size = UDim2.fromOffset(TAB_W, TAB_H),
 			BackgroundColor3 = if on then TAB_ON else TAB_OFF,
-			BackgroundTransparency = if on then 0 else 0.2,
 			Text = "",
 			AutoButtonColor = false,
 			Parent = tabs,
-		}, { corner(8) })
-		stroke(if on then Color3.fromRGB(25, 110, 35) else Color3.fromRGB(120, 124, 136), 3, true).Parent = tab
+		}, { corner(Theme.Radius.Button) })
+		stroke(if on then C.SecondaryDark else C.Stroke, 2, true).Parent = tab
 		UIStyle.Button(tab) -- tabs sit in a list: corners + gloss, no lip
 		label({
 			Text = if locked then "🔒 " .. name else name,
-			TextColor3 = if locked then Color3.fromRGB(255, 120, 120) else Color3.new(1, 1, 1),
-			Position = UDim2.fromOffset(14, 8),
-			Size = UDim2.new(1, -64, 1, -16),
+			TextColor3 = if locked or not on then C.TextDim else C.Text,
+			Position = UDim2.fromOffset(Theme.Space.M, Theme.Space.S),
+			Size = UDim2.new(1, -(Theme.Space.M + TAB_H), 1, -Theme.Space.S * 2),
 			TextXAlignment = Enum.TextXAlignment.Left,
-			StrokeThickness = 2.5,
 			Parent = tab,
 		})
 		local ready = IndexConfig.Claimable(player, zone)
 		if ready > 0 then
-			local b = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(38, 38), BackgroundColor3 = Color3.fromRGB(200, 40, 40), Parent = tab }, { corner(6) })
-			stroke(Color3.fromRGB(90, 15, 15), 2.5, true).Parent = b
+			local size = TAB_H - 20
+			local b = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -Theme.Space.S, 0.5, 0), Size = UDim2.fromOffset(size, size), BackgroundColor3 = C.Danger, Parent = tab }, { corner(size // 2) })
+			stroke(C.DangerDark, 2, true).Parent = b
 			label({ Text = tostring(ready), Size = UDim2.fromScale(1, 1), Parent = b })
 		end
 		tab.Activated:Connect(function()
@@ -335,15 +346,15 @@ local function drawCard(entry: IndexConfig.Entry, order: number)
 		LayoutOrder = order,
 		BackgroundColor3 = if found then slotColor else UNKNOWN_BG,
 		Parent = grid,
-	}, { corner(6) })
-	stroke(if found then slotColor:Lerp(Color3.new(1, 1, 1), 0.45) else slotColor:Lerp(Color3.new(0, 0, 0), 0.35), 4, true).Parent = card
+	}, { corner(Theme.Radius.Chip) })
+	stroke(if found then slotColor:Lerp(Color3.new(1, 1, 1), 0.45) else slotColor:Lerp(Color3.new(0, 0, 0), 0.35), 3, true).Parent = card
 	picture(card, entry, found)
 	local nameLabel = label({
 		Text = if found then entry.Name else "???",
 		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.new(1, -12, 0, if found then 58 else 64),
+		Size = UDim2.new(0.92, 0, 0.36, 0),
 		TextWrapped = true,
-		TextColor3 = if found then Color3.new(1, 1, 1) else Color3.fromRGB(190, 190, 200),
+		TextColor3 = if found then C.Text else C.TextDim,
 		StrokeThickness = 2.5,
 		ZIndex = 3,
 		Parent = card,
@@ -353,8 +364,8 @@ local function drawCard(entry: IndexConfig.Entry, order: number)
 		Text = formatChance(entry.Chance),
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -6),
-		Size = UDim2.new(1, -12, 0, 34),
-		TextColor3 = if found then Color3.new(1, 1, 1) else Color3.fromRGB(200, 200, 210),
+		Size = UDim2.new(0.92, 0, 0.22, 0),
+		TextColor3 = if found then C.Text else C.TextDim,
 		StrokeThickness = 2.5,
 		ZIndex = 3,
 		Parent = card,
@@ -412,24 +423,21 @@ local function drawMilestone(zone: number, index: number, milestone: IndexConfig
 	local need = IndexConfig.Needed(zone, milestone)
 	local claimed = IndexConfig.IsClaimed(IndexConfig.ClaimedMask(player, zone), index)
 	local ready = not claimed and found >= need
-	local col = new("Frame", { Name = "Milestone" .. index, LayoutOrder = index, BackgroundTransparency = 1, Size = UDim2.fromOffset(380, 230), Parent = rewardsRow })
+	local col = new("Frame", { Name = "Milestone" .. index, LayoutOrder = index, BackgroundTransparency = 1, Size = UDim2.fromOffset(MILESTONE_W, 230), Parent = rewardsRow })
 
 	-- "x/y Found" gold pill.
-	local pill = new("Frame", { Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = Color3.fromRGB(70, 60, 30), Parent = col }, { corner(21) })
-	stroke(Color3.fromRGB(150, 110, 20), 2.5, true).Parent = pill
-	new("Frame", { Size = UDim2.fromScale(math.clamp(found / need, 0, 1), 1), BackgroundColor3 = GOLD, Parent = pill }, {
-		corner(21),
-		new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 235, 140), Color3.fromRGB(255, 175, 40)) }),
-	})
+	local pill = new("Frame", { Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = C.SurfaceInset, ClipsDescendants = true, Parent = col }, { corner(Theme.Radius.Button) })
+	stroke(C.AccentDark, 2, true).Parent = pill
+	new("Frame", { Size = UDim2.fromScale(math.clamp(found / need, 0, 1), 1), BackgroundColor3 = GOLD, Parent = pill }, { corner(Theme.Radius.Button) })
 	label({ Text = ("%d/%d Found"):format(math.min(found, need), need), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.8, 0.7), ZIndex = 3, Parent = pill })
 
 	-- Reward cards (all rewards of the milestone side by side).
 	local cardsRow = new("Frame", { Position = UDim2.fromOffset(0, 54), Size = UDim2.new(1, 0, 0, 120), BackgroundTransparency = 1, Parent = col })
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = cardsRow })
 	for i, reward in milestone.Rewards do
-		local card = new("Frame", { LayoutOrder = i, Size = UDim2.fromOffset(112, 120), BackgroundColor3 = Color3.fromRGB(110, 75, 35), Parent = cardsRow }, { corner(6) })
-		stroke(Color3.fromRGB(190, 140, 50), 3, true).Parent = card
-		local pic = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 18), Size = UDim2.fromOffset(92, 80), Parent = card })
+		local card = new("Frame", { LayoutOrder = i, Size = UDim2.fromOffset(REWARD_W, 120), BackgroundColor3 = C.SurfaceInset, Parent = cardsRow }, { corner(Theme.Radius.Chip) })
+		stroke(C.AccentDark, 2, true).Parent = card
+		local pic = new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0.5, -40, 0, 18), Size = UDim2.fromOffset(80, 80), Parent = card })
 		rewardPicture(pic, reward)
 		local nameL = label({ Text = rewardName(reward), Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 34), TextWrapped = true, StrokeThickness = 2, ZIndex = 3, Parent = card })
 		new("UITextSizeConstraint", { MaxTextSize = 18, Parent = nameL })
@@ -443,10 +451,10 @@ local function drawMilestone(zone: number, index: number, milestone: IndexConfig
 	-- State: CLAIM / Claimed ✓ / still locked.
 	local stateY = 186
 	if claimed then
-		label({ Text = "Claimed", TextColor3 = Color3.fromRGB(110, 255, 120), Position = UDim2.fromOffset(0, stateY), Size = UDim2.new(1, 0, 0, 38), StrokeThickness = 2.5, Parent = col })
+		label({ Text = "Claimed ✓", TextColor3 = C.Primary, Position = UDim2.fromOffset(0, stateY), Size = UDim2.new(1, 0, 0, 36), Parent = col })
 	elseif ready then
-		local button = new("TextButton", { Position = UDim2.new(0.5, -90, 0, stateY), Size = UDim2.fromOffset(180, 42), BackgroundColor3 = TAB_ON, Text = "", Parent = col }, { corner(10) })
-		stroke(Color3.fromRGB(25, 110, 35), 3, true).Parent = button
+		local button = new("TextButton", { Position = UDim2.new(0.5, -90, 0, stateY), Size = UDim2.fromOffset(180, 44), BackgroundColor3 = C.Primary, Text = "", Parent = col }, { corner(Theme.Radius.Button) })
+		stroke(C.PrimaryDark, 2, true).Parent = button
 		UIStyle.Button(button)
 		local text = label({ Text = "CLAIM!", Size = UDim2.fromScale(1, 1), Parent = button })
 		-- Gentle pulse so it gets noticed.
@@ -474,7 +482,7 @@ local function drawMilestone(zone: number, index: number, milestone: IndexConfig
 			end
 		end)
 	else
-		label({ Text = ("Find %d more"):format(need - found), TextColor3 = Color3.fromRGB(200, 200, 210), Position = UDim2.fromOffset(0, stateY), Size = UDim2.new(1, 0, 0, 34), StrokeThickness = 2, Parent = col })
+		label({ Text = ("Find %d more"):format(need - found), TextColor3 = C.TextDim, Position = UDim2.fromOffset(0, stateY), Size = UDim2.new(1, 0, 0, 34), StrokeThickness = 2, Parent = col })
 	end
 end
 
@@ -510,43 +518,13 @@ end
 
 -- Open / close -------------------------------------------------------------------------------------------
 
-local function setOpen(open: boolean)
-	if open == isOpen then
-		return
-	end
-	isOpen = open
-	if open then
-		root.Visible = true
-		drawTabs()
-		drawZone()
-		local target = fitScale()
-		openScale.Scale = target * 0.85
-		tween(openScale, 0.25, { Scale = target }, Enum.EasingStyle.Back)
-	else
-		root.Visible = false
-	end
-end
-
--- One window at a time; dims the world, hides the HUD on phones (UIManager).
-UIManager.Register("Index", root, function()
-	setOpen(false)
-end)
-
-closeButton.Activated:Connect(function()
-	press(closeButton)
-	setOpen(false)
-end)
-
+-- The window (UIStyle.Window) owns open / close, X and UIManager; OnOpen draws the zone.
 if openButton then
 	openButton.Activated:Connect(function()
-		setOpen(not isOpen)
-	end)
-end
-
-if workspace.CurrentCamera then
-	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-		if isOpen then
-			openScale.Scale = fitScale()
+		if win.IsOpen() then
+			win.Close()
+		else
+			win.Open()
 		end
 	end)
 end
@@ -562,7 +540,7 @@ local function queueRedraw()
 	task.delay(0.2, function()
 		redrawQueued = false
 		drawBadge()
-		if isOpen then
+		if win.IsOpen() then
 			drawTabs()
 			drawZone()
 		end

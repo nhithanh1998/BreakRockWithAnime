@@ -1,6 +1,8 @@
 -- SkillTreeUI: the skill tree window (trees and nodes from Shared.SkillTreeConfig).
 --
--- Layout lives in Studio-editable instances; this script only clones / fills them:
+-- The window is the common UIStyle.Window (header with title + money + red X, Theme colours, global
+-- UIScale, UIManager). The panels inside still come from the Studio-editable layout and are moved
+-- into the window's Body at start (the layout's own Window frame, TreeTitle and ExitButton are dropped):
 --   StarterGui.SkillTreeGui (src/gui/SkillTreeGui.model.json)
 --   StarterGui.LeftSidebar (src/gui/LeftSidebar.model.json)
 --     Buttons.Upgrades               opens the window (also the K key); its Badge shows how many
@@ -33,7 +35,7 @@ local ZoneConfig = require(Shared:WaitForChild("ZoneConfig"))
 local SkillAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SkillAction") :: RemoteFunction
 local Templates = ReplicatedStorage:WaitForChild("SkillTreeTemplates")
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
-local UIManager = require(script.Parent:WaitForChild("UIManager"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 
 type NodeDef = SkillTreeConfig.NodeDef
 type TreeDef = SkillTreeConfig.TreeDef
@@ -41,22 +43,20 @@ type TreeDef = SkillTreeConfig.TreeDef
 local player = Players.LocalPlayer
 local abbreviate = HeroConfig.Abbreviate
 
-local gui = player:WaitForChild("PlayerGui"):WaitForChild("SkillTreeGui") :: ScreenGui
+local layoutGui = player:WaitForChild("PlayerGui"):WaitForChild("SkillTreeGui") :: ScreenGui
 local sidebar = player.PlayerGui:WaitForChild("LeftSidebar") :: ScreenGui
 local upgradesButton = sidebar:WaitForChild("Buttons"):WaitForChild("Upgrades") :: GuiButton
 local badge = upgradesButton:WaitForChild("Badge") :: GuiObject
 local badgeCount = badge:WaitForChild("Count") :: TextLabel
-local window = gui:WaitForChild("Window") :: Frame
-local zoneList = window:WaitForChild("ZoneList") :: ScrollingFrame
-local treeTitle = window:WaitForChild("TreeTitle") :: TextLabel
-local treeArea = window:WaitForChild("TreeArea") :: Frame
+local layout = layoutGui:WaitForChild("Window") :: Frame
+local zoneList = layout:WaitForChild("ZoneList") :: ScrollingFrame
+local treeArea = layout:WaitForChild("TreeArea") :: Frame
 local canvas = treeArea:WaitForChild("Canvas") :: Frame
 local canvasScale = canvas:WaitForChild("UIScale") :: UIScale
 local linesFrame = canvas:WaitForChild("Lines") :: Frame
 local nodesFrame = canvas:WaitForChild("Nodes") :: Frame
-local preview = window:WaitForChild("Preview") :: Frame
-local exitButton = window:WaitForChild("ExitButton") :: GuiButton
-local moneyLabel = window:WaitForChild("Money") :: TextLabel
+local preview = layout:WaitForChild("Preview") :: Frame
+local moneyLabel = layout:WaitForChild("Money") :: TextLabel
 
 local pIcon = preview:WaitForChild("Icon") :: ImageLabel
 local pIconText = pIcon:WaitForChild("IconText") :: TextLabel
@@ -69,21 +69,109 @@ local pReqs = preview:WaitForChild("Requirements") :: TextLabel
 local pMessage = preview:WaitForChild("Message") :: TextLabel
 local upgradeButton = preview:WaitForChild("UpgradeButton") :: TextButton
 
--- Same 3D buttons as Shop / Index / Upgrades (UIStyle). The window itself fills the screen, so it
--- keeps its square edges.
-UIStyle.Close(exitButton) -- red X, top-right (SkillTreeGui.model.json)
+local C = Theme.Color
+local PAD = Theme.Space.L
+
+-- Window ---------------------------------------------------------------------------------------------
+-- Open / close side effects are defined further down (they need the pan / zoom state).
+local onOpened: () -> ()
+local onClosed: () -> ()
+
+local win = UIStyle.Window({
+	Name = "SkillTreeGui-Window", -- renamed to SkillTreeGui once the layout gui is gone (NoticeUI)
+	Title = "SKILL TREE",
+	Size = Vector2.new(1100, UIStyle.HEADER + 600),
+	PhoneSize = Vector2.new(800, UIStyle.HEADER_PHONE + 380),
+	DisplayOrder = 20,
+	OnOpen = function()
+		onOpened()
+	end,
+	OnClose = function()
+		onClosed()
+	end,
+})
+local gui = win.gui
+local window = win.root
+local treeTitle = win.title
+local headerH = if win.phone then UIStyle.HEADER_PHONE else UIStyle.HEADER
+
+-- Body: zone tabs (left) | tree view (middle) | preview (right).
+zoneList.Position = UDim2.fromOffset(PAD, 0)
+zoneList.Size = UDim2.new(0.2, -PAD, 1, -PAD)
+zoneList.ScrollBarImageColor3 = C.TextDim
+zoneList.Parent = win.body
+
+treeArea.Position = UDim2.new(0.2, PAD, 0, 0)
+treeArea.Size = UDim2.new(0.53, -PAD * 3, 1, -PAD)
+treeArea.BackgroundColor3 = C.SurfaceInset
+treeArea.BackgroundTransparency = 0
+treeArea.ClipsDescendants = true -- a panned / zoomed tree stays inside its frame
+local areaCorner = treeArea:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+areaCorner.CornerRadius = UDim.new(0, Theme.Radius.Card)
+areaCorner.Parent = treeArea
+treeArea.Parent = win.body
+
+preview.AnchorPoint = Vector2.new(1, 0)
+preview.Position = UDim2.new(1, -PAD, 0, 0)
+preview.Size = UDim2.new(0.27, 0, 1, -PAD)
+preview.BackgroundColor3 = C.SurfaceInset
+preview.BackgroundTransparency = 0
+;(preview:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius = UDim.new(0, Theme.Radius.Card)
+;(preview:FindFirstChildOfClass("UIStroke") :: UIStroke).Color = C.Stroke
+preview.Parent = win.body
+
+-- Money: gold, in the header left of the X.
+moneyLabel.AnchorPoint = Vector2.new(1, 0.5)
+moneyLabel.Position = UDim2.new(1, -(headerH + Theme.Space.S), 0.5, 0)
+moneyLabel.Size = UDim2.fromOffset(if win.phone then 140 else 180, math.floor(headerH * 0.6))
+moneyLabel.TextXAlignment = Enum.TextXAlignment.Right
+moneyLabel.TextColor3 = C.Accent
+moneyLabel.Font = Theme.Font
+;(moneyLabel:FindFirstChildOfClass("UIStroke") :: UIStroke).Color = C.Stroke
+moneyLabel.Parent = win.header
+treeTitle.Size = UDim2.new(1, -(headerH + Theme.Space.S * 2 + moneyLabel.Size.X.Offset + PAD), 1, 0)
+
+-- Level bar + Upgrade button (Theme): green progress, Upgrade = Primary, else Disabled.
+pBar.BackgroundColor3 = C.Surface
+;(pBar:FindFirstChildOfClass("UIStroke") :: UIStroke).Color = C.Stroke
+pFill.BackgroundColor3 = C.Primary
+;(pBarText:FindFirstChildOfClass("UIStroke") :: UIStroke).Color = C.Stroke
+upgradeButton:SetAttribute("BuyColor", C.Primary)
+upgradeButton:SetAttribute("PoorColor", C.Disabled)
+upgradeButton:SetAttribute("DisabledColor", C.Disabled)
 UIStyle.Button(upgradeButton)
+
+-- The layout's own frame (full-screen backdrop, TreeTitle, ExitButton) is no longer used.
+layoutGui:Destroy()
+gui.Name = "SkillTreeGui"
 
 local tabTemplate = Templates:WaitForChild("ZoneTab") :: GuiButton
 local nodeTemplate = Templates:WaitForChild("Node") :: GuiButton
 local lineTemplate = Templates:WaitForChild("Line") :: Frame
 
+-- Template colours (Theme), set on the client's copies: tabs = Secondary when selected; nodes =
+-- grey locked, green available, gold maxed, white ring when selected; lines green once met.
+tabTemplate:SetAttribute("SelectedColor", C.Secondary)
+tabTemplate:SetAttribute("SelectedStroke", C.SecondaryDark)
+tabTemplate:SetAttribute("NormalColor", C.SurfaceInset)
+tabTemplate:SetAttribute("NormalStroke", C.Stroke)
+;(tabTemplate:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius = UDim.new(0, Theme.Radius.Button)
+nodeTemplate:SetAttribute("LockedColor", C.Disabled)
+nodeTemplate:SetAttribute("LockedStroke", C.Stroke)
+nodeTemplate:SetAttribute("AvailableColor", C.Primary)
+nodeTemplate:SetAttribute("AvailableStroke", C.PrimaryDark)
+nodeTemplate:SetAttribute("MaxedColor", C.Accent)
+nodeTemplate:SetAttribute("MaxedStroke", C.AccentDark)
+nodeTemplate:SetAttribute("SelectedStroke", C.Text)
+lineTemplate:SetAttribute("ActiveColor", C.Primary)
+lineTemplate:SetAttribute("InactiveColor", C.Disabled)
+
 local skills = player:WaitForChild("Skills") :: Folder
 local money = player:WaitForChild("leaderstats"):WaitForChild("Money") :: NumberValue
 
-local GREEN = "#7CFF5A"
-local RED = "#FF6B6B"
-local GREY = "#B4B8C4"
+local GREEN = "#" .. C.Primary:ToHex()
+local RED = "#" .. C.Danger:ToHex()
+local GREY = "#" .. C.TextDim:ToHex()
 
 local currentTree: TreeDef = SkillTreeConfig.Trees[1]
 local selectedId: string? = nil
@@ -138,7 +226,7 @@ end
 
 local function flashMessage(text: string, isError: boolean)
 	pMessage.Text = text
-	pMessage.TextColor3 = if isError then Color3.fromRGB(255, 115, 115) else Color3.fromRGB(124, 255, 90)
+	pMessage.TextColor3 = if isError then C.Danger else C.Primary
 	local stamp = os.clock()
 	pMessage:SetAttribute("Stamp", stamp)
 	task.delay(2, function()
@@ -274,7 +362,7 @@ end
 
 -- The window's own panels and buttons keep their input (the zone list scrolls, the preview has the
 -- Upgrade button); a press anywhere else on the window, background included, drags the tree.
-local ownInput: { GuiObject } = { zoneList, preview, exitButton }
+local ownInput: { GuiObject } = { zoneList, preview, win.header }
 
 local function onTreeBackground(p: Vector2): boolean
 	if not window.Visible or not inside(window, p) then
@@ -543,7 +631,7 @@ buildTree = function(tree: TreeDef)
 	table.clear(nodeButtons)
 	table.clear(lines)
 
-	treeTitle.Text = tree.Name
+	treeTitle.Text = "SKILL TREE: " .. string.upper(tree.Name)
 	for _, node in tree.Nodes do
 		for _, req in SkillTreeConfig.Requirements(tree.Id, node) do
 			addConnector(tree, req.Node, node, req.Level)
@@ -645,37 +733,33 @@ end
 
 local SINK_WHEEL = "SkillTreeSinkWheel"
 
-local function setOpen(open: boolean)
-	window.Visible = open
-	sidebar.Enabled = not open
+-- Runs once the window is visible (UIStyle.Window OnOpen) / hidden (OnClose, whatever closed it:
+-- X, the sidebar, K, or UIManager opening another window).
+onOpened = function()
 	releaseAll()
 	-- The mouse wheel zooms the tree, not the game camera behind the window.
-	if open then
-		ContextActionService:BindActionAtPriority(SINK_WHEEL, function()
-			return Enum.ContextActionResult.Sink
-		end, false, Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseWheel)
+	ContextActionService:BindActionAtPriority(SINK_WHEEL, function()
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseWheel)
+	refresh()
+end
+onClosed = function()
+	releaseAll()
+	ContextActionService:UnbindAction(SINK_WHEEL)
+end
+
+local function toggle()
+	if win.IsOpen() then
+		win.Close()
 	else
-		ContextActionService:UnbindAction(SINK_WHEEL)
-	end
-	if open then
-		refresh()
+		win.Open()
 	end
 end
 
--- One window at a time; dims the world, hides the HUD on phones (UIManager).
-UIManager.Register("SkillTree", window, function()
-	setOpen(false)
-end)
-
-upgradesButton.Activated:Connect(function()
-	setOpen(not window.Visible)
-end)
-exitButton.Activated:Connect(function()
-	setOpen(false)
-end)
+upgradesButton.Activated:Connect(toggle)
 UserInputService.InputBegan:Connect(function(input, processed)
 	if not processed and input.KeyCode == Enum.KeyCode.K then
-		setOpen(not window.Visible)
+		toggle()
 	end
 end)
 
@@ -692,7 +776,8 @@ openSkill.Parent = gui
 		selectedId = nodeId
 		hoveredId = nil
 	end
-	setOpen(true)
+	win.Open()
+	refresh() -- already open: Open() is a no-op, show the new node anyway
 end)
 
 -- Live updates ---------------------------------------------------------------------------------------
@@ -730,4 +815,3 @@ end)
 buildTabs()
 buildTree(currentTree)
 onMoney()
-setOpen(false)

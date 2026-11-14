@@ -639,7 +639,7 @@ end
 -- Waits (a little) for the chest window to finish its close animation after Take All.
 local function waitForChestClosed()
 	local chestGui = player.PlayerGui:FindFirstChild("ChestGui")
-	local panel = chestGui and chestGui:FindFirstChild("Panel")
+	local panel = chestGui and chestGui:FindFirstChild("Window") -- UIStyle.Window root (ChestUI)
 	if not panel or not panel:IsA("GuiObject") then
 		return
 	end

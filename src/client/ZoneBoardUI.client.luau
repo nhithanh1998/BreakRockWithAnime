@@ -11,6 +11,9 @@
 --   next zone               -> "Unlock $X"  (Remotes.ZoneAction "Unlock")
 --   zones after that        -> "Locked"
 -- Zones and prices are in Shared/ZoneConfig.luau.
+-- Colours / font / radii come from the shared Theme (it stays a world board, not a UIStyle.Window):
+--   Current = Primary green, Swap = Secondary blue, Unlock = Accent gold (Disabled grey when too
+--   poor), Locked = Disabled.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -21,33 +24,36 @@ local ZoneConfig = require(Shared:WaitForChild("ZoneConfig"))
 local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ZoneAction = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ZoneAction") :: RemoteFunction
 
+local Theme = require(script.Parent:WaitForChild("Theme"))
+local C = Theme.Color
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local Plots = workspace:WaitForChild("Plots")
 
-local FONT = Enum.Font.FredokaOne
+local FONT = Theme.Font
 local PANEL_WIDTH_PX = 648 -- the layout below is made for this width; height follows the spot's shape
 local ROW_HEIGHT = 112 -- big rows: the board is read from a few studs away
 local MESSAGE_TIME = 2
 
 local COLORS = {
-	Panel = Color3.fromRGB(28, 30, 40),
-	Title = Color3.fromRGB(255, 215, 70),
-	Row = Color3.fromRGB(58, 62, 80),
-	RowLocked = Color3.fromRGB(42, 44, 56),
-	LockedText = Color3.fromRGB(205, 208, 222),
-	Current = Color3.fromRGB(70, 200, 80),
-	CurrentDark = Color3.fromRGB(25, 90, 30),
-	Swap = Color3.fromRGB(50, 150, 245),
-	SwapDark = Color3.fromRGB(20, 60, 120),
-	Unlock = Color3.fromRGB(250, 185, 40),
-	UnlockDark = Color3.fromRGB(130, 80, 10),
-	Locked = Color3.fromRGB(95, 98, 110),
-	LockedDark = Color3.fromRGB(40, 42, 50),
-	Text = Color3.fromRGB(255, 255, 255),
-	Stroke = Color3.fromRGB(20, 20, 28),
-	Bad = Color3.fromRGB(255, 90, 90),
-	Good = Color3.fromRGB(110, 235, 110),
+	Panel = C.Surface,
+	Title = C.Accent,
+	Row = C.SurfaceInset,
+	RowLocked = C.SurfaceInset,
+	LockedText = C.TextDim,
+	Current = C.Primary,
+	CurrentDark = C.PrimaryDark,
+	Swap = C.Secondary,
+	SwapDark = C.SecondaryDark,
+	Unlock = C.Accent,
+	UnlockDark = C.AccentDark,
+	Locked = C.Disabled,
+	LockedDark = C.Stroke,
+	Text = C.Text,
+	Stroke = C.Stroke,
+	Bad = C.Danger,
+	Good = C.Primary,
 }
 
 type Board = {
@@ -136,10 +142,8 @@ local function buildGui(plot: Model, spot: BasePart): Board
 	panel.BackgroundTransparency = 0.12 -- solid enough that the text reads against the world behind
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
-	local gradient = Instance.new("UIGradient")
-	gradient.Rotation = 90
-	gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(170, 175, 195))
-	gradient.Parent = panel
+	corner(panel, Theme.Radius.Window * 2) -- board pixels are ~2x screen pixels
+	stroke(panel, C.Stroke, 6, true)
 
 	local title = label(panel, "ZONES", 88)
 	title.Size = UDim2.new(1, 0, 0, 110)
@@ -157,7 +161,7 @@ local function buildGui(plot: Model, spot: BasePart): Board
 	list.Position = UDim2.fromOffset(24, 125)
 	list.Size = UDim2.new(1, -48, 1, -205)
 	list.ScrollBarThickness = 10
-	list.ScrollBarImageColor3 = Color3.fromRGB(200, 205, 220)
+	list.ScrollBarImageColor3 = C.TextDim
 	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	list.CanvasSize = UDim2.new()
 	list.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -224,7 +228,7 @@ local function makeButton(row: Frame, text: string, color: Color3, dark: Color3,
 	button.TextColor3 = COLORS.Text
 	button.ZIndex = 3
 	button.Parent = row
-	corner(button, 12)
+	corner(button, Theme.Radius.Button)
 	stroke(button, dark, 3, true)
 	local textStroke = stroke(button, COLORS.Stroke, 2)
 	textStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
@@ -250,7 +254,7 @@ local function makeRow(board: Board, zone: number, info: ZoneConfig.ZoneInfo?, s
 	row.BackgroundColor3 = if state == "Locked" or state == "Soon" then COLORS.RowLocked else COLORS.Row
 	row.BorderSizePixel = 0
 	row.Parent = board.list
-	corner(row, 14)
+	corner(row, Theme.Radius.Card)
 	if state == "Current" then
 		stroke(row, COLORS.Current, 5, true)
 	else
@@ -263,7 +267,7 @@ local function makeRow(board: Board, zone: number, info: ZoneConfig.ZoneInfo?, s
 	badge.Position = UDim2.fromOffset(10, 10)
 	badge.BackgroundColor3 = if info and state ~= "Locked" then info.Color else COLORS.Locked
 	badge.Parent = row
-	corner(badge, 12)
+	corner(badge, Theme.Radius.Button)
 	stroke(badge, COLORS.Stroke, 2, true)
 	local badgeText = label(badge, if state == "Soon" then "?" else tostring(zone), 52)
 	badgeText.Size = UDim2.fromScale(1, 1)
@@ -294,9 +298,10 @@ local function makeRow(board: Board, zone: number, info: ZoneConfig.ZoneInfo?, s
 		end
 	elseif state == "Unlock" then
 		local price = (info :: ZoneConfig.ZoneInfo).Price
-		local button = makeButton(row, "Unlock $" .. HeroConfig.Abbreviate(price), COLORS.Unlock, COLORS.UnlockDark, mine)
-		if mine and money() < price then
-			button.TextColor3 = Color3.fromRGB(255, 225, 225)
+		local poor = mine and money() < price
+		local button = makeButton(row, "Unlock $" .. HeroConfig.Abbreviate(price), if poor then COLORS.Locked else COLORS.Unlock, if poor then COLORS.LockedDark else COLORS.UnlockDark, mine)
+		if poor then
+			button.TextColor3 = C.Accent
 		end
 		if mine then
 			button.Activated:Connect(function()

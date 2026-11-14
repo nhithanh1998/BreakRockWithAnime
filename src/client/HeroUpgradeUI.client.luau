@@ -19,9 +19,13 @@
 --                 hero (HeroUpgrade(slot, "EquipFruit", id)); one pad per copy. Boost x Chop Damage
 --                 plus its passive skill (FruitConfig). "Unequip" takes it off.
 --
+-- All four are views inside one common UIStyle.Window (header, red X, Theme colours, global UIScale,
+-- UIManager). The header title follows the view; on a sub view a back button returns to Upgrade
+-- Hero, X closes everything.
+--
 -- Values come from the slot's attributes ("LevelDamage", "GradeDamage", "HeroAxe" ...), so the
--- windows update by themselves. X on a sub window goes back to Upgrade Hero; everything closes when
--- you walk CLOSE_DISTANCE studs away from the pad or the hero leaves it.
+-- windows update by themselves. Everything closes when you walk CLOSE_DISTANCE studs away from the
+-- pad or the hero leaves it.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -35,8 +39,8 @@ local HeroConfig = require(Shared:WaitForChild("HeroConfig"))
 local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
 local FruitConfig = require(Shared:WaitForChild("FruitConfig"))
 local ItemDisplay = require(script.Parent:WaitForChild("ItemDisplay"))
+local Theme = require(script.Parent:WaitForChild("Theme"))
 local UIStyle = require(script.Parent:WaitForChild("UIStyle"))
-local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local HeroUpgrade = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HeroUpgrade") :: RemoteFunction
 
 local player = Players.LocalPlayer
@@ -44,29 +48,30 @@ local abbreviate = HeroConfig.Abbreviate
 
 local CLOSE_DISTANCE = 45 -- studs from the pad before the windows close by themselves
 local PANEL_MAX_DISTANCE = 60 -- the pad plaques show their button within this many studs
-local FONT = Enum.Font.FredokaOne
-local PANEL_COLOR = Color3.fromRGB(38, 40, 50)
-local PANEL_STROKE = Color3.fromRGB(78, 80, 92)
-local ROW_COLOR = Color3.fromRGB(28, 30, 38)
-local CLOSE_COLOR = UIStyle.CLOSE_COLOR
-local GREEN_BUTTON = Color3.fromRGB(36, 132, 66)
-local GREY_BUTTON = Color3.fromRGB(80, 82, 92)
-local GOLD_BUTTON = Color3.fromRGB(190, 140, 30)
-local AXE_BUTTON = Color3.fromRGB(200, 110, 30)
-local FRUIT_BUTTON = Color3.fromRGB(150, 70, 220)
-local OK_COLOR = Color3.fromRGB(90, 255, 90)
-local BAD_COLOR = Color3.fromRGB(255, 90, 90)
-local NEXT_COLOR = Color3.fromRGB(90, 255, 60)
-local REROLL_COLOR = Color3.fromRGB(150, 70, 220)
-local BADGE_BG = Color3.fromRGB(16, 16, 20)
-local INFO_COLOR = Color3.fromRGB(175, 178, 190)
-local PLUS_COLOR = Color3.fromRGB(90, 255, 90)
-local MINUS_COLOR = Color3.fromRGB(255, 95, 95)
+-- Theme colours: green = the main action (buy / reroll), blue = navigation (axe, fruit, reroll
+-- screens), gold = money / MAX / locked, red = errors, grey = can't afford.
+local FONT = Theme.Font
+local C = Theme.Color
+local ROW_COLOR = C.SurfaceInset
+local GREEN_BUTTON = C.Primary
+local GREY_BUTTON = C.Disabled
+local GOLD_BUTTON = C.Accent
+local NAV_BUTTON = C.Secondary
+local OK_COLOR = C.Primary
+local BAD_COLOR = C.Danger
+local NEXT_COLOR = C.Primary
+local BADGE_BG = C.Stroke
+local INFO_COLOR = C.TextDim
+local PLUS_COLOR = C.Primary
+local MINUS_COLOR = C.Danger
+local FREE_COLOR = C.Accent
+local ACCENT_HEX = C.Accent:ToHex()
+local GREEN_HEX = C.Primary:ToHex()
 -- Colour of each stat's name and level bar.
 local STAT_COLORS = {
-	Damage = Color3.fromRGB(255, 95, 80),
-	Speed = Color3.fromRGB(255, 200, 60),
-	Walk = Color3.fromRGB(90, 190, 255),
+	Damage = C.Danger,
+	Speed = C.Accent,
+	Walk = C.Secondary,
 } :: { [string]: Color3 }
 
 -- Helpers ----------------------------------------------------------------------------------------
@@ -103,11 +108,11 @@ local function text(props: { [string]: any }): TextLabel
 	props.BackgroundTransparency = 1
 	props.Font = props.Font or FONT
 	props.TextScaled = true
-	props.TextColor3 = props.TextColor3 or Color3.new(1, 1, 1)
+	props.TextColor3 = props.TextColor3 or C.Text
 	local thickness = props.StrokeThickness or 2
 	props.StrokeThickness = nil
 	local label = new("TextLabel", props)
-	stroke(Color3.fromRGB(20, 20, 24), thickness).Parent = label
+	stroke(C.Stroke, thickness).Parent = label
 	return label
 end
 
@@ -117,20 +122,20 @@ local function button(props: { [string]: any }): TextButton
 		BackgroundColor3 = props.Color,
 		Font = FONT,
 		TextScaled = true,
-		TextColor3 = Color3.new(1, 1, 1),
+		TextColor3 = C.Text,
 		Text = props.Text,
 		Position = props.Position,
 		Size = props.Size,
 		AnchorPoint = props.AnchorPoint or Vector2.zero,
 		Parent = props.Parent,
 	}, {
-		corner(4),
+		corner(Theme.Radius.Chip),
 		new("UIPadding", { PaddingTop = UDim.new(0.18, 0), PaddingBottom = UDim.new(0.18, 0), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }),
 	})
 	local border = stroke(props.Color:Lerp(Color3.new(1, 1, 1), 0.25), 2, true)
 	border.Name = "Border"
 	border.Parent = b
-	stroke(Color3.fromRGB(20, 20, 24), 1.5).Parent = b
+	stroke(C.Stroke, 1.5).Parent = b
 	UIStyle.Button(b)
 	return b
 end
@@ -170,73 +175,67 @@ end
 
 -- Windows ----------------------------------------------------------------------------------------
 
-local gui = new("ScreenGui", {
+-- One common window (UIStyle.Window); the four screens are views in its body. The body keeps the
+-- old 560 x 320 proportions (1.75 : 1), so every view's scale-based layout carries over.
+local onWindowClosed: () -> () = function() end -- set at closeWindow below
+local win = UIStyle.Window({
 	Name = "HeroUpgradeGui",
+	Title = "UPGRADE HERO",
+	Size = Vector2.new(700, UIStyle.HEADER + 400),
+	PhoneSize = Vector2.new(700, UIStyle.HEADER_PHONE + 400),
 	DisplayOrder = 12,
-	IgnoreGuiInset = true,
-	ResetOnSpawn = false,
-	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-	Parent = player:WaitForChild("PlayerGui"),
+	OnClose = function()
+		onWindowClosed() -- closed by X, by UIManager (another window opened) or by code
+	end,
 })
 
--- Every window is laid out at DESIGN_SIZE pixels and scaled to fit the screen (title above and toast
--- below included), so it is as big as it can be on a phone and never runs off the edge.
-local DESIGN_SIZE = Vector2.new(560, 320)
-local MAX_SCALE = 1.35
+-- Back button in the header, left of the title, shown on the sub views.
+local headerH = if win.phone then UIStyle.HEADER_PHONE else UIStyle.HEADER
+local back = new("TextButton", {
+	Name = "Back",
+	Text = "◀",
+	Font = FONT,
+	TextScaled = true,
+	TextColor3 = C.Text,
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.new(0, Theme.Space.S, 0.5, 0),
+	Size = UDim2.fromOffset(headerH - Theme.Space.S, headerH - Theme.Space.S),
+	BackgroundColor3 = NAV_BUTTON,
+	Visible = false,
+	Parent = win.header,
+}, {
+	corner(Theme.Radius.Chip),
+	new("UIPadding", { PaddingTop = UDim.new(0.2, 0), PaddingBottom = UDim.new(0.2, 0) }),
+})
+stroke(C.Stroke, 1.5).Parent = back
+UIStyle.Button(back)
+local TITLE_X = win.title.Position.X.Offset
 
-type Window = { root: Frame, scale: UIScale, toast: TextLabel }
+-- Toast just under the window (the body clips, so it hangs off the root); shared by all views.
+local toast = text({
+	Name = "Toast",
+	Text = "",
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 1, Theme.Space.S),
+	Size = UDim2.new(0.7, 0, 0, 32),
+	TextTransparency = 1,
+	Parent = win.root,
+})
+;(toast:FindFirstChildOfClass("UIStroke") :: UIStroke).Transparency = 1
+
+type Window = { root: Frame, title: string, toast: TextLabel }
 local windows: { Window } = {}
 
-local function fitScale(): number
-	local screen = gui.AbsoluteSize
-	if screen.X <= 0 or screen.Y <= 0 then
-		return 1
-	end
-	-- Height needs room for the title (~15% above) and the toast (~13% below).
-	return math.min(screen.X * 0.94 / DESIGN_SIZE.X, screen.Y * 0.9 / (DESIGN_SIZE.Y * 1.28), MAX_SCALE)
-end
-gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-	for _, w in windows do
-		w.scale.Scale = fitScale()
-	end
-end)
-
--- A window with a gradient title above it and a toast line under it.
-local function makeWindow(name: string, title: string, gradient: ColorSequence): Window
+-- A view filling the window's body.
+local function makeWindow(name: string, title: string): Window
 	local root = new("Frame", {
 		Name = name,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.52),
-		Size = UDim2.fromOffset(DESIGN_SIZE.X, DESIGN_SIZE.Y),
-		BackgroundColor3 = PANEL_COLOR,
-		BackgroundTransparency = 0.08,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
 		Visible = false,
-		Parent = gui,
-	}, { corner(6) })
-	stroke(PANEL_STROKE, 2, true).Parent = root
-	UIStyle.Panel(root)
-	local scale = new("UIScale", { Name = "Fit", Scale = fitScale(), Parent = root })
-	local titleLabel = text({
-		Name = "Title",
-		Text = title,
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.fromScale(0.5, -0.005),
-		Size = UDim2.fromScale(0.6, 0.15),
-		StrokeThickness = 3,
-		Parent = root,
+		Parent = win.body,
 	})
-	new("UIGradient", { Color = gradient, Rotation = 90, Parent = titleLabel })
-	local toast = text({
-		Name = "Toast",
-		Text = "",
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.fromScale(0.5, 1.03),
-		Size = UDim2.fromScale(0.7, 0.1),
-		TextTransparency = 1,
-		Parent = root,
-	})
-	;(toast:FindFirstChildOfClass("UIStroke") :: UIStroke).Transparency = 1
-	local w: Window = { root = root, scale = scale, toast = toast }
+	local w: Window = { root = root, title = title, toast = toast }
 	table.insert(windows, w)
 	return w
 end
@@ -252,14 +251,23 @@ local function showToast(w: Window, msg: string, color: Color3)
 	TweenService:Create(s, info, { Transparency = 1 }):Play()
 end
 
--- Shows one window (popping in), hides the others.
+-- Shows one view (opening the window if needed), hides the others. Sub views get the back button.
+local mainView: Window? = nil
 local function show(w: Window)
 	for _, other in windows do
 		other.root.Visible = other == w
 	end
-	local target = fitScale()
-	w.scale.Scale = target * 0.9
-	TweenService:Create(w.scale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = target }):Play()
+	win.title.Text = w.title
+	local isSub = w ~= mainView
+	back.Visible = isSub
+	local titleX = if isSub then headerH + Theme.Space.S else TITLE_X
+	win.title.Position = UDim2.fromOffset(titleX, 0)
+	win.title.Size = UDim2.new(1, -(titleX + headerH + Theme.Space.L), 1, 0)
+	if win.IsOpen() then
+		pop(w.root, 0.96)
+	else
+		win.Open()
+	end
 end
 
 -- The hero column on the left of a window: picture, name, rarity. Returns the card and a fill(def).
@@ -270,15 +278,15 @@ local function heroCard(parent: Frame, pictureHeight: number): (Frame, (any) -> 
 		Size = UDim2.fromScale(0.28, 0.88),
 		BackgroundColor3 = ROW_COLOR,
 		Parent = parent,
-	}, { corner(6) })
+	}, { corner(Theme.Radius.Chip) })
 	local picture = new("Frame", {
 		Name = "Picture",
 		Position = UDim2.fromScale(0.07, 0.03),
 		Size = UDim2.fromScale(0.86, pictureHeight),
 		BackgroundColor3 = GREY_BUTTON,
 		Parent = card,
-	}, { corner(6) })
-	stroke(Color3.fromRGB(20, 20, 24), 2, true).Parent = picture
+	}, { corner(Theme.Radius.Chip) })
+	stroke(C.Stroke, 2, true).Parent = picture
 	local viewport = new("ViewportFrame", {
 		Name = "View",
 		Size = UDim2.fromScale(1, 1),
@@ -396,24 +404,23 @@ end
 
 -- ===================== Upgrade Hero =====================
 
-local upgradeWin = makeWindow("Upgrade", "Upgrade Hero!", ColorSequence.new(Color3.fromRGB(255, 240, 120), Color3.fromRGB(255, 150, 30)))
-local close = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = upgradeWin.root })
-UIStyle.Close(close)
+local upgradeWin = makeWindow("Upgrade", "UPGRADE HERO")
+mainView = upgradeWin
 
 local upgradeCard, fillUpgradeCard = heroCard(upgradeWin.root, 0.44)
-local axeButton = button({ Text = "", Color = AXE_BUTTON, Position = UDim2.fromScale(0.07, 0.67), Size = UDim2.fromScale(0.42, 0.14), Parent = upgradeCard })
+local axeButton = button({ Text = "", Color = NAV_BUTTON, Position = UDim2.fromScale(0.07, 0.67), Size = UDim2.fromScale(0.42, 0.14), Parent = upgradeCard })
 axeButton.Name = "Axe"
-local fruitButton = button({ Text = "FRUIT", Color = FRUIT_BUTTON, Position = UDim2.fromScale(0.51, 0.67), Size = UDim2.fromScale(0.42, 0.14), Parent = upgradeCard })
+local fruitButton = button({ Text = "FRUIT", Color = NAV_BUTTON, Position = UDim2.fromScale(0.51, 0.67), Size = UDim2.fromScale(0.42, 0.14), Parent = upgradeCard })
 fruitButton.Name = "Fruit"
-local rerollOpen = button({ Text = "REROLL STATS", Color = REROLL_COLOR, Position = UDim2.fromScale(0.07, 0.83), Size = UDim2.fromScale(0.86, 0.14), Parent = upgradeCard })
+local rerollOpen = button({ Text = "REROLL STATS", Color = NAV_BUTTON, Position = UDim2.fromScale(0.07, 0.83), Size = UDim2.fromScale(0.86, 0.14), Parent = upgradeCard })
 rerollOpen.Name = "RerollStats"
 
 type Row = { stat: string, level: TextLabel, fill: Frame, value: TextLabel, buy: TextButton, grade: GradeBox }
 local rows: { Row } = {}
 local list = new("Frame", {
 	Name = "Stats",
-	Position = UDim2.fromScale(0.33, 0.17),
-	Size = UDim2.fromScale(0.64, 0.79),
+	Position = UDim2.fromScale(0.33, 0.06),
+	Size = UDim2.fromScale(0.64, 0.88),
 	BackgroundTransparency = 1,
 	Parent = upgradeWin.root,
 }, {
@@ -423,14 +430,12 @@ local rowHeight = (1 - 0.04 * (#HeroConfig.UpgradeOrder - 1)) / #HeroConfig.Upgr
 
 -- ===================== Stat Reroll =====================
 
-local rerollWin = makeWindow("StatReroll", "Stat Reroll", ColorSequence.new(Color3.fromRGB(170, 255, 120), Color3.fromRGB(40, 200, 70)))
-local rerollBack = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = rerollWin.root })
-UIStyle.Close(rerollBack)
+local rerollWin = makeWindow("StatReroll", "STAT REROLL")
 local rerollCard, fillRerollCard = heroCard(rerollWin.root, 0.6)
 local bestChance = text({
 	Name = "Best",
 	Text = ("SSS chance: %.1f%%"):format(HeroConfig.GradeChance("SSS") * 100),
-	TextColor3 = Color3.fromRGB(255, 205, 60),
+	TextColor3 = C.Accent,
 	Position = UDim2.fromScale(0.06, 0.86),
 	Size = UDim2.fromScale(0.88, 0.09),
 	Parent = rerollCard,
@@ -441,7 +446,7 @@ text({
 	Text = "Rerolling gives a stat a new grade, F (worst) to SSS (best).\nLock your good stats to keep them on Reroll All.",
 	TextColor3 = INFO_COLOR,
 	Position = UDim2.fromScale(0.33, 0.06),
-	Size = UDim2.fromScale(0.56, 0.12),
+	Size = UDim2.fromScale(0.64, 0.12),
 	StrokeThickness = 1.5,
 	Parent = rerollWin.root,
 })
@@ -463,16 +468,14 @@ rerollAll.Name = "RerollAll"
 
 -- ===================== Hero Axe =====================
 
-local axeWin = makeWindow("HeroAxe", "Hero Axe", ColorSequence.new(Color3.fromRGB(255, 220, 120), Color3.fromRGB(230, 120, 30)))
-local axeBack = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = axeWin.root })
-UIStyle.Close(axeBack)
+local axeWin = makeWindow("HeroAxe", "HERO AXE")
 local axeInfo = text({
 	Name = "Info",
 	Text = "",
 	RichText = true,
 	TextColor3 = INFO_COLOR,
 	Position = UDim2.fromScale(0.04, 0.05),
-	Size = UDim2.fromScale(0.82, 0.1),
+	Size = UDim2.fromScale(0.92, 0.1),
 	TextXAlignment = Enum.TextXAlignment.Left,
 	StrokeThickness = 1.5,
 	Parent = axeWin.root,
@@ -484,7 +487,7 @@ local axeGrid = new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	ScrollBarThickness = 6,
-	ScrollBarImageColor3 = Color3.fromRGB(120, 122, 132),
+	ScrollBarImageColor3 = C.TextDim,
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	CanvasSize = UDim2.new(),
 	ScrollingDirection = Enum.ScrollingDirection.Y,
@@ -495,7 +498,7 @@ local axeGrid = new("ScrollingFrame", {
 local axeLayout = new("UIGridLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Parent = axeGrid })
 local function sizeAxeCells()
 	-- 5 cards per row, sized in pixels (scale cell sizes collapse in an auto-sized ScrollingFrame).
-	local width = axeGrid.AbsoluteSize.X / math.max(axeWin.scale.Scale, 0.01) - 16 - axeGrid.ScrollBarThickness
+	local width = axeGrid.AbsoluteSize.X / math.max(win.scale.Scale, 0.01) - 16 - axeGrid.ScrollBarThickness
 	local gap = math.max(4, math.floor(width * 0.02))
 	local cell = math.max(20, math.floor((width - gap * 4) / 5))
 	axeLayout.CellPadding = UDim2.fromOffset(gap, gap)
@@ -517,16 +520,14 @@ text({
 
 -- ===================== Hero Fruit =====================
 
-local fruitWin = makeWindow("HeroFruit", "Hero Fruit", ColorSequence.new(Color3.fromRGB(230, 170, 255), Color3.fromRGB(150, 70, 230)))
-local fruitBack = button({ Text = "X", Color = CLOSE_COLOR, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.975, 0.035), Size = UDim2.fromScale(0.065, 0.115), Parent = fruitWin.root })
-UIStyle.Close(fruitBack)
+local fruitWin = makeWindow("HeroFruit", "HERO FRUIT")
 local fruitInfo = text({
 	Name = "Info",
 	Text = "",
 	RichText = true,
 	TextColor3 = INFO_COLOR,
 	Position = UDim2.fromScale(0.04, 0.05),
-	Size = UDim2.fromScale(0.82, 0.1),
+	Size = UDim2.fromScale(0.92, 0.1),
 	TextXAlignment = Enum.TextXAlignment.Left,
 	StrokeThickness = 1.5,
 	Parent = fruitWin.root,
@@ -653,7 +654,7 @@ local function redrawReroll(slot: Model, money: number)
 			local def = HeroConfig.Grades[grade]
 			local pct = (def.Multiplier - 1) * (HeroConfig.GradeEffect[row.stat] or 1) * 100
 			row.bonus.Text = if math.abs(pct) < 0.05 then "0%" else ("%+.0f%%"):format(pct)
-			row.bonus.TextColor3 = if pct > 0.05 then PLUS_COLOR elseif pct < -0.05 then MINUS_COLOR else Color3.new(1, 1, 1)
+			row.bonus.TextColor3 = if pct > 0.05 then PLUS_COLOR elseif pct < -0.05 then MINUS_COLOR else C.Text
 		end
 		row.lock.Text = if isLocked then "🔒" else "🔓"
 		row.lock.TextTransparency = if isLocked then 0 else 0.55
@@ -672,8 +673,8 @@ local function redrawAxes(slot: Model, hero: string)
 	local def = equippedAxe and ShopConfig.GetAxe(equippedAxe)
 	local damage = statValue(slot, "Damage", levelOf(slot, "Damage"), hero)
 	axeInfo.Text = if def
-		then ('%s holds <font color="#FFC83C">%s</font> (x%s damage) - Chop Damage <font color="#5AFF3C">%s</font>'):format(hero, def.Name, tostring(def.HeroBoost), abbreviate(damage))
-		else ('%s has the basic axe - Chop Damage <font color="#5AFF3C">%s</font>'):format(hero, abbreviate(damage))
+		then ('%s holds <font color="#' .. ACCENT_HEX .. '">%s</font> (x%s damage) - Chop Damage <font color="#' .. GREEN_HEX .. '">%s</font>'):format(hero, def.Name, tostring(def.HeroBoost), abbreviate(damage))
+		else ('%s has the basic axe - Chop Damage <font color="#' .. GREEN_HEX .. '">%s</font>'):format(hero, abbreviate(damage))
 	unequip.Visible = def ~= nil
 
 	local parts = { equippedAxe or "-" }
@@ -710,7 +711,7 @@ local function redrawAxes(slot: Model, hero: string)
 			LayoutOrder = order,
 			BackgroundColor3 = color,
 			Parent = axeGrid,
-		}, { corner(5) })
+		}, { corner(Theme.Radius.Chip) })
 		stroke(if isOn then NEXT_COLOR else color:Lerp(Color3.new(1, 1, 1), 0.35), if isOn then 3.5 else 2, true).Parent = card
 		local view = new("ViewportFrame", { Name = "View", BackgroundTransparency = 1, Position = UDim2.fromScale(0, 0.15), Size = UDim2.fromScale(1, 0.5), Parent = card })
 		axeViewport(view, axe.Model)
@@ -719,7 +720,7 @@ local function redrawAxes(slot: Model, hero: string)
 		text({
 			Name = "Free",
 			Text = if isOn then "Equipped" else ("Free %d/%d"):format(math.max(free, 0), copies),
-			TextColor3 = if isOn then Color3.new(1, 1, 1) elseif free > 0 then Color3.fromRGB(255, 220, 90) else MINUS_COLOR,
+			TextColor3 = if isOn then C.Text elseif free > 0 then FREE_COLOR else MINUS_COLOR,
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.fromScale(0.5, 0.81),
 			Size = UDim2.fromScale(0.8, 0.14),
@@ -727,9 +728,9 @@ local function redrawAxes(slot: Model, hero: string)
 			Parent = card,
 		})
 		if isOn then
-			new("Frame", { Name = "Tint", BackgroundColor3 = NEXT_COLOR, BackgroundTransparency = 0.78, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(5) })
+			new("Frame", { Name = "Tint", BackgroundColor3 = NEXT_COLOR, BackgroundTransparency = 0.78, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(Theme.Radius.Chip) })
 		elseif free <= 0 then
-			new("Frame", { Name = "Shade", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(5) })
+			new("Frame", { Name = "Shade", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(Theme.Radius.Chip) })
 		end
 		card.Activated:Connect(function()
 			local showing = current
@@ -763,8 +764,8 @@ local function redrawFruits(slot: Model, hero: string)
 	local def = equipped and FruitConfig.Get(equipped)
 	local damage = statValue(slot, "Damage", levelOf(slot, "Damage"), hero)
 	fruitInfo.Text = if def
-		then ('%s ate <font color="#C88CFF">%s</font> (%s) - Chop Damage <font color="#5AFF3C">%s</font>'):format(hero, def.Name, FruitConfig.BoostText(def), abbreviate(damage))
-		else ('%s has no Devil Fruit - Chop Damage <font color="#5AFF3C">%s</font>'):format(hero, abbreviate(damage))
+		then ('%s ate <font color="#' .. ACCENT_HEX .. '">%s</font> (%s) - Chop Damage <font color="#' .. GREEN_HEX .. '">%s</font>'):format(hero, def.Name, FruitConfig.BoostText(def), abbreviate(damage))
+		else ('%s has no Devil Fruit - Chop Damage <font color="#' .. GREEN_HEX .. '">%s</font>'):format(hero, abbreviate(damage))
 	fruitUnequip.Visible = def ~= nil
 	if def then
 		fruitSkill.Text = ("<b>%s:</b> %s"):format(def.Skill.Name, def.Skill.Desc)
@@ -797,7 +798,7 @@ local function redrawFruits(slot: Model, hero: string)
 			LayoutOrder = order,
 			BackgroundColor3 = color,
 			Parent = fruitGrid,
-		}, { corner(5) })
+		}, { corner(Theme.Radius.Chip) })
 		stroke(if isOn then NEXT_COLOR else color:Lerp(Color3.new(1, 1, 1), 0.35), if isOn then 3.5 else 2, true).Parent = card
 		local view = new("ViewportFrame", { Name = "View", BackgroundTransparency = 1, Position = UDim2.fromScale(0.15, 0.16), Size = UDim2.fromScale(0.7, 0.46), Parent = card })
 		ItemDisplay.FillFruitViewport(view, f.Id)
@@ -810,7 +811,7 @@ local function redrawFruits(slot: Model, hero: string)
 		text({
 			Name = "Free",
 			Text = if isOn then "Equipped" elseif copies <= 0 then "Not owned" else ("Free %d/%d"):format(math.max(free, 0), copies),
-			TextColor3 = if isOn then Color3.new(1, 1, 1) elseif free > 0 then Color3.fromRGB(255, 220, 90) else MINUS_COLOR,
+			TextColor3 = if isOn then C.Text elseif free > 0 then FREE_COLOR else MINUS_COLOR,
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.fromScale(0.5, 0.8),
 			Size = UDim2.fromScale(0.8, 0.15),
@@ -818,9 +819,9 @@ local function redrawFruits(slot: Model, hero: string)
 			Parent = card,
 		})
 		if isOn then
-			new("Frame", { Name = "Tint", BackgroundColor3 = NEXT_COLOR, BackgroundTransparency = 0.78, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(5) })
+			new("Frame", { Name = "Tint", BackgroundColor3 = NEXT_COLOR, BackgroundTransparency = 0.78, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(Theme.Radius.Chip) })
 		elseif free <= 0 then
-			new("Frame", { Name = "Shade", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(5) })
+			new("Frame", { Name = "Shade", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = card }, { corner(Theme.Radius.Chip) })
 		end
 		card.MouseEnter:Connect(function()
 			fruitSkill.Text = ("<b>%s:</b> %s"):format(f.Skill.Name, f.Skill.Desc)
@@ -868,14 +869,14 @@ for order, stat in HeroConfig.UpgradeOrder do
 	if not up then
 		continue
 	end
-	local color = STAT_COLORS[stat] or Color3.new(1, 1, 1)
+	local color = STAT_COLORS[stat] or C.Text
 	local frame = new("Frame", {
 		Name = stat,
 		LayoutOrder = order,
 		Size = UDim2.fromScale(1, rowHeight),
 		BackgroundColor3 = ROW_COLOR,
 		Parent = list,
-	}, { corner(6) })
+	}, { corner(Theme.Radius.Chip) })
 	-- Grade badge on the left (tap: Stat Reroll window).
 	local badge = new("TextButton", {
 		Name = "Grade",
@@ -885,7 +886,7 @@ for order, stat in HeroConfig.UpgradeOrder do
 		Size = UDim2.fromScale(0.11, 0.72),
 		BackgroundColor3 = BADGE_BG,
 		Parent = frame,
-	}, { corner(6) })
+	}, { corner(Theme.Radius.Chip) })
 	local grade = gradeBox(badge)
 	text({ Name = "StatName", Text = up.Name, TextColor3 = color, Position = UDim2.fromScale(0.16, 0.08), Size = UDim2.fromScale(0.29, 0.36), TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
 	local levelLabel = text({ Name = "Level", Text = "", Position = UDim2.fromScale(0.46, 0.12), Size = UDim2.fromScale(0.2, 0.28), TextXAlignment = Enum.TextXAlignment.Right, Parent = frame })
@@ -893,7 +894,7 @@ for order, stat in HeroConfig.UpgradeOrder do
 		Name = "Bar",
 		Position = UDim2.fromScale(0.16, 0.5),
 		Size = UDim2.fromScale(0.5, 0.12),
-		BackgroundColor3 = Color3.fromRGB(16, 16, 20),
+		BackgroundColor3 = BADGE_BG,
 		ClipsDescendants = true,
 		Parent = frame,
 	}, { corner(4) })
@@ -959,14 +960,14 @@ for order, stat in HeroConfig.UpgradeOrder do
 	if not up then
 		continue
 	end
-	local color = STAT_COLORS[stat] or Color3.new(1, 1, 1)
+	local color = STAT_COLORS[stat] or C.Text
 	local frame = new("Frame", {
 		Name = stat,
 		LayoutOrder = order,
 		Size = UDim2.fromScale(1, rerollRowHeight),
 		BackgroundColor3 = ROW_COLOR,
 		Parent = rerollList,
-	}, { corner(6) })
+	}, { corner(Theme.Radius.Chip) })
 	text({ Name = "StatName", Text = up.Name, TextColor3 = color, Position = UDim2.fromScale(0.03, 0.18), Size = UDim2.fromScale(0.34, 0.64), TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
 	local gradeFrame = new("Frame", {
 		Name = "Grade",
@@ -974,7 +975,7 @@ for order, stat in HeroConfig.UpgradeOrder do
 		Size = UDim2.fromScale(0.12, 0.8),
 		BackgroundColor3 = BADGE_BG,
 		Parent = frame,
-	}, { corner(6) })
+	}, { corner(Theme.Radius.Chip) })
 	local grade = gradeBox(gradeFrame)
 	local bonusFrame = new("Frame", {
 		Name = "Bonus",
@@ -982,8 +983,8 @@ for order, stat in HeroConfig.UpgradeOrder do
 		Size = UDim2.fromScale(0.17, 0.8),
 		BackgroundColor3 = BADGE_BG,
 		Parent = frame,
-	}, { corner(6) })
-	stroke(Color3.fromRGB(70, 72, 82), 1.5, true).Parent = bonusFrame
+	}, { corner(Theme.Radius.Chip) })
+	stroke(C.Disabled, 1.5, true).Parent = bonusFrame
 	local bonus = text({ Name = "Text", Text = "", Position = UDim2.fromScale(0.08, 0.18), Size = UDim2.fromScale(0.84, 0.64), Parent = bonusFrame })
 	local lock = button({ Text = "🔓", Color = BADGE_BG, Position = UDim2.fromScale(0.71, 0.1), Size = UDim2.fromScale(0.1, 0.8), Parent = frame })
 	lock.Name = "Lock"
@@ -1084,34 +1085,23 @@ end)
 
 -- Opening / closing -------------------------------------------------------------------------------
 
-local function closeWindow()
+-- Forgets the pad (stops listening). Runs when the window closes, whatever closed it.
+local function forget()
 	if current then
 		for _, c in current.connections do
 			c:Disconnect()
 		end
 	end
 	current = nil
-	for _, w in windows do
-		w.root.Visible = false
-	end
 end
--- One window at a time; dims the world, hides the HUD on phones (UIManager).
-UIManager.Register("HeroUpgrade", (function()
-	local roots = {}
-	for _, w in windows do
-		table.insert(roots, w.root)
-	end
-	return roots
-end)(), closeWindow)
+onWindowClosed = forget
 
-close.Activated:Connect(closeWindow)
-rerollBack.Activated:Connect(function()
-	show(upgradeWin)
-end)
-axeBack.Activated:Connect(function()
-	show(upgradeWin)
-end)
-fruitBack.Activated:Connect(function()
+local function closeWindow()
+	forget()
+	win.Close() -- X / UIManager also land here through OnClose
+end
+
+back.Activated:Connect(function()
 	show(upgradeWin)
 end)
 fruitButton.Activated:Connect(function()
@@ -1156,7 +1146,7 @@ local function open(slot: Model)
 	if not def then
 		return
 	end
-	closeWindow()
+	forget()
 	local connections = {}
 	current = { slot = slot, index = index, pad = pad, hero = def.Name, connections = connections }
 
